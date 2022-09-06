@@ -1,4 +1,304 @@
-index-state: 2022-07-31T09:02:04Z
+index-state: 2022-05-12T00:00:00Z
+with-compiler: ghc-8.10.7
 
 packages:
   src
+
+-- TODO This was patched to work with aeson 1 & 2 with the help of hw-aeson.
+-- Once downstream projects are all upgraded to work with aeson-2, they can
+-- be changed to work strictly with aeson 2 only.
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/hjsonpointer
+    tag: bb99294424e0c5b3c2942c743b545e4b01c12ce8
+    --sha256: 11z5s4xmm6cxy6sdcf9ly4lr0qh3c811hpm0bmlp4c3yq8v3m9rk
+
+-- TODO This was patched to work with aeson 1 & 2 with the help of hw-aeson.
+-- Once downstream projects are all upgraded to work with aeson-2, they can
+-- be changed to work strictly with aeson 2 only.
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/hjsonschema
+    tag: 1546af7fc267d5eea805ef223dd2b59ac120b784
+    --sha256: 0sdikhsq6nnhmmvcpwzzrwfn9cn7rg75629qnrx01i5vm5ci4314
+
+-- TODO This is a compatibility shim to make it easier for our library dependencies to
+-- be compatible with both aeson 1 & 2.  Once downstream projects are all upgraded to
+-- work with aeson-2, library dependencies will need to be updated to no longer use
+-- this compatibility shim and have bounds to indicate they work with aeson-2 only.
+-- After this, the dependency to hw-aeson can be dropped.
+source-repository-package
+    type: git
+    location: https://github.com/haskell-works/hw-aeson
+    tag: ba7c1e41c6e54d6bf9fd1cd013489ac713fc3153
+    --sha256: 1czyn0whgv7czzgwn5y1zgwlkb9p9sn9z9sc9gixrjprcyc0p15p
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/optparse-applicative
+  tag: 7497a29cb998721a9068d5725d49461f2bba0e7a
+  --sha256: 1gvsrg925vynwgqwplgjmp53vj953qyh3wbdf34pw21c8r47w35r
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/Win32-network
+    tag: 3825d3abf75f83f406c1f7161883c438dac7277d
+    --sha256: 19wahfv726fa3mqajpqdqhnl9ica3xmf68i254q45iyjcpj1psqx
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-addresses
+    tag: b7273a5d3c21f1a003595ebf1e1f79c28cd72513
+    --sha256: 129r5kyiw10n2021bkdvnr270aiiwyq58h472d151ph0r7wpslgp
+    subdir: command-line
+            core
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/bech32
+    tag: ab61914443e5f53624d3b2995767761b3f68e576
+    --sha256: 0isqh5s6rdhmqa3jhvc32zb3kvzy149hmzddx1ld9f9jhls4f3wg
+    subdir: bech32
+            bech32-th
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-base
+    tag: 0f3a867493059e650cda69e20a5cbf1ace289a57
+    --sha256: 0p0az3sbkhb7njji8xxdrfb0yx2gc8fmrh872ffm8sfip1w29gg1
+    subdir:
+            base-deriving-via
+            binary
+            binary/test
+            cardano-crypto-class
+            cardano-crypto-praos
+            cardano-crypto-tests
+            orphans-deriving-via
+            measures
+            strict-containers
+            slotting
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-crypto
+    tag: f73079303f663e028288f9f4a9e08bcca39a923e
+    --sha256: 1n87i15x54s0cjkh3nsxs4r1x016cdw1fypwmr68936n3xxsjn6q
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/plutus
+  tag: a56c96598b4b25c9e28215214d25189331087244
+  --sha256: 12d6bndmj0dxl6xlaqmf78326yp5hw093bmybmqfpdkvk4mgz03j
+  subdir:
+    plutus-core
+    plutus-ledger-api
+    plutus-tx
+    plutus-tx-plugin
+    prettyprinter-configurable
+    stubs/plutus-ghc-stub
+    word-array
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/ekg-forward
+  tag: 297cd9db5074339a2fb2e5ae7d0780debb670c63
+  --sha256: 1zcwry3y5rmd9lgxy89wsb3k4kpffqji35dc7ghzbz603y1gy24g
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/cardano-config
+  tag: 1646e9167fab36c0bff82317743b96efa2d3adaa
+  --sha256: 11kf65x38laqhwspsl28j2x5a4rky8mfr6356w0li5g53sfykmjc
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-ledger
+    tag: c7c63dabdb215ebdaed8b63274965966f2bf408f
+    --sha256: 1cn1z3dh5dy5yy42bwfd8rg25mg8qp3m55gyfsl563wgw4q1nd6d
+    subdir:
+      eras/alonzo/impl
+      eras/alonzo/test-suite
+      eras/babbage/impl
+      eras/babbage/test-suite
+      eras/byron/chain/executable-spec
+      eras/byron/crypto
+      eras/byron/crypto/test
+      eras/byron/ledger/executable-spec
+      eras/byron/ledger/impl
+      eras/byron/ledger/impl/test
+      eras/shelley/impl
+      eras/shelley/test-suite
+      eras/shelley-ma/impl
+      eras/shelley-ma/test-suite
+      libs/cardano-ledger-core
+      libs/cardano-ledger-pretty
+      libs/cardano-protocol-tpraos
+      libs/cardano-data
+      libs/vector-map
+      libs/set-algebra
+      libs/small-steps
+      libs/small-steps-test
+      libs/non-integral
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-node
+    tag: 1.35.3
+    --sha256: 020fwimsm24yblr1fmnwx240wj8r3x715p89cpjgnnd8axwf32p0
+    subdir:
+      cardano-api
+      cardano-git-rev
+      cardano-cli
+      cardano-node
+      cardano-node-chairman
+      trace-dispatcher
+      trace-resources
+      trace-forward
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-prelude
+    -- tag: 26abe8718be6d7f5e443b09cb97ceef8828c35c8
+    tag: fd773f7a58412131512b9f694ab95653ac430852
+    --sha256: 02jddik1yw0222wd6q0vv10f7y8rdgrlqaiy83ph002f9kjx7mh6
+    --_sha256: 00h10l5mmiza9819p9v5q5749nb9pzgi20vpzpy1d34zmh6gf1cj
+    subdir: cardano-prelude
+            cardano-prelude-test
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-sl-x509
+    tag: a91add165152fa36f08e95fafe7da24f1dba4690
+    --sha256: 1ia8vlqghis92cla8qmqa6kh8f3jn29b01fshyk5hmgy5373s684
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/goblins
+    tag: cde90a2b27f79187ca8310b6549331e59595e7ba
+    --sha256: 17c88rbva3iw82yg9srlxjv2ia5wjb9cyqw44hik565f5v9svnyg
+
+-- In particular we rely on the code from this PR:
+--  * <https://github.com/input-output-hk/iohk-monitoring-framework/pull/622>
+-- being merged.
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/iohk-monitoring-framework
+    tag: 066f7002aac5a0efc20e49643fea45454f226caa
+    --sha256: 0s6x4in11k5ba7nl7la896g28sznf9185xlqg9c604jqz58vj9nj
+    subdir: contra-tracer
+            iohk-monitoring
+            plugins/backend-aggregation
+            plugins/backend-ekg
+            plugins/backend-monitoring
+            plugins/backend-trace-forwarder
+            plugins/scribe-systemd
+            tracer-transformers
+
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/ouroboros-network
+    tag: cb9eba406ceb2df338d8384b35c8addfe2067201
+    --sha256: 066llskxzjgcs13lwlvklb28azb9kd9b77j61x8fvrj1rlf5njfw
+    subdir:
+      monoidal-synchronisation
+      network-mux
+      ouroboros-consensus
+      ouroboros-consensus-byron
+      ouroboros-consensus-cardano
+      ouroboros-consensus-protocol
+      ouroboros-consensus-shelley
+      ouroboros-network
+      ouroboros-network-framework
+      ouroboros-network-testing
+      ntp-client
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/io-sim
+  tag: 57e888b1894829056cb00b7b5785fdf6a74c3271
+  --sha256: 1kv8lwmrw1c0g03jy3i3fgk3c8d47ihjcslg295djqj442y95y2f
+  subdir:
+    io-classes
+    io-sim
+    strict-stm
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/typed-protocols
+  tag: 181601bc3d9e9d21a671ce01e0b481348b3ca104
+  --sha256: 1lr97b2z7l0rpsmmz92rsv27qzd5vavz10cf7n25svya4kkiysp5
+  subdir:
+    typed-protocols
+    typed-protocols-cborg
+    typed-protocols-examples
+
+-- Drops an instance breaking cardano-node.
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/flat
+    tag: ee59880f47ab835dbd73bea0847dab7869fc20d8
+    --sha256: 1lrzknw765pz2j97nvv9ip3l1mcpf2zr4n56hwlz0rk7wq7ls4cm
+
+-- Until https://github.com/tibbe/ekg-json/pull/12 gets merged with aeson2 support
+source-repository-package
+  type: git
+  location: https://github.com/vshabanov/ekg-json
+  tag: 00ebe7211c981686e65730b7144fbf5350462608
+  --sha256: 1zvjm3pb38w0ijig5wk5mdkzcszpmlp5d4zxvks2jk1rkypi8gsm
+
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/hedgehog-extras
+  tag: 967d79533c21e33387d0227a5f6cc185203fe658
+  --sha256: 0rbqb7a64aya1qizlr3im06hdydg9zr6sl3i8bvqqlf7kpa647sd
+
+-- -------------------------------------------------------------------------
+-- Constraints tweaking
+
+-- cardano-addresses unit tests bring in some version constraint conflicts.
+--
+-- 1. hjsonschema and hjsonpointer deps have overly strict bounds.
+-- 2. it has strict aeson < 1.5 dep - this will be fixed in the next release.
+allow-newer:
+    hjsonschema:*
+  , hjsonpointer:*
+  , cardano-sl-x509:ip
+  , *:aeson
+  , size-based:template-haskell
+
+-- Copied from (copied from cardano-node/cabal.project)
+allow-newer:
+  *:aeson,
+  monoidal-containers:aeson,
+  size-based:template-haskell
+
+allow-newer:
+  async-timer:unliftio-core
+
+constraints:
+    hashable < 1.4
+  , bimap >= 0.4.0
+  , openapi3 >= 3.2.0
+  , libsystemd-journal >= 1.4.4
+  , systemd >= 2.3.0
+  -- dependency of systemd-2.3.0
+  , network >= 3.1.1.1
+  -- choose versions that work with base >= 4.12
+  , hjsonpointer >= 1.5.0
+  , hjsonschema >= 1.10.0
+  , Cabal >= 3.4.0.0
+  , async-timer >= 0.2.0.0
+  , unliftio-core >= 0.2.0.1
+
+  -- This pin is just here to make cabalProejct == stackProject.
+  -- Remove it if you are happy for a newer version to be picked when possible.
+  , semigroups == 0.19.2
+  , persistent < 2.13.3.4
+
+  -- To get cardano-prelude to compile
+  , protolude < 0.3.2
+
+  -- To get plutus-core to compile
+  , algebraic-graphs < 0.7
+
+tests: False

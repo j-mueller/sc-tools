@@ -1,6 +1,6 @@
 cabal-version: 3.0
-name:          coin-selection
-version:       0.0.0.1
+name:          convex-coin-selection
+version:       0.0.1
 synopsis:      Coin selection algorithm for Cardano transactions
 license: Apache-2.0
 license-files:
@@ -28,7 +28,16 @@ common lang
 library
     import: lang
     exposed-modules:
-      CoinSelection
+      Convex.CoinSelection
     hs-source-dirs: lib
     build-depends:
-      base
+      base >= 4.14.0,
+      cardano-api
+
+executable convex-coin-selection
+  import: lang
+  main-is: Main.hs
+  hs-source-dirs: exe
+  build-depends:
+    base >= 4.14.0,
+    convex-coin-selection
