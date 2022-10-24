@@ -32,6 +32,11 @@ library
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      cardano-api,
       lens,
       containers
+      
+    build-depends:
+      cardano-api,
+      cardano-ledger-shelley,
+      small-steps,
+      cardano-ledger-core

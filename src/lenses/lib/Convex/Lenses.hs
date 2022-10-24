@@ -1,33 +1,117 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-| Lenses for @cardano-api@ transactions
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE GADTs            #-}
+{-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE TypeApplications #-}
+{-| Lenses for @cardano-api@ types
 -}
 module Convex.Lenses(
+  -- * Tx body content lenses
+  emptyTxBodyContent,
+  TxIn,
+  txIns,
   txOuts,
   txMintValue,
+  txFee,
+  txFee',
+  txProtocolParams,
+  -- * Prisms and Isos
   _TxMintNone,
   _TxMintValue,
   _Value,
   _TxOut,
-  _TxOutValue
+  _TxOutValue,
+  _ShelleyAddressInBabbageEra,
+  _PaymentCredentialByKey,
+  _ShelleyPaymentCredentialByKey,
+  _PaymentCredentialByScript,
+  _ShelleyPaymentCredentialByScript,
+
+  -- * Ledger API types
+  slot,
+  _UTxOState,
+  utxoState
 ) where
 
-import           Cardano.Api         (AddressInEra, AssetId, BabbageEra,
-                                      BuildTxWith, CtxTx,
-                                      MultiAssetSupportedInEra, PolicyId,
-                                      Quantity (..), ScriptWitness, TxMintValue,
-                                      TxOut, TxOutDatum, TxOutValue, Value,
-                                      WitCtxMint)
-import qualified Cardano.Api         as C
-import           Cardano.Api.Shelley (ReferenceScript)
-import           Control.Lens        (Iso', Lens', Prism', iso, lens, prism')
-import           Data.Map.Strict     (Map)
-import qualified Data.Map.Strict     as Map
+import           Cardano.Api                        (AddressInEra, AssetId,
+                                                     BabbageEra, BuildTxWith,
+                                                     CtxTx,
+                                                     MultiAssetSupportedInEra,
+                                                     PolicyId, Quantity (..),
+                                                     ScriptWitness, TxMintValue,
+                                                     TxOut, TxOutDatum,
+                                                     TxOutValue, Value,
+                                                     WitCtxMint)
+import           Cardano.Api.Shelley                (ReferenceScript, SlotNo)
+import qualified Cardano.Api.Shelley                as C
+import qualified Cardano.Ledger.BaseTypes           as Shelley
+import qualified Cardano.Ledger.Core                as Core
+import qualified Cardano.Ledger.Credential          as Shelley
+import           Cardano.Ledger.Crypto              (StandardCrypto)
+import           Cardano.Ledger.Era                 (Era)
+import qualified Cardano.Ledger.Hashes              as Hashes
+import qualified Cardano.Ledger.Keys                as Keys
+import           Cardano.Ledger.Shelley.API         (Coin, LedgerEnv (..), UTxO,
+                                                     UTxOState (..))
+import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
+                                                     smartUTxOState)
+import           Control.Lens                       (Iso', Lens', Prism', iso,
+                                                     lens, prism')
+import           Control.State.Transition           (STS (State))
+import           Data.Map.Strict                    (Map)
+import qualified Data.Map.Strict                    as Map
+
+{-| 'TxBodyContent' with all fields set to empty, none, default values
+-}
+emptyTxBodyContent :: C.TxBodyContent C.BuildTx BabbageEra
+emptyTxBodyContent =
+  C.TxBodyContent
+    { C.txIns = []
+    , C.txInsCollateral = C.TxInsCollateralNone
+    , C.txInsReference = C.TxInsReferenceNone
+    , C.txOuts = []
+    , C.txTotalCollateral = C.TxTotalCollateralNone
+    , C.txReturnCollateral = C.TxReturnCollateralNone
+    , C.txFee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra 0
+    , C.txValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+    , C.txMetadata = C.TxMetadataNone
+    , C.txAuxScripts = C.TxAuxScriptsNone
+    , C.txExtraKeyWits = C.TxExtraKeyWitnessesNone
+    , C.txProtocolParams = C.BuildTxWith Nothing
+    , C.txWithdrawals = C.TxWithdrawalsNone
+    , C.txCertificates = C.TxCertificatesNone
+    , C.txUpdateProposal = C.TxUpdateProposalNone
+    , C.txMintValue = C.TxMintNone
+    , C.txScriptValidity = C.TxScriptValidityNone
+    }
+
+type TxIn v = (C.TxIn, BuildTxWith v (C.Witness C.WitCtxTxIn BabbageEra))
+
+txIns :: Lens' (C.TxBodyContent v BabbageEra) [TxIn v]
+txIns = lens get set_ where
+  get = C.txIns
+  set_ body txIns' = body{C.txIns=txIns'}
 
 -- Lenses for working with cardano-api transactions
 txOuts :: Lens' (C.TxBodyContent v BabbageEra) [TxOut CtxTx BabbageEra]
 txOuts = lens get set_ where
   get = C.txOuts
   set_ body txOuts' = body{C.txOuts=txOuts'}
+
+txFee' :: Lens' (C.TxBodyContent v e) (C.TxFee e)
+txFee' = lens get set_ where
+  get           = C.txFee
+  set_ body fee = body{C.txFee = fee}
+
+txFee :: Lens' (C.TxBodyContent v BabbageEra) C.Lovelace
+txFee = lens get set_ where
+  get :: C.TxBodyContent v BabbageEra -> C.Lovelace
+  get b = case C.txFee b of { C.TxFeeExplicit C.TxFeesExplicitInBabbageEra t_fee -> t_fee; C.TxFeeImplicit{} -> error "not possible in babbage era" }
+  set_ body fee = body{C.txFee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra fee}
+
+txProtocolParams :: Lens' (C.TxBodyContent v e) (BuildTxWith v (Maybe C.ProtocolParameters))
+txProtocolParams = lens get set_ where
+  get = C.txProtocolParams
+  set_ body params = body{C.txProtocolParams = params}
 
 txMintValue :: Lens' (C.TxBodyContent v BabbageEra) (TxMintValue v BabbageEra)
 txMintValue = lens get set_ where
@@ -57,7 +141,57 @@ _TxOut = iso from to where
   from (C.TxOut addr vl dt rs) = (addr, vl, dt, rs)
   to (addr, vl, dt, rs) = C.TxOut addr vl dt rs
 
+_ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+_ShelleyAddressInBabbageEra = prism' from to where
+  to :: C.AddressInEra C.BabbageEra -> Maybe (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+  to x = case x of
+    (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) (C.ShelleyAddress ntw pmt stakeRef)) -> Just (ntw, pmt, stakeRef)
+    (C.AddressInEra (C.ByronAddressInAnyEra) _) -> Nothing
+  from (ntw, pmt, stakeRef) = C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) (C.ShelleyAddress ntw pmt stakeRef)
+
+_PaymentCredentialByKey :: Prism' C.PaymentCredential (C.Hash C.PaymentKey)
+_PaymentCredentialByKey = prism' from to where
+  from = C.PaymentCredentialByKey
+  to (C.PaymentCredentialByKey k) = Just k
+  to _                            = Nothing
+
+_ShelleyPaymentCredentialByKey :: Prism' (Shelley.PaymentCredential StandardCrypto) (Keys.KeyHash 'Keys.Payment StandardCrypto)
+_ShelleyPaymentCredentialByKey = prism' from to where
+  from = Shelley.KeyHashObj
+  to (Shelley.KeyHashObj k)  = Just k
+  to Shelley.ScriptHashObj{} = Nothing
+
+_PaymentCredentialByScript :: Prism' C.PaymentCredential C.ScriptHash
+_PaymentCredentialByScript = prism' from to where
+  from = C.PaymentCredentialByScript
+  to (C.PaymentCredentialByScript k) = Just k
+  to C.PaymentCredentialByKey{}      = Nothing
+
+_ShelleyPaymentCredentialByScript :: Prism' (Shelley.PaymentCredential StandardCrypto) (Hashes.ScriptHash StandardCrypto)
+_ShelleyPaymentCredentialByScript = prism' from to where
+  from = Shelley.ScriptHashObj
+  to (Shelley.ScriptHashObj s) = Just s
+  to Shelley.KeyHashObj{}      = Nothing
+
 _TxOutValue :: Iso' (TxOutValue BabbageEra) Value
 _TxOutValue = iso from to where
   from = C.txOutValueToValue
   to = C.TxOutValue C.MultiAssetInBabbageEra
+
+slot :: Lens' (LedgerEnv era) SlotNo
+slot = lens get set_ where
+  get = ledgerSlotNo
+  set_ l s = l{ledgerSlotNo=s}
+
+{-| 'UTxOState' iso. Note that this doesn't touch the '_stakeDistro' field. This is because the
+stake distro is a function of @utxo :: UTxO era@ and can be computed by @updateStakeDistribution mempty mempty utxo@.
+-}
+_UTxOState :: forall era. Era era => Iso' (UTxOState era) (UTxO era, Coin, Coin, State (Core.EraRule "PPUP" era))
+_UTxOState = iso from to where
+  from UTxOState{_utxo, _deposited, _fees, _ppups} = (_utxo, _deposited, _fees, _ppups)
+  to (utxo, deposited, fees, pups) = smartUTxOState @era utxo deposited fees pups
+
+utxoState :: Lens' (LedgerState era) (UTxOState era)
+utxoState = lens get set_ where
+  get = lsUTxOState
+  set_ l s = l{lsUTxOState=s}

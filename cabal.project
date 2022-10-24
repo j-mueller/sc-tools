@@ -4,6 +4,7 @@ with-compiler: ghc-8.10.7
 packages:
   src/coin-selection
   src/lenses
+  src/mockchain
 
 -- TODO This was patched to work with aeson 1 & 2 with the help of hw-aeson.
 -- Once downstream projects are all upgraded to work with aeson-2, they can

@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-coin-selection
+name:          convex-mockchain
 version:       0.0.1
-synopsis:      Coin selection algorithm for Cardano transactions
+synopsis:      Minimal mockchain for testing plutus scripts
 license: Apache-2.0
 license-files:
   LICENSE
@@ -28,34 +28,34 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.BuildTx
-      Convex.CoinSelection
+      Convex.Era
+      Convex.MockChain.Defaults
+      Convex.MockChain.Wallets
+      Convex.MockChain
+      Convex.MockChain.Class
+      Convex.NodeParams
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      containers >= 0.6.5,
-      lens,
-      time,
       convex-lenses,
-      convex-mockchain
+      lens,
+      containers,
+      time,
+      array,
+      data-default,
+      mtl,
+      strict-containers,
+      text,
+      aeson
 
     -- cardano dependencies
     build-depends:
       cardano-api >= 1.35.3,
-      cardano-ledger-core -any
-
-test-suite convex-coin-selection-test
-  import: lang
-  type: exitcode-stdio-1.0
-  hs-source-dirs:     test
-  ghc-options: -threaded -rtsopts
-  main-is: Spec.hs
-  build-depends:
-    base >= 4.14.0,
-    tasty,
-    tasty-hunit,
-    lens,
-    convex-coin-selection,
-    convex-mockchain,
-    convex-lenses,
-    cardano-api >= 1.35.3
+      cardano-slotting -any,
+      ouroboros-consensus -any,
+      cardano-ledger-core -any,
+      cardano-ledger-shelley -any,
+      cardano-ledger-babbage -any,
+      plutus-core -any,
+      cardano-ledger-alonzo -any,
+      cardano-ledger-shelley-ma -any
