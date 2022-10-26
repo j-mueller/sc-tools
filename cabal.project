@@ -301,5 +301,3 @@ constraints:
 
   -- To get plutus-core to compile
   , algebraic-graphs < 0.7
-
-tests: False

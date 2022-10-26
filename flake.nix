@@ -54,6 +54,6 @@
       };
     in flake // {
       # Built by `nix build .`
-      defaultPackage = flake.packages."convex-coin-selection:exe:convex-coin-selection";
+      defaultPackage = flake.packages."convex-coin-selection:lib:convex-coin-selection";
     });
 }

@@ -34,10 +34,13 @@ library
       base >= 4.14.0,
       cardano-api
 
-executable convex-coin-selection
+test-suite convex-coin-selection-test
   import: lang
-  main-is: Main.hs
-  hs-source-dirs: exe
+  type: exitcode-stdio-1.0
+  hs-source-dirs:     test
+  ghc-options: -threaded -rtsopts
+  main-is: Spec.hs
   build-depends:
     base >= 4.14.0,
+    tasty,
     convex-coin-selection
