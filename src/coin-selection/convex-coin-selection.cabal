@@ -42,7 +42,8 @@ library
     -- cardano dependencies
     build-depends:
       cardano-api >= 1.35.3,
-      cardano-ledger-core -any
+      cardano-ledger-core -any,
+      plutus-ledger-api
 
 test-suite convex-coin-selection-test
   import: lang
@@ -55,6 +56,7 @@ test-suite convex-coin-selection-test
     tasty,
     tasty-hunit,
     lens,
+    containers,
     convex-coin-selection,
     convex-mockchain,
     convex-lenses,

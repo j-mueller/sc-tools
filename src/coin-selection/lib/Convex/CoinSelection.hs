@@ -30,8 +30,9 @@ import qualified Cardano.Api.Shelley      as C
 import           Cardano.Ledger.Crypto    (StandardCrypto)
 import qualified Cardano.Ledger.Keys      as Keys
 import           Control.Lens             (_1, _2, makeLensesFor, over, preview,
-                                           set, view, (&), (|>))
-import           Convex.BuildTx           (spendPublicKeyOutput)
+                                           set, traversed, view, (&), (.~),
+                                           (^..), (|>))
+import           Convex.BuildTx           (addCollateral, spendPublicKeyOutput)
 import qualified Convex.Lenses            as L
 import           Convex.MockChain.Class   (MonadBlockchain (..),
                                            MonadBlockchainQuery (..))
@@ -98,7 +99,7 @@ balanceTransactionBody NodeParams{npSystemStart, npEraHistory, npProtocolParamet
   exUnitsMap' <- first BalancingError $
     case Map.mapEither id exUnitsMap of
       (failures, exUnitsMap') ->
-        handleExUnitsErrors C.ScriptValid failures exUnitsMap'
+        handleExUnitsErrors C.ScriptValid failures exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
 
   let txbodycontent1 = substituteExecutionUnits exUnitsMap' csiTxBody
 
@@ -277,13 +278,17 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
 -}
 balanceForWallet :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => NodeParams -> Wallet -> TxBodyContent BuildTx ERA -> m (C.Tx ERA)
 balanceForWallet nodeParams wallet txb = do
+  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just (npProtocolParameters nodeParams))
   -- TODO: Better error handling (better than 'fail')
   walletFunds <- utxoByAddress (Wallet.addressInEra wallet)
-  -- spentTxIns_ <- utxoByTxIn (spentTxIns txb)
+  otherInputs <- lookupTxIns (spentTxIns txb)
+  let combinedTxIns =
+        let UTxO w = walletFunds
+            UTxO o = otherInputs
+        in UTxO (Map.union w o)
   let walletUtxo = Wallet.fromUtxos (npNetworkId nodeParams) wallet walletFunds
-  -- TODO: MonadState WalletUtxo ?
-  finalBody <- either (fail . show) pure (addMissingInputs nodeParams walletFunds walletUtxo (flip addOwnInput walletUtxo txb))
-  csi <- prepCSInputs (Wallet.addressInEra wallet) walletFunds finalBody
+  finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
+  csi <- prepCSInputs (Wallet.addressInEra wallet) combinedTxIns finalBody
   C.BalancedTxBody txbody _changeOutput _fee <- either (fail . show) pure (balanceTransactionBody nodeParams csi)
   let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
       stx = C.makeSignedTransaction wit txbody
@@ -296,6 +301,14 @@ addOwnInput body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOu
   | otherwise =
       spendPublicKeyOutput (fst $ head $ Map.toList wiAdaOnlyOutputs) body
 
+setCollateral :: TxBodyContent BuildTx ERA -> WalletUtxo -> TxBodyContent BuildTx ERA
+setCollateral body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOutputs}) =
+  case body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness) of
+    [] -> body -- no script witnesses in inputs. TODO: Consider minting / staking witnesses
+    _ -> case Map.lookupMax wiAdaOnlyOutputs of
+      Nothing     -> body -- TODO: Throw error?
+      Just (k, _) -> addCollateral k body
+
 {-| Add inputs to ensure that the balance is strictly positive
 -}
 addMissingInputs :: NodeParams -> C.UTxO ERA -> WalletUtxo -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
@@ -303,10 +316,11 @@ addMissingInputs NodeParams{npProtocolParameters, npStakePools} utxo_ walletUtxo
   txb <- first BodyError (C.makeTransactionBody txBodyContent)
   let bal = C.evaluateTransactionBalance npProtocolParameters npStakePools utxo_ txb
       available = Wallet.removeTxIns (spentTxIns txBodyContent) walletUtxo
+      threshold = 3_500_000
   case bal of
         C.TxOutValue _ (C.valueToLovelace -> Just (C.Lovelace l))
-          | l < 3_000_000 -> -- ensure a minimum positive balance of 3 Ada to cover any fees & change. TODO: Configurable
-              let l' = C.Lovelace (3_000_000 - l) in
+          | l < threshold -> -- ensure a minimum positive balance of 3 Ada to cover any fees & change. TODO: Configurable
+              let l' = C.Lovelace (threshold - l) in
               case Wallet.selectAdaInputsCovering available l' of
                 Nothing -> Left (NotEnoughAdaOnlyOutputsFor l')
                 Just (_, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
@@ -327,18 +341,17 @@ prepCSInputs csiChangeAddress csiUtxo csiTxBody =
     <$> pure csiUtxo
     <*> pure csiTxBody
     <*> pure csiChangeAddress
-    <*> fmap (fromIntegral . Set.size) (keyWitnesses csiTxBody)
+    <*> fmap (succ . fromIntegral . Set.size) (keyWitnesses csiTxBody)
 
 spentTxIns :: C.TxBodyContent v C.BabbageEra -> Set C.TxIn
 spentTxIns (view L.txIns -> inputs) =
   -- TODO: Include collateral etc. fields
   Set.fromList (fst <$> inputs)
 
--- lookupTxIns :: MonadBlockchain m => C.UTxO ERA -> Set C.TxIn -> m (C.UTxO ERA)
--- lookupTxIns (C.UTxO other) allTxIns = do
---   let missingTxIns = allTxIns `Set.difference` Map.keysSet other
---   C.UTxO rest <- utxoByTxIn missingTxIns
---   pure (C.UTxO $ rest `Map.union` other)
+lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
+lookupTxIns allTxIns = do
+  C.UTxO rest <- utxoByTxIn allTxIns
+  pure (C.UTxO rest)
 
 keyWitnesses :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
 keyWitnesses (view L.txIns -> inputs) = do

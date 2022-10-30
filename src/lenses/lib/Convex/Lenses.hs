@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE GADTs            #-}
+{-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TypeApplications #-}
 {-| Lenses for @cardano-api@ types
@@ -14,6 +15,8 @@ module Convex.Lenses(
   txFee,
   txFee',
   txProtocolParams,
+  txInsCollateral,
+  txScriptValidity,
   -- * Prisms and Isos
   _TxMintNone,
   _TxMintValue,
@@ -25,6 +28,15 @@ module Convex.Lenses(
   _ShelleyPaymentCredentialByKey,
   _PaymentCredentialByScript,
   _ShelleyPaymentCredentialByScript,
+  _TxInsCollateral,
+
+  -- ** Witnesses
+  _KeyWitness,
+  _ScriptWitness,
+
+  -- ** Build tx
+  _BuildTxWith,
+  _ViewTx,
 
   -- * Ledger API types
   slot,
@@ -33,13 +45,13 @@ module Convex.Lenses(
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
-                                                     BabbageEra, BuildTxWith,
-                                                     CtxTx,
+                                                     BabbageEra, BuildTx,
+                                                     BuildTxWith, CtxTx,
                                                      MultiAssetSupportedInEra,
                                                      PolicyId, Quantity (..),
                                                      ScriptWitness, TxMintValue,
                                                      TxOut, TxOutDatum,
-                                                     TxOutValue, Value,
+                                                     TxOutValue, Value, ViewTx,
                                                      WitCtxMint)
 import           Cardano.Api.Shelley                (ReferenceScript, SlotNo)
 import qualified Cardano.Api.Shelley                as C
@@ -118,6 +130,26 @@ txMintValue = lens get set_ where
   get = C.txMintValue
   set_ body txMintValue' = body{C.txMintValue=txMintValue'}
 
+txScriptValidity :: Lens' (C.TxBodyContent v e) (C.TxScriptValidity e)
+txScriptValidity = lens get set_ where
+  get = C.txScriptValidity
+  set_ body v = body{C.txScriptValidity = v}
+
+txInsCollateral :: Lens' (C.TxBodyContent v BabbageEra) (C.TxInsCollateral BabbageEra)
+txInsCollateral = lens get set_ where
+  get = C.txInsCollateral
+  set_ body col = body{C.txInsCollateral = col}
+
+_TxInsCollateral :: Iso' (C.TxInsCollateral BabbageEra) [C.TxIn]
+_TxInsCollateral = iso from to where
+  from :: C.TxInsCollateral BabbageEra -> [C.TxIn]
+  from = \case
+    C.TxInsCollateralNone  -> []
+    C.TxInsCollateral _ xs -> xs
+  to = \case
+    [] -> C.TxInsCollateralNone
+    xs -> C.TxInsCollateral C.CollateralInBabbageEra xs
+
 _TxMintNone :: Prism' (TxMintValue build era) ()
 _TxMintNone = prism' from to where
   from () = C.TxMintNone
@@ -172,6 +204,36 @@ _ShelleyPaymentCredentialByScript = prism' from to where
   from = Shelley.ScriptHashObj
   to (Shelley.ScriptHashObj s) = Just s
   to Shelley.KeyHashObj{}      = Nothing
+
+_KeyWitness :: Prism' (C.Witness witctx era) (C.KeyWitnessInCtx witctx)
+_KeyWitness = prism' from to where
+  from = C.KeyWitness
+  to :: C.Witness witctx era -> Maybe (C.KeyWitnessInCtx witctx)
+  to = \case
+    C.KeyWitness w    -> Just w
+    C.ScriptWitness{} -> Nothing
+
+_ScriptWitness :: Prism' (C.Witness witctx era) (C.ScriptWitnessInCtx witctx, C.ScriptWitness witctx era)
+_ScriptWitness = prism' from to where
+  from (a, b) = C.ScriptWitness a b
+  to :: C.Witness witctx era -> Maybe (C.ScriptWitnessInCtx witctx, C.ScriptWitness witctx era)
+  to = \case
+    C.ScriptWitness a b -> Just (a, b)
+    C.KeyWitness{}      -> Nothing
+
+_ViewTx :: Iso' (C.BuildTxWith ViewTx a) ()
+_ViewTx = iso from to where
+  from :: C.BuildTxWith ViewTx a -> ()
+  from = \case
+    C.ViewTx{} -> ()
+  to () = C.ViewTx{}
+
+_BuildTxWith :: Iso' (C.BuildTxWith BuildTx a) a
+_BuildTxWith = iso from to where
+  from :: C.BuildTxWith BuildTx a -> a
+  from = \case
+    C.BuildTxWith a -> a
+  to = C.BuildTxWith
 
 _TxOutValue :: Iso' (TxOutValue BabbageEra) Value
 _TxOutValue = iso from to where
