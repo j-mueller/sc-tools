@@ -89,32 +89,32 @@ protocolParameters =
     { protocolParamProtocolVersion = (6,0)
     , protocolParamDecentralization = Just (3 % 5)
     , protocolParamExtraPraosEntropy = Nothing
-    , protocolParamMaxBlockHeaderSize = 1100
-    , protocolParamMaxBlockBodySize = 65536
-    , protocolParamMaxTxSize = 16384
-    , protocolParamTxFeeFixed = 155381
+    , protocolParamMaxBlockHeaderSize = 1_100
+    , protocolParamMaxBlockBodySize = 65_536
+    , protocolParamMaxTxSize = 16_384
+    , protocolParamTxFeeFixed = 155_381
     , protocolParamTxFeePerByte = 44
-    , protocolParamMinUTxOValue = Nothing
-    , protocolParamStakeAddressDeposit = Lovelace 2000000
-    , protocolParamStakePoolDeposit = Lovelace 500000000
-    , protocolParamMinPoolCost = Lovelace 340000000
+    , protocolParamMinUTxOValue = Just (Lovelace 1_500_000)
+    , protocolParamStakeAddressDeposit = Lovelace 2_000_000
+    , protocolParamStakePoolDeposit = Lovelace 500_000_000
+    , protocolParamMinPoolCost = Lovelace 340_000_000
     , protocolParamPoolRetireMaxEpoch = EpochNo 18
     , protocolParamStakePoolTargetNum = 150
     , protocolParamPoolPledgeInfluence = 3 % 10
-    , protocolParamMonetaryExpansion = 3 % 1000
+    , protocolParamMonetaryExpansion = 3 % 1_000
     , protocolParamTreasuryCut = 1 % 5
     , protocolParamUTxOCostPerWord = Nothing -- Obsolete from babbage onwards
     , protocolParamCostModels = fromList
       [ (AnyPlutusScriptVersion PlutusScriptV1, CostModel $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
       , (AnyPlutusScriptVersion PlutusScriptV2, CostModel $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams) ]
-    , protocolParamPrices = Just (ExecutionUnitPrices {priceExecutionSteps = 721 % 10000000, priceExecutionMemory = 577 % 10000})
-    , protocolParamMaxTxExUnits = Just (ExecutionUnits {executionSteps = 10000000000, executionMemory = 16000000})
-    , protocolParamMaxBlockExUnits = Just (ExecutionUnits {executionSteps = 40000000000, executionMemory = 80000000})
-    , protocolParamMaxValueSize = Just 5000
+    , protocolParamPrices = Just (ExecutionUnitPrices {priceExecutionSteps = 721 % 10_000_000, priceExecutionMemory = 577 % 10_000})
+    , protocolParamMaxTxExUnits = Just (ExecutionUnits {executionSteps = 1_0000_000_000, executionMemory = 16_000_000})
+    , protocolParamMaxBlockExUnits = Just (ExecutionUnits {executionSteps = 4_0000_000_000, executionMemory = 80_000_000})
+    , protocolParamMaxValueSize = Just 5_000
     , protocolParamCollateralPercent = Just 150
     , protocolParamMaxCollateralInputs = Just 3
     , protocolParamUTxOCostPerByte =
-        let (Coin coinsPerUTxOByte) = coinsPerUTxOWordToCoinsPerUTxOByte $ Coin 34482
+        let (Coin coinsPerUTxOByte) = coinsPerUTxOWordToCoinsPerUTxOByte $ Coin 34_482
          in Just $ Lovelace coinsPerUTxOByte
     }
 

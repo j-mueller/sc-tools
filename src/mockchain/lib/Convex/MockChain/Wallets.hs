@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -19,6 +20,7 @@ module Convex.MockChain.Wallets(
   fromUtxo,
   fromUtxos,
   selectAdaInputsCovering,
+  selectMixedInputsCovering,
   removeTxIns,
   -- * Mock wallets for testing
   mockWallets,
@@ -51,6 +53,7 @@ import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (mapMaybe)
 import           Data.Set                   (Set)
+import qualified Data.Set as Set
 import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
 
@@ -152,7 +155,7 @@ initialUTxOs =
   let c = Coin 100_000_000_000
   in fmap (\w -> (w, c)) mockWallets
 
-{-| The wallet's transaction outputs, indexed by
+{-| The wallet's transaction outputs
 -}
 data WalletUtxo =
   WalletUtxo
@@ -203,3 +206,23 @@ selectAdaInputsCovering WalletUtxo{wiAdaOnlyOutputs} (C.Lovelace target) =
   $ scanl append (C.Lovelace 0, [])
   $ Map.toAscList wiAdaOnlyOutputs
 
+selectMixedInputsCovering :: WalletUtxo -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
+selectMixedInputsCovering _                          [] = Just (mempty, [])
+selectMixedInputsCovering WalletUtxo{wiMixedOutputs} xs =
+  let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
+      coversTarget (candidateVl, _txIns) = 
+        all (\(policyId, assetName, quantity) -> C.selectAsset candidateVl (C.AssetId policyId assetName) >= quantity) xs
+      requiredAssets = foldMap (\(p, a, _) -> Set.singleton (p, a)) xs
+      nonAdaAssets = \case
+        C.AdaAssetId  -> Set.empty
+        C.AssetId p n -> Set.singleton (p, n)
+      relevantValue (txIn, view (L._TxOut . _2 . L._TxOutValue) -> txOutValue) =
+        let providedAssets = foldMap (nonAdaAssets . fst) (C.valueToList txOutValue)
+        in if Set.null (Set.intersection requiredAssets providedAssets)
+          then Nothing
+          else Just (txOutValue, txIn)
+  in
+    find coversTarget
+    $ scanl append (mempty, mempty)
+    $ mapMaybe relevantValue
+    $ Map.toAscList wiMixedOutputs

@@ -24,29 +24,30 @@ module Convex.CoinSelection(
   prepCSInputs
   ) where
 
-import           Cardano.Api.Shelley      (AddressInEra, BabbageEra, BuildTx,
-                                           TxBodyContent, UTxO (..))
-import qualified Cardano.Api.Shelley      as C
-import           Cardano.Ledger.Crypto    (StandardCrypto)
-import qualified Cardano.Ledger.Keys      as Keys
-import           Control.Lens             (_1, _2, makeLensesFor, over, preview,
-                                           set, traversed, view, (&), (.~),
-                                           (^..), (|>))
-import           Convex.BuildTx           (addCollateral, spendPublicKeyOutput)
-import qualified Convex.Lenses            as L
-import           Convex.MockChain.Class   (MonadBlockchain (..),
-                                           MonadBlockchainQuery (..))
-import           Convex.MockChain.Wallets (Wallet, WalletUtxo (..))
-import qualified Convex.MockChain.Wallets as Wallet
-import           Convex.NodeParams        (NodeParams (..))
-import           Data.Bifunctor           (Bifunctor (..))
-import           Data.Function            (on)
-import qualified Data.List                as List
-import           Data.Map                 (Map)
-import qualified Data.Map                 as Map
-import           Data.Maybe               (mapMaybe, maybeToList)
-import           Data.Set                 (Set)
-import qualified Data.Set                 as Set
+import           Cardano.Api.Shelley        (AddressInEra, BabbageEra, BuildTx,
+                                             TxBodyContent, UTxO (..))
+import qualified Cardano.Api.Shelley        as C
+import           Cardano.Ledger.Crypto      (StandardCrypto)
+import qualified Cardano.Ledger.Keys        as Keys
+import           Control.Lens               (_1, _2, at, makeLensesFor, over,
+                                             preview, set, traversed, view, (&),
+                                             (.~), (^.), (^..), (|>))
+import           Convex.BuildTx             (addCollateral,
+                                             spendPublicKeyOutput)
+import qualified Convex.Lenses              as L
+import           Convex.MockChain.Class     (MonadBlockchain (..),
+                                             MonadBlockchainQuery (..))
+import           Convex.MockChain.Wallets   (Wallet, WalletUtxo (..))
+import qualified Convex.MockChain.Wallets   as Wallet
+import           Convex.NodeParams          (NodeParams (..))
+import           Data.Bifunctor             (Bifunctor (..))
+import           Data.Function              (on)
+import qualified Data.List                  as List
+import           Data.Map                   (Map)
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (isNothing, mapMaybe, maybeToList, fromMaybe)
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
 
 type ERA = BabbageEra
 
@@ -71,10 +72,13 @@ data CoinSelectionError =
   UnsupportedBalance (C.TxOutValue ERA)
   | BodyError C.TxBodyError
   | NotEnoughAdaOnlyOutputsFor C.Lovelace
+  | NotEnoughMixedOutputsFor C.Value
   deriving Show
 
 data BalancingError =
   BalancingError C.TxBodyErrorAutoBalance
+  | CheckMinUtxoValueError (C.TxOut C.CtxTx BabbageEra) C.Lovelace
+  | BalanceCheckError BalancingError
   deriving Show
 
 {-| Perform transaction balancing
@@ -147,8 +151,7 @@ checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
                 $ C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txout pparams'
   if C.txOutValueToLovelace v >= C.selectLovelace minUTxO
   then Right ()
-  else Left $ BalancingError $ C.TxBodyErrorMissingParamMinUTxO
-  -- replace TxBodyErrMinUTxONotMet with TxBodyErrorMissingParamMinUTxO to avoid TxOutInAnyEra
+  else Left (CheckMinUtxoValueError txout (C.selectLovelace minUTxO))
 
 accountForNoChange :: C.TxOut C.CtxTx C.BabbageEra -> [C.TxOut C.CtxTx C.BabbageEra] -> [C.TxOut C.CtxTx C.BabbageEra]
 accountForNoChange change@(C.TxOut _ balance _ _) rest =
@@ -166,12 +169,8 @@ balanceCheck pparams changeaddr balance
   | C.txOutValueToLovelace balance < 0 =
       Left . BalancingError . C.TxBodyErrorAdaBalanceNegative $ C.txOutValueToLovelace balance
   | otherwise =
-      case checkMinUTxOValue (C.TxOut changeaddr balance C.TxOutDatumNone C.ReferenceScriptNone) pparams of
-        Left (BalancingError C.TxBodyErrorMissingParamMinUTxO) ->
-          -- replace TxBodyErrMinUTxONotMet with TxBodyEmptyTxOuts to avoid TxOutInAnyEra
-          Left $ BalancingError $ C.TxBodyError C.TxBodyEmptyTxOuts
-        Left err -> Left err
-        Right _ -> Right ()
+      bimap BalanceCheckError (const ())
+      $ (checkMinUTxOValue (C.TxOut changeaddr balance C.TxOutDatumNone C.ReferenceScriptNone) pparams)
 
 updateRestWithChange :: C.TxOut C.CtxTx C.BabbageEra -> [C.TxOut C.CtxTx C.BabbageEra] -> [C.TxOut C.CtxTx C.BabbageEra]
 updateRestWithChange change [] = [change]
@@ -277,8 +276,8 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
 balanceForWallet :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => NodeParams -> Wallet -> TxBodyContent BuildTx ERA -> m (C.Tx ERA)
-balanceForWallet nodeParams wallet txb = do
-  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just (npProtocolParameters nodeParams))
+balanceForWallet nodeParams@NodeParams{npNetworkId, npProtocolParameters} wallet txb = do
+  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just npProtocolParameters)
   -- TODO: Better error handling (better than 'fail')
   walletFunds <- utxoByAddress (Wallet.addressInEra wallet)
   otherInputs <- lookupTxIns (spentTxIns txb)
@@ -286,8 +285,9 @@ balanceForWallet nodeParams wallet txb = do
         let UTxO w = walletFunds
             UTxO o = otherInputs
         in UTxO (Map.union w o)
-  let walletUtxo = Wallet.fromUtxos (npNetworkId nodeParams) wallet walletFunds
-  finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
+  let walletUtxo = Wallet.fromUtxos npNetworkId wallet walletFunds
+      returnAddress = Wallet.addressInEra' npNetworkId wallet
+  finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns returnAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
   csi <- prepCSInputs (Wallet.addressInEra wallet) combinedTxIns finalBody
   C.BalancedTxBody txbody _changeOutput _fee <- either (fail . show) pure (balanceTransactionBody nodeParams csi)
   let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
@@ -303,29 +303,93 @@ addOwnInput body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOu
 
 setCollateral :: TxBodyContent BuildTx ERA -> WalletUtxo -> TxBodyContent BuildTx ERA
 setCollateral body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOutputs}) =
-  case body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness) of
-    [] -> body -- no script witnesses in inputs. TODO: Consider minting / staking witnesses
-    _ -> case Map.lookupMax wiAdaOnlyOutputs of
-      Nothing     -> body -- TODO: Throw error?
-      Just (k, _) -> addCollateral k body
+  let scriptIns = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
+      minting   = body ^. (L.txMintValue . L._TxMintValue . _2)
+  in  if (null scriptIns && Map.null minting)
+        then body -- no script witnesses in inputs.
+        else
+          case Map.lookupMax wiAdaOnlyOutputs of
+            Nothing     -> body -- TODO: Throw error
+            Just (k, _) -> addCollateral k body
 
 {-| Add inputs to ensure that the balance is strictly positive
 -}
-addMissingInputs :: NodeParams -> C.UTxO ERA -> WalletUtxo -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
-addMissingInputs NodeParams{npProtocolParameters, npStakePools} utxo_ walletUtxo txBodyContent = do
+addMissingInputs :: NodeParams -> C.UTxO ERA -> C.AddressInEra C.BabbageEra -> WalletUtxo -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
+addMissingInputs NodeParams{npProtocolParameters, npStakePools} utxo_ returnAddress walletUtxo txBodyContent = do
   txb <- first BodyError (C.makeTransactionBody txBodyContent)
-  let bal = C.evaluateTransactionBalance npProtocolParameters npStakePools utxo_ txb
+  let bal = C.evaluateTransactionBalance npProtocolParameters npStakePools utxo_ txb & view L._TxOutValue
       available = Wallet.removeTxIns (spentTxIns txBodyContent) walletUtxo
-      threshold = 3_500_000
-  case bal of
-        C.TxOutValue _ (C.valueToLovelace -> Just (C.Lovelace l))
-          | l < threshold -> -- ensure a minimum positive balance of 3 Ada to cover any fees & change. TODO: Configurable
-              let l' = C.Lovelace (threshold - l) in
-              case Wallet.selectAdaInputsCovering available l' of
-                Nothing -> Left (NotEnoughAdaOnlyOutputsFor l')
-                Just (_, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
-          | otherwise -> Right txBodyContent
-        other -> Left (UnsupportedBalance other)
+
+  (txBodyContent0, additionalBalance) <- addInputsForNonAdaAssets bal walletUtxo txBodyContent
+
+  let bal0 = bal <> additionalBalance
+  let (txBodyContent1, C.Lovelace deposit) = addOutputForNonAdaAssets npProtocolParameters returnAddress bal0 txBodyContent0
+
+      -- minimum positive balance (in lovelace) that must be available to cover
+      -- * minimum deposit on the ada-only change output, if required, and
+      -- * transaction fee incl. script fee
+      -- we set it to rather large value to ensure that we can build a valid transaction.
+  let threshold = 8_000_000
+      C.Lovelace l = C.selectLovelace bal0
+      missingLovelace = C.Lovelace (deposit + threshold - l)
+
+  addAdaOnlyInputsFor missingLovelace available txBodyContent1
+
+{-| Select inputs from the wallet's UTXO set to cover the given amount of lovelace.
+Will only consider inputs that have no other assets besides Ada.
+-}
+addAdaOnlyInputsFor :: C.Lovelace -> WalletUtxo -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
+addAdaOnlyInputsFor l availableUtxo txBodyContent =
+  case Wallet.selectAdaInputsCovering availableUtxo l of
+    Nothing -> Left (NotEnoughAdaOnlyOutputsFor l)
+    Just (_, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
+
+{-| Examine the negative part of the transaction balance and select inputs from
+the wallet's UTXO set to cover the non-Ada assets required by it. If there are no
+non-Ada asset then no inputs will be added.
+-}
+addInputsForNonAdaAssets ::
+  C.Value ->
+  WalletUtxo ->
+  TxBodyContent BuildTx ERA ->
+  Either CoinSelectionError (TxBodyContent BuildTx ERA, C.Value)
+addInputsForNonAdaAssets (fst . splitValue -> negatives) availableUtxo txBodyContent
+  | isNothing (C.valueToLovelace $ C.valueFromList negatives) = do
+      let nativeAsset (C.AdaAssetId, _) = Nothing
+          nativeAsset (C.AssetId p n, C.Quantity q) = Just (p, n, C.Quantity (abs q))
+      case Wallet.selectMixedInputsCovering availableUtxo (mapMaybe nativeAsset negatives) of
+        Nothing -> Left (NotEnoughMixedOutputsFor (C.valueFromList negatives))
+        Just (total, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
+  | otherwise = return (txBodyContent, mempty)
+
+{-| Examine the positive part of the transaction balance and add an output for
+any non-Ada asset it contains. If the positive part only contains Ada then no
+output is added.
+-}
+addOutputForNonAdaAssets ::
+  C.ProtocolParameters -> -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
+  C.AddressInEra C.BabbageEra -> -- ^ Address of the newly created output
+  C.Value -> -- ^ The balance of the transaction
+  TxBodyContent BuildTx ERA -> -- ^ Transaction body
+  (TxBodyContent BuildTx ERA, C.Lovelace) -- ^ The modified transaction body and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
+addOutputForNonAdaAssets pparams returnAddress (C.valueFromList . snd . splitValue -> positives) txBodyContent
+  | isNothing (C.valueToLovelace positives) =
+      let vlWithAda = positives <> C.lovelaceToValue 1_000_000 -- add a dummy ada value to make sure the Ada asset ID is considered in 'C.calculateMinimumUTxO'
+          output :: forall ctx. C.TxOut ctx BabbageEra
+          output = C.TxOut returnAddress (C.TxOutValue C.MultiAssetInBabbageEra vlWithAda) C.TxOutDatumNone C.ReferenceScriptNone
+          C.Quantity minUTxO = fromMaybe (C.Quantity 0) $ do
+            k <- either (const Nothing) pure (C.calculateMinimumUTxO C.ShelleyBasedEraBabbage output pparams)
+            C.Lovelace l <- C.valueToLovelace k
+            pure (C.Quantity l)
+          output' = output & (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId .~ Just (C.Quantity minUTxO))
+      in (txBodyContent & over L.txOuts (|> output'), C.Lovelace minUTxO)
+  | otherwise = (txBodyContent, C.Lovelace 0)
+
+splitValue :: C.Value -> ([(C.AssetId, C.Quantity)], [(C.AssetId, C.Quantity)])
+splitValue =
+  let p (_, q) = q < 0
+      f (_, q) = q /= 0
+  in List.partition p . List.filter f . C.valueToList
 
 {-| Take the tx body and produce a 'CSInputs' value for coin selection,
 using the @MonadBlockchain@ effect to query any missing UTxO information.

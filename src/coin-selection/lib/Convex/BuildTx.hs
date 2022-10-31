@@ -11,15 +11,19 @@ module Convex.BuildTx(
   payToPlutusV2,
   spendPlutusV1,
   spendPlutusV2,
-  addCollateral
+  mintPlutusV1,
+  mintPlutusV2,
+  addCollateral,
+  assetValue
   ) where
 
 import           Cardano.Api.Shelley  (Hash, NetworkId, PaymentKey,
                                        PlutusScript, PlutusScriptV1,
                                        PlutusScriptV2, ScriptData, ScriptHash)
 import qualified Cardano.Api.Shelley  as C
-import           Control.Lens         (over, set)
+import           Control.Lens         (_1, _2, over, set)
 import qualified Convex.Lenses        as L
+import qualified Data.Map             as Map
 import qualified Plutus.V1.Ledger.Api as Plutus
 
 {-| Spend an output locked by a public key
@@ -35,8 +39,7 @@ spendPlutusV1 txIn s d r =
       red = C.fromPlutusData (Plutus.toData r)
       wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
-  in over L.txIns ((txIn, wit') :)
-      . set L.txScriptValidity (C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid)
+  in over L.txIns ((txIn, wit') :) . setScriptsValid
 
 spendPlutusV2 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
 spendPlutusV2 txIn s d r =
@@ -44,7 +47,33 @@ spendPlutusV2 txIn s d r =
       red = C.fromPlutusData (Plutus.toData r)
       wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
-  in over L.txIns ((txIn, wit') :)
+  in over L.txIns ((txIn, wit') :) . setScriptsValid
+
+mintPlutusV1 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
+mintPlutusV1 script redeemer assetName quantity =
+  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
+      red = C.fromPlutusData (Plutus.toData redeemer)
+      v = assetValue sh assetName quantity
+      policyId = C.PolicyId sh
+      wit      = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
+  in over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit))
+      . setScriptsValid
+
+{-| A value containing the given amount of the native asset
+-}
+assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
+assetValue hsh assetName quantity =
+  C.valueFromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
+
+mintPlutusV2 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV2 -> redeemer -> C.AssetName -> C.Quantity -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
+mintPlutusV2 script redeemer assetName quantity =
+  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
+      red = C.fromPlutusData (Plutus.toData redeemer)
+      v = assetValue sh assetName quantity
+      policyId = C.PolicyId sh
+      wit      = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
+  in over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit))
+      . setScriptsValid
 
 addCollateral :: C.TxIn -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
 addCollateral i = over (L.txInsCollateral . L._TxInsCollateral) ((:) i)
@@ -80,3 +109,6 @@ payToPlutusV2 network s datum vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 s)
       dt = C.fromPlutusData (Plutus.toData datum)
   in payToScriptHash network sh dt vl
+
+setScriptsValid :: C.TxBodyContent v C.BabbageEra -> C.TxBodyContent v C.BabbageEra
+setScriptsValid = set L.txScriptValidity (C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid)

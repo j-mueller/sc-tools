@@ -18,7 +18,6 @@ module Convex.Lenses(
   txInsCollateral,
   txScriptValidity,
   -- * Prisms and Isos
-  _TxMintNone,
   _TxMintValue,
   _Value,
   _TxOut,
@@ -47,7 +46,6 @@ module Convex.Lenses(
 import           Cardano.Api                        (AddressInEra, AssetId,
                                                      BabbageEra, BuildTx,
                                                      BuildTxWith, CtxTx,
-                                                     MultiAssetSupportedInEra,
                                                      PolicyId, Quantity (..),
                                                      ScriptWitness, TxMintValue,
                                                      TxOut, TxOutDatum,
@@ -150,17 +148,15 @@ _TxInsCollateral = iso from to where
     [] -> C.TxInsCollateralNone
     xs -> C.TxInsCollateral C.CollateralInBabbageEra xs
 
-_TxMintNone :: Prism' (TxMintValue build era) ()
-_TxMintNone = prism' from to where
-  from () = C.TxMintNone
-  to C.TxMintValue{} = Nothing
-  to C.TxMintNone    = Just ()
-
-_TxMintValue :: Prism' (TxMintValue build era) (MultiAssetSupportedInEra era, Value, BuildTxWith build (Map PolicyId (ScriptWitness WitCtxMint era)))
-_TxMintValue = prism' from to where
-  from (mv, vl, btx) = C.TxMintValue mv vl btx
-  to (C.TxMintValue mv vl btx) = Just (mv, vl, btx)
-  to _                         = Nothing
+_TxMintValue :: Iso' (TxMintValue BuildTx BabbageEra) (Value, Map PolicyId (ScriptWitness WitCtxMint BabbageEra))
+_TxMintValue = iso from to where
+  from :: TxMintValue BuildTx BabbageEra -> (Value, Map PolicyId (ScriptWitness WitCtxMint BabbageEra))
+  from = \case
+    C.TxMintNone                          -> (mempty, mempty)
+    C.TxMintValue _ vl (C.BuildTxWith mp) -> (vl, mp)
+  to (vl, mp)
+    | Map.null mp && vl == mempty = C.TxMintNone
+    | otherwise                   = C.TxMintValue C.MultiAssetInBabbageEra vl (C.BuildTxWith mp)
 
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to where
