@@ -1,5 +1,10 @@
-# coin-selection
-Select coins, build transactions
+# sc-tools
+
+Cardano smart contract tools
+
+* coin selection & txn balancing
+* wallets
+* emulator
 
 ## Contributing
 

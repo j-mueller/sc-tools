@@ -106,7 +106,7 @@ import           Convex.MockChain.Class                (MonadBlockchain (..),
                                                         MonadMockchain (..))
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
-import           Convex.MockChain.Wallets              (Wallet, addressInEra')
+import           Convex.MockChain.Wallet               (Wallet, addressInEra')
 import           Convex.NodeParams                     (NodeParams (..))
 import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))

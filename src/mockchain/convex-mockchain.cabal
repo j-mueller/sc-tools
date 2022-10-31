@@ -8,10 +8,10 @@ license-files:
 
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
-homepage:      https://github.com/cardano-convex/coin-selection
-bug-reports:   https://github.com/cardano-convex/coin-selection
+homepage:      https://github.com/cardano-convex/sc-tools
+bug-reports:   https://github.com/cardano-convex/sc-tools
 description:
-  Please see the README on GitHub at <https://github.com/cardano-convex/coin-selection>
+  Please see the README on GitHub at <https://github.com/cardano-convex/sc-tools>
 
 build-type:    Simple
 
@@ -30,7 +30,7 @@ library
     exposed-modules:
       Convex.Era
       Convex.MockChain.Defaults
-      Convex.MockChain.Wallets
+      Convex.MockChain.Wallet
       Convex.MockChain
       Convex.MockChain.Class
       Convex.NodeParams

@@ -24,30 +24,30 @@ module Convex.CoinSelection(
   prepCSInputs
   ) where
 
-import           Cardano.Api.Shelley        (AddressInEra, BabbageEra, BuildTx,
-                                             TxBodyContent, UTxO (..))
-import qualified Cardano.Api.Shelley        as C
-import           Cardano.Ledger.Crypto      (StandardCrypto)
-import qualified Cardano.Ledger.Keys        as Keys
-import           Control.Lens               (_1, _2, at, makeLensesFor, over,
-                                             preview, set, traversed, view, (&),
-                                             (.~), (^.), (^..), (|>))
-import           Convex.BuildTx             (addCollateral,
-                                             spendPublicKeyOutput)
-import qualified Convex.Lenses              as L
-import           Convex.MockChain.Class     (MonadBlockchain (..),
-                                             MonadBlockchainQuery (..))
-import           Convex.MockChain.Wallets   (Wallet, WalletUtxo (..))
-import qualified Convex.MockChain.Wallets   as Wallet
-import           Convex.NodeParams          (NodeParams (..))
-import           Data.Bifunctor             (Bifunctor (..))
-import           Data.Function              (on)
-import qualified Data.List                  as List
-import           Data.Map                   (Map)
-import qualified Data.Map                   as Map
-import           Data.Maybe                 (isNothing, mapMaybe, maybeToList, fromMaybe)
-import           Data.Set                   (Set)
-import qualified Data.Set                   as Set
+import           Cardano.Api.Shelley     (AddressInEra, BabbageEra, BuildTx,
+                                          TxBodyContent, UTxO (..))
+import qualified Cardano.Api.Shelley     as C
+import           Cardano.Ledger.Crypto   (StandardCrypto)
+import qualified Cardano.Ledger.Keys     as Keys
+import           Control.Lens            (_1, _2, at, makeLensesFor, over,
+                                          preview, set, traversed, view, (&),
+                                          (.~), (^.), (^..), (|>))
+import           Convex.BuildTx          (addCollateral, spendPublicKeyOutput)
+import qualified Convex.Lenses           as L
+import           Convex.MockChain.Class  (MonadBlockchain (..),
+                                          MonadBlockchainQuery (..))
+import           Convex.MockChain.Wallet (Wallet, WalletUtxo (..))
+import qualified Convex.MockChain.Wallet as Wallet
+import           Convex.NodeParams       (NodeParams (..))
+import           Data.Bifunctor          (Bifunctor (..))
+import           Data.Function           (on)
+import qualified Data.List               as List
+import           Data.Map                (Map)
+import qualified Data.Map                as Map
+import           Data.Maybe              (fromMaybe, isNothing, mapMaybe,
+                                          maybeToList)
+import           Data.Set                (Set)
+import qualified Data.Set                as Set
 
 type ERA = BabbageEra
 

@@ -8,10 +8,10 @@ license-files:
 
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
-homepage:      https://github.com/cardano-convex/coin-selection
-bug-reports:   https://github.com/cardano-convex/coin-selection
+homepage:      https://github.com/cardano-convex/sc-tools
+bug-reports:   https://github.com/cardano-convex/sc-tools
 description:
-  Please see the README on GitHub at <https://github.com/cardano-convex/coin-selection>
+  Please see the README on GitHub at <https://github.com/cardano-convex/sc-tools>
 
 build-type:    Simple
 
@@ -35,7 +35,6 @@ library
       base >= 4.14.0,
       containers >= 0.6.5,
       lens,
-      time,
       convex-lenses,
       convex-mockchain
 
@@ -43,8 +42,7 @@ library
     build-depends:
       cardano-api >= 1.35.3,
       cardano-ledger-core -any,
-      plutus-ledger-api,
-      cardano-ledger-shelley -any
+      plutus-ledger-api
 
 test-suite convex-coin-selection-test
   import: lang

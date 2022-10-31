@@ -7,7 +7,7 @@
 -}
 module Convex.Lenses(
   -- * Tx body content lenses
-  emptyTxBodyContent,
+  emptyTx,
   TxIn,
   txIns,
   txOuts,
@@ -72,8 +72,8 @@ import qualified Data.Map.Strict                    as Map
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 -}
-emptyTxBodyContent :: C.TxBodyContent C.BuildTx BabbageEra
-emptyTxBodyContent =
+emptyTx :: C.TxBodyContent C.BuildTx BabbageEra
+emptyTx =
   C.TxBodyContent
     { C.txIns = []
     , C.txInsCollateral = C.TxInsCollateralNone

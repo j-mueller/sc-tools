@@ -4,9 +4,9 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE ViewPatterns       #-}
-{-| Some wallets
+{-| Primitive wallet
 -}
-module Convex.MockChain.Wallets(
+module Convex.MockChain.Wallet(
   Wallet(..),
   paymentCredential,
   address,
@@ -53,7 +53,7 @@ import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (mapMaybe)
 import           Data.Set                   (Set)
-import qualified Data.Set as Set
+import qualified Data.Set                   as Set
 import           Data.Text                  (Text)
 import qualified Data.Text                  as Text
 
@@ -115,6 +115,8 @@ mkWallet txt = case parse txt of
   Left err -> error $ "failed to parse '" <> Text.unpack txt <> "': " <> show err
   Right w  -> w
 
+{-| Some predefined wallets for testing
+-}
 mockWallets :: [Wallet]
 mockWallets = [w1, w2, w3, w4, w5, w6, w7, w8, w9, w10]
 
@@ -199,6 +201,8 @@ fromUtxos nw (addressInEra' nw -> a) (C.UTxO mp) =
   $ mapMaybe (uncurry $ fromUtxo a)
   $ Map.toList mp
 
+{-| Select Ada-only inputs controlled by the wallet that cover the given amount of lovelace
+-}
 selectAdaInputsCovering :: WalletUtxo -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
 selectAdaInputsCovering WalletUtxo{wiAdaOnlyOutputs} (C.Lovelace target) =
   let append (C.Lovelace total_, txIns) (txIn, C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
@@ -206,11 +210,14 @@ selectAdaInputsCovering WalletUtxo{wiAdaOnlyOutputs} (C.Lovelace target) =
   $ scanl append (C.Lovelace 0, [])
   $ Map.toAscList wiAdaOnlyOutputs
 
+{-| Select inputs controlled by the wallet that cover the given amount of non-Ada
+assets.
+-}
 selectMixedInputsCovering :: WalletUtxo -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
 selectMixedInputsCovering _                          [] = Just (mempty, [])
 selectMixedInputsCovering WalletUtxo{wiMixedOutputs} xs =
   let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
-      coversTarget (candidateVl, _txIns) = 
+      coversTarget (candidateVl, _txIns) =
         all (\(policyId, assetName, quantity) -> C.selectAsset candidateVl (C.AssetId policyId assetName) >= quantity) xs
       requiredAssets = foldMap (\(p, a, _) -> Set.singleton (p, a)) xs
       nonAdaAssets = \case
