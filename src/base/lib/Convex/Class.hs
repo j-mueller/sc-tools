@@ -1,6 +1,6 @@
 {-| Typeclass for blockchain operations
 -}
-module Convex.MockChain.Class(
+module Convex.Class(
   MonadBlockchain(..),
   MonadMockchain(..),
   MonadBlockchainQuery(..),

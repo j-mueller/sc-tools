@@ -28,6 +28,8 @@ common lang
 library
     import: lang
     exposed-modules:
+      Convex.Class
+      Convex.Era
       Convex.Lenses
     hs-source-dirs: lib
     build-depends:
@@ -39,4 +41,5 @@ library
       cardano-api,
       cardano-ledger-shelley,
       small-steps,
-      cardano-ledger-core
+      cardano-ledger-core,
+      cardano-ledger-babbage

@@ -12,7 +12,7 @@ import           Convex.BuildTx            (assetValue, mintPlutusV1,
 import qualified Convex.CoinSelection      as CoinSelection
 import           Convex.Lenses             (emptyTx)
 import           Convex.MockChain          (Mockchain, runMockchain0)
-import           Convex.MockChain.Class    (MonadBlockchain (..),
+import           Convex.Class    (MonadBlockchain (..),
                                             MonadBlockchainQuery)
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.MockChain.Wallet   (Wallet)

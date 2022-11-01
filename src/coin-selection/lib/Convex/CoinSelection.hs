@@ -34,7 +34,7 @@ import           Control.Lens            (_1, _2, at, makeLensesFor, over,
                                           (.~), (^.), (^..), (|>))
 import           Convex.BuildTx          (addCollateral, spendPublicKeyOutput)
 import qualified Convex.Lenses           as L
-import           Convex.MockChain.Class  (MonadBlockchain (..),
+import           Convex.Class  (MonadBlockchain (..),
                                           MonadBlockchainQuery (..))
 import           Convex.MockChain.Wallet (Wallet, WalletUtxo (..))
 import qualified Convex.MockChain.Wallet as Wallet

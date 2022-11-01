@@ -28,11 +28,9 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.Era
       Convex.MockChain.Defaults
       Convex.MockChain.Wallet
       Convex.MockChain
-      Convex.MockChain.Class
       Convex.NodeParams
     hs-source-dirs: lib
     build-depends:

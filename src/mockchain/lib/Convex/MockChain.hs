@@ -101,7 +101,7 @@ import           Control.Monad.State                   (StateT, get, gets,
                                                         modify, put, runStateT)
 import           Convex.Era                            (ERA)
 import qualified Convex.Lenses                         as L
-import           Convex.MockChain.Class                (MonadBlockchain (..),
+import           Convex.Class                (MonadBlockchain (..),
                                                         MonadBlockchainQuery (..),
                                                         MonadMockchain (..))
 import           Convex.MockChain.Defaults             ()
