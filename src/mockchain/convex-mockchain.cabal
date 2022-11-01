@@ -37,7 +37,7 @@ library
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      convex-lenses,
+      convex-base,
       lens,
       containers,
       time,

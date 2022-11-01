@@ -35,7 +35,7 @@ library
       base >= 4.14.0,
       containers >= 0.6.5,
       lens,
-      convex-lenses,
+      convex-base,
       convex-mockchain
 
     -- cardano dependencies
@@ -57,5 +57,5 @@ test-suite convex-coin-selection-test
     lens,
     convex-coin-selection,
     convex-mockchain,
-    convex-lenses,
+    convex-base,
     cardano-api >= 1.35.3

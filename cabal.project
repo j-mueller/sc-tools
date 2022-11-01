@@ -2,8 +2,8 @@ index-state: 2022-05-12T00:00:00Z
 with-compiler: ghc-8.10.7
 
 packages:
+  src/base
   src/coin-selection
-  src/lenses
   src/mockchain
   src/node-client
 

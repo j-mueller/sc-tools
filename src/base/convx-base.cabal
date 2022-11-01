@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-lenses
+name:          convex-base
 version:       0.0.1
-synopsis:      Lenses for working with cardano-api transactions
+synopsis:      Base classes and types for working with cardano-api transactions
 license: Apache-2.0
 license-files:
   LICENSE
