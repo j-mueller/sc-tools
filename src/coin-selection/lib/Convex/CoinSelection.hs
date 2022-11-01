@@ -277,18 +277,18 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
 -}
 balanceForWallet :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => NodeParams -> Wallet -> TxBodyContent BuildTx ERA -> m (C.Tx ERA)
 balanceForWallet nodeParams@NodeParams{npNetworkId, npProtocolParameters} wallet txb = do
-  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just npProtocolParameters)
+  let walletAddress = Wallet.addressInEra npNetworkId wallet
+      txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just npProtocolParameters)
   -- TODO: Better error handling (better than 'fail')
-  walletFunds <- utxoByAddress (Wallet.addressInEra npNetworkId wallet)
+  walletFunds <- utxoByAddress walletAddress
   otherInputs <- lookupTxIns (spentTxIns txb)
   let combinedTxIns =
         let UTxO w = walletFunds
             UTxO o = otherInputs
         in UTxO (Map.union w o)
   let walletUtxo = Wallet.fromUtxos npNetworkId wallet walletFunds
-      returnAddress = Wallet.addressInEra npNetworkId wallet
-  finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns returnAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
-  csi <- prepCSInputs (Wallet.addressInEra npNetworkId wallet) combinedTxIns finalBody
+  finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns walletAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
+  csi <- prepCSInputs walletAddress combinedTxIns finalBody
   C.BalancedTxBody txbody _changeOutput _fee <- either (fail . show) pure (balanceTransactionBody nodeParams csi)
   let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
       stx = C.makeSignedTransaction wit txbody
