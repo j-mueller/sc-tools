@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.Class
+      Convex.Constants
       Convex.Era
       Convex.Lenses
     hs-source-dirs: lib
