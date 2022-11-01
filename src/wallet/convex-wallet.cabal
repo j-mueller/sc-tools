@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-mockchain
+name:          convex-wallet
 version:       0.0.1
-synopsis:      Minimal mockchain for testing plutus scripts
+synopsis:      Simple wallet
 license: Apache-2.0
 license-files:
   LICENSE
@@ -28,30 +28,19 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.MockChain.Defaults
-      Convex.MockChain
-      Convex.NodeParams
+      Convex.Wallet
+      Convex.Wallet.MockWallet
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      convex-base,
-      convex-wallet,
-      lens,
+      text,
       containers,
-      time,
-      array,
-      data-default,
-      mtl,
-      strict-containers
+      lens,
+      convex-base,
+      aeson
 
     -- cardano dependencies
     build-depends:
       cardano-api >= 1.35.3,
-      cardano-slotting -any,
-      ouroboros-consensus -any,
-      cardano-ledger-core -any,
-      cardano-ledger-shelley -any,
-      cardano-ledger-babbage -any,
-      plutus-core -any,
-      cardano-ledger-alonzo -any,
-      cardano-ledger-shelley-ma -any
+      cardano-ledger-shelley
+

@@ -9,14 +9,15 @@ import           Control.Monad             (void)
 import           Convex.BuildTx            (assetValue, mintPlutusV1,
                                             payToAddress, payToPlutusV1,
                                             spendPlutusV1)
+import           Convex.Class              (MonadBlockchain (..),
+                                            MonadBlockchainQuery)
 import qualified Convex.CoinSelection      as CoinSelection
 import           Convex.Lenses             (emptyTx)
 import           Convex.MockChain          (Mockchain, runMockchain0)
-import           Convex.Class    (MonadBlockchain (..),
-                                            MonadBlockchainQuery)
 import qualified Convex.MockChain.Defaults as Defaults
-import           Convex.MockChain.Wallet   (Wallet)
-import qualified Convex.MockChain.Wallet   as Wallet
+import           Convex.Wallet             (Wallet)
+import qualified Convex.Wallet             as Wallet
+import qualified Convex.Wallet.MockWallet  as Wallet
 import           Test.Tasty                (TestTree, defaultMain, testGroup)
 import           Test.Tasty.HUnit          (Assertion, testCase)
 
@@ -85,11 +86,11 @@ spendTokens _ = do
 
 paymentTo :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => Wallet -> Wallet -> m C.TxId
 paymentTo wFrom wTo = do
-  let tx = emptyTx & payToAddress (Wallet.addressInEra wTo) (C.lovelaceToValue 10_000_000)
+  let tx = emptyTx & payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000)
   CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx
 
 nativeAssetPaymentTo :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = C.lovelaceToValue 3_000_000 <> assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
-      tx = emptyTx & payToAddress (Wallet.addressInEra wTo) vl
+      tx = emptyTx & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
   CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx

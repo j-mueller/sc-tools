@@ -24,30 +24,30 @@ module Convex.CoinSelection(
   prepCSInputs
   ) where
 
-import           Cardano.Api.Shelley     (AddressInEra, BabbageEra, BuildTx,
-                                          TxBodyContent, UTxO (..))
-import qualified Cardano.Api.Shelley     as C
-import           Cardano.Ledger.Crypto   (StandardCrypto)
-import qualified Cardano.Ledger.Keys     as Keys
-import           Control.Lens            (_1, _2, at, makeLensesFor, over,
-                                          preview, set, traversed, view, (&),
-                                          (.~), (^.), (^..), (|>))
-import           Convex.BuildTx          (addCollateral, spendPublicKeyOutput)
-import qualified Convex.Lenses           as L
-import           Convex.Class  (MonadBlockchain (..),
-                                          MonadBlockchainQuery (..))
-import           Convex.MockChain.Wallet (Wallet, WalletUtxo (..))
-import qualified Convex.MockChain.Wallet as Wallet
-import           Convex.NodeParams       (NodeParams (..))
-import           Data.Bifunctor          (Bifunctor (..))
-import           Data.Function           (on)
-import qualified Data.List               as List
-import           Data.Map                (Map)
-import qualified Data.Map                as Map
-import           Data.Maybe              (fromMaybe, isNothing, mapMaybe,
-                                          maybeToList)
-import           Data.Set                (Set)
-import qualified Data.Set                as Set
+import           Cardano.Api.Shelley   (AddressInEra, BabbageEra, BuildTx,
+                                        TxBodyContent, UTxO (..))
+import qualified Cardano.Api.Shelley   as C
+import           Cardano.Ledger.Crypto (StandardCrypto)
+import qualified Cardano.Ledger.Keys   as Keys
+import           Control.Lens          (_1, _2, at, makeLensesFor, over,
+                                        preview, set, traversed, view, (&),
+                                        (.~), (^.), (^..), (|>))
+import           Convex.BuildTx        (addCollateral, spendPublicKeyOutput)
+import           Convex.Class          (MonadBlockchain (..),
+                                        MonadBlockchainQuery (..))
+import qualified Convex.Lenses         as L
+import           Convex.NodeParams     (NodeParams (..))
+import           Convex.Wallet         (Wallet, WalletUtxo (..))
+import qualified Convex.Wallet         as Wallet
+import           Data.Bifunctor        (Bifunctor (..))
+import           Data.Function         (on)
+import qualified Data.List             as List
+import           Data.Map              (Map)
+import qualified Data.Map              as Map
+import           Data.Maybe            (fromMaybe, isNothing, mapMaybe,
+                                        maybeToList)
+import           Data.Set              (Set)
+import qualified Data.Set              as Set
 
 type ERA = BabbageEra
 
@@ -279,16 +279,16 @@ balanceForWallet :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => 
 balanceForWallet nodeParams@NodeParams{npNetworkId, npProtocolParameters} wallet txb = do
   let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just npProtocolParameters)
   -- TODO: Better error handling (better than 'fail')
-  walletFunds <- utxoByAddress (Wallet.addressInEra wallet)
+  walletFunds <- utxoByAddress (Wallet.addressInEra npNetworkId wallet)
   otherInputs <- lookupTxIns (spentTxIns txb)
   let combinedTxIns =
         let UTxO w = walletFunds
             UTxO o = otherInputs
         in UTxO (Map.union w o)
   let walletUtxo = Wallet.fromUtxos npNetworkId wallet walletFunds
-      returnAddress = Wallet.addressInEra' npNetworkId wallet
+      returnAddress = Wallet.addressInEra npNetworkId wallet
   finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns returnAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
-  csi <- prepCSInputs (Wallet.addressInEra wallet) combinedTxIns finalBody
+  csi <- prepCSInputs (Wallet.addressInEra npNetworkId wallet) combinedTxIns finalBody
   C.BalancedTxBody txbody _changeOutput _fee <- either (fail . show) pure (balanceTransactionBody nodeParams csi)
   let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
       stx = C.makeSignedTransaction wit txbody

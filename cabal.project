@@ -6,6 +6,7 @@ packages:
   src/coin-selection
   src/mockchain
   src/node-client
+  src/wallet
 
 -- TODO This was patched to work with aeson 1 & 2 with the help of hw-aeson.
 -- Once downstream projects are all upgraded to work with aeson-2, they can

@@ -99,15 +99,15 @@ import           Control.Monad.Reader                  (ReaderT, ask,
                                                         runReaderT)
 import           Control.Monad.State                   (StateT, get, gets,
                                                         modify, put, runStateT)
-import           Convex.Era                            (ERA)
-import qualified Convex.Lenses                         as L
-import           Convex.Class                (MonadBlockchain (..),
+import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadBlockchainQuery (..),
                                                         MonadMockchain (..))
+import           Convex.Era                            (ERA)
+import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
-import           Convex.MockChain.Wallet               (Wallet, addressInEra')
 import           Convex.NodeParams                     (NodeParams (..))
+import           Convex.Wallet                         (Wallet, addressInEra)
 import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))
 import           Data.Default                          (Default (def))
@@ -157,7 +157,7 @@ initialStateFor ::
   InitialUTXOs -> -- List of UTXOs at each wallet's address. Can have multiple entries per wallet.
   MockChainState
 initialStateFor params@NodeParams{npNetworkId} utxos =
-  let utxo = genesisUTxO @ERA @Cardano.Api.BabbageEra (fmap (first (addressInEra' npNetworkId)) utxos)
+  let utxo = genesisUTxO @ERA @Cardano.Api.BabbageEra (fmap (first (addressInEra npNetworkId)) utxos)
   in MockChainState
       { mcsEnv =
           LedgerEnv
