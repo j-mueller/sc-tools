@@ -28,6 +28,7 @@ common lang
 library
     import: lang
     exposed-modules:
+      Convex.NodeClient.Event
       Convex.NodeClient.Fold
       Convex.NodeClient.Progress
       Convex.NodeClient.Resuming
@@ -40,15 +41,22 @@ library
       text,
       time,
       containers,
+      aeson,
+      strict-containers
 
     -- cardano dependencies
     build-depends:
       cardano-api >= 1.35.3,
       cardano-ledger-byron,
+      cardano-ledger-alonzo,
+      cardano-ledger-babbage,
+      cardano-ledger-shelley,
+      cardano-ledger-core,
       cardano-crypto-wrapper,
       cardano-slotting,
       ouroboros-consensus,
       ouroboros-consensus-cardano,
+      ouroboros-consensus-shelley,
       ouroboros-network,
       typed-protocols
 
