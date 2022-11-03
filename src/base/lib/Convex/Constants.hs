@@ -5,7 +5,8 @@
 -}
 module Convex.Constants(
   alonzoMainnet,
-  recent
+  recent,
+  lessRecent
   ) where
 
 import           Cardano.Api (AsType (AsHash), BlockHeader, ChainPoint (..))
@@ -25,3 +26,10 @@ recent :: ChainPoint
 recent = either (error . (<>) "recent: parse failed: " . show) id $ do
   hsh <- CAPI.deserialiseFromRawBytesHex (AsHash (CAPI.proxyToAsType (Proxy :: Proxy BlockHeader))) "22e8b5455623ff8e75a79499bada55c3b0b259db33ddf4b94efaac858a40c4ed"
   return $ ChainPoint 75_758_280 hsh
+
+-- | A less recent block (2 September 2022, 9.42pm)
+-- https://explorer.cardano.org/en/block?id=22e8b5455623ff8e75a79499bada55c3b0b259db33ddf4b94efaac858a40c4ed
+lessRecent :: ChainPoint
+lessRecent = either (error . (<>) "recent: parse failed: " . show) id $ do
+  hsh <- CAPI.deserialiseFromRawBytesHex (AsHash (CAPI.proxyToAsType (Proxy :: Proxy BlockHeader))) "bee4dff659bdd2091343c23e10d4bc9f9c74e8aa4c805bf18ccb3f779c79e787"
+  return $ ChainPoint 70_588_643 hsh

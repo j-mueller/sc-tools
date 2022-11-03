@@ -50,6 +50,7 @@ import           Cardano.Ledger.Shelley.TxBody    (witKeyHash)
 import qualified Cardano.Ledger.TxIn              as CT
 import           Control.Monad.State.Strict       (MonadState, get, put,
                                                    runState)
+import           Convex.Era                       (ERA)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Bifunctor                   (Bifunctor (..))
 import           Data.Foldable                    (foldl', toList)
@@ -64,7 +65,7 @@ import           Data.Word                        (Word64)
 import           GHC.Generics                     (Generic)
 import           Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
 
-type ScriptOutDataHash = DataHash (Era.Crypto (Babbage.BabbageEra StandardCrypto))
+type ScriptOutDataHash = DataHash (Era.Crypto ERA)
 
 data Currency = Ada | Native{policyId :: PolicyId, assetName :: AssetName}
   deriving stock (Eq, Ord, Show, Generic)
@@ -104,7 +105,7 @@ data NewOutputEvent a =
     , neEvent       :: !a
     , neTxIx        :: !TxIx
     , neOutput      :: !ScriptOut
-    , neDatum       :: !(Maybe (Data (Babbage.BabbageEra StandardCrypto)))
+    , neDatum       :: !(Maybe (Data ERA))
     , neBlockNo     :: !Integer
     , neSlot        :: !SlotNo
     , neScriptHash  :: !ScriptHash
@@ -206,7 +207,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
     []     -> pure Nothing
     (y:ys) -> return (Just TxWithEvents{twTx, twEvents = y :| ys, twSlot = slotNo, twBlock })
 
-convertScript :: Scripts.Script (Babbage.BabbageEra StandardCrypto) -> Maybe (C.Script C.PlutusScriptV1)
+convertScript :: Scripts.Script ERA -> Maybe (C.Script C.PlutusScriptV1)
 convertScript = \case
     Scripts.TimelockScript{}          -> Nothing
     Scripts.PlutusScript _language bs -> Just (C.PlutusScript C.PlutusScriptV1 (CS.PlutusScriptSerialised bs))

@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE GADTs              #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TypeApplications   #-}
 {-| A node client that applies a fold to the stream of blocks.
@@ -7,6 +8,8 @@ Unlike 'foldBlocks' from 'Cardano.Api', this one supports rollbacks.
 -}
 module Convex.NodeClient.Fold(
   CatchingUp(..),
+  catchingUp,
+  caughtUp,
   foldClient,
   foldClient'
   ) where
@@ -41,6 +44,14 @@ data CatchingUp =
   CatchingUpWithNode -- ^ Client is still catching up
   | CaughtUpWithNode -- ^ Client fully caught up (client tip == server tip)
   deriving (Eq, Ord, Show)
+
+catchingUp :: CatchingUp -> Bool
+catchingUp = \case
+  CatchingUpWithNode -> True
+  CaughtUpWithNode   -> False
+
+caughtUp :: CatchingUp -> Bool
+caughtUp = not . catchingUp
 
 {-| Run the client until 'Nothing' is returned
 -}

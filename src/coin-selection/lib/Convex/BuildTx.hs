@@ -7,6 +7,7 @@ module Convex.BuildTx(
   -- * Building transactions
   spendPublicKeyOutput,
   payToAddress,
+  payToAddressTxOut,
   payToPublicKey,
   payToScriptHash,
   payToPlutusV1,
@@ -18,6 +19,7 @@ module Convex.BuildTx(
   addCollateral,
   assetValue,
   -- * Minimum Ada deposit
+  minAdaDeposit,
   setMinAdaDeposit,
   setMinAdaDepositAll
   ) where
@@ -86,10 +88,11 @@ mintPlutusV2 script redeemer assetName quantity =
 addCollateral :: C.TxIn -> TxBuild
 addCollateral i = over (L.txInsCollateral . L._TxInsCollateral) ((:) i)
 
+payToAddressTxOut :: C.AddressInEra C.BabbageEra -> C.Value -> C.TxOut C.CtxTx C.BabbageEra
+payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone C.ReferenceScriptNone
+
 payToAddress :: C.AddressInEra C.BabbageEra -> C.Value -> TxBuild
-payToAddress addr vl =
-  let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone C.ReferenceScriptNone
-  in over L.txOuts ((:) txo)
+payToAddress addr vl = over L.txOuts ((:) (payToAddressTxOut addr vl))
 
 payToPublicKey :: NetworkId -> Hash PaymentKey -> C.Value -> TxBuild
 payToPublicKey network pk vl =
@@ -126,15 +129,19 @@ minimum UTxO deposit for this output
 -}
 setMinAdaDeposit :: C.ProtocolParameters -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
 setMinAdaDeposit params txOut =
+  let minUtxo = minAdaDeposit params txOut
+  in txOut & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minUtxo) (Just . max minUtxo))
+
+minAdaDeposit :: C.ProtocolParameters -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
+minAdaDeposit params txOut =
   let txo = txOut
               -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
               -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
               & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just $ C.Quantity 3_000_000) Just)
-      minUtxo = fromMaybe (C.Quantity 0) $ do
+  in fromMaybe (C.Quantity 0) $ do
         k <- either (const Nothing) pure (C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txo params)
         C.Lovelace l <- C.valueToLovelace k
         pure (C.Quantity l)
-  in txOut & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minUtxo) (Just . max minUtxo))
 
 {-| Apply 'setMinAdaDeposit' to all outputs
 -}

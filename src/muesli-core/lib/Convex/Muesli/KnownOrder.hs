@@ -12,7 +12,8 @@ module Convex.Muesli.KnownOrder(
   knownOrderHash,
   FromMetadataError(..),
   knownOrderFromMetadata,
-  orderTxIn,
+  addOrderTxIn,
+  addOrderTxOut,
   orderTxOut,
   extractLovelaceFee,
   validateKnownOrder
@@ -30,10 +31,12 @@ import qualified Cardano.Ledger.Babbage          as Babbage
 import           Cardano.Ledger.Crypto           (StandardCrypto)
 import           Cardano.Ledger.Keys             (KeyHash, KeyRole (Payment))
 import           Cardano.Ledger.Shelley.Metadata (Metadatum (..))
+import           Control.Lens                    (over)
 import           Convex.BuildTx                  (TxBuild)
 import qualified Convex.BuildTx                  as BuildTx
 import           Convex.Event                    (NewOutputEvent (..),
                                                   ScriptOutDataHash)
+import qualified Convex.Lenses                   as L
 import qualified Convex.Muesli.Constants         as Constants
 import           Convex.Muesli.Contract          (Order (..), OrderAction (..),
                                                   OrderDatum (..))
@@ -61,16 +64,19 @@ data KnownOrder =
 instance Show KnownOrder where
   show KnownOrder{orderAsk} = "KnownOrder{orderAsk=" <> show orderAsk <> "}"
 
-orderTxIn :: KnownOrder -> NewOutputEvent a -> TxBuild
-orderTxIn order NewOutputEvent{neTransaction, neTxIx} =
+addOrderTxIn :: KnownOrder -> NewOutputEvent a -> TxBuild
+addOrderTxIn order NewOutputEvent{neTransaction, neTxIx} =
   let txIn = TxIn neTransaction neTxIx
   in BuildTx.spendPlutusV1 txIn Constants.muesliScript' (orderDatum order) FullMatch
 
-orderTxOut :: KnownOrder -> TxBuild
-orderTxOut KnownOrder{orderAsk, orderReturnAddress} =
+addOrderTxOut :: C.ProtocolParameters -> KnownOrder -> TxBuild
+addOrderTxOut params order = over L.txOuts ((:) (orderTxOut params order))
+
+orderTxOut :: C.ProtocolParameters -> KnownOrder -> C.TxOut C.CtxTx C.BabbageEra
+orderTxOut params KnownOrder{orderAsk, orderReturnAddress} =
   let value = C.valueFromList [orderAsk]
       addr = C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) orderReturnAddress
-  in BuildTx.payToAddress addr value
+  in BuildTx.setMinAdaDeposit params $ BuildTx.payToAddressTxOut addr value
 
 mkOrder ::
   KeyHash 'Payment StandardCrypto ->

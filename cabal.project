@@ -5,9 +5,10 @@ packages:
   src/base
   src/coin-selection
   src/mockchain
+  src/muesli-core
+  src/muesli-matcher
   src/node-client
   src/wallet
-  src/muesli-core
 
 -- TODO This was patched to work with aeson 1 & 2 with the help of hw-aeson.
 -- Once downstream projects are all upgraded to work with aeson-2, they can

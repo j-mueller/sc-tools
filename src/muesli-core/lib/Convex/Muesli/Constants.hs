@@ -9,7 +9,9 @@ module Convex.Muesli.Constants(
   muesliScript',
   muesliHash,
   muesliAddress,
-  fullMatchRedeemer
+  fullMatchRedeemer,
+  muesliVersion,
+  MuesliVersion(..)
 ) where
 
 import           Cardano.Api            (NetworkId, PlutusScript,
@@ -58,3 +60,11 @@ s = id
 
 fullMatchRedeemer :: C.ScriptRedeemer
 fullMatchRedeemer = C.fromPlutusData (Plutus.toData FullMatch)
+
+data MuesliVersion = V1
+  deriving Show
+
+muesliVersion :: ScriptHash -> Maybe MuesliVersion
+muesliVersion sc
+  | sc == muesliHash = Just V1
+  | otherwise        = Nothing
