@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE GADTs              #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RankNTypes         #-}
@@ -20,12 +21,17 @@ module Convex.CoinSelection(
   BalancingError(..),
   balanceTransactionBody,
   balanceForWallet,
+  signForWallet,
+  -- * Balance changes
+  BalanceChanges(..),
+  balanceChanges,
+  changeFor,
   -- * Etc.
   prepCSInputs
   ) where
 
 import           Cardano.Api.Shelley   (AddressInEra, BabbageEra, BuildTx,
-                                        TxBodyContent, UTxO (..))
+                                        TxBodyContent, TxOut, UTxO (..))
 import qualified Cardano.Api.Shelley   as C
 import           Cardano.Ledger.Crypto (StandardCrypto)
 import qualified Cardano.Ledger.Keys   as Keys
@@ -79,11 +85,12 @@ data BalancingError =
   BalancingError C.TxBodyErrorAutoBalance
   | CheckMinUtxoValueError (C.TxOut C.CtxTx BabbageEra) C.Lovelace
   | BalanceCheckError BalancingError
+  | ComputeBalanceChangeError
   deriving Show
 
 {-| Perform transaction balancing
 -}
-balanceTransactionBody :: NodeParams -> CSInputs -> Either BalancingError (C.BalancedTxBody ERA)
+balanceTransactionBody :: NodeParams -> CSInputs -> Either BalancingError (C.BalancedTxBody ERA, BalanceChanges)
 balanceTransactionBody NodeParams{npSystemStart, npEraHistory, npProtocolParameters, npStakePools} CSInputs{csiUtxo, csiTxBody, csiChangeAddress, csiNumWitnesses} = do
 
   let changeOutputSmall = C.TxOut csiChangeAddress (C.lovelaceToTxOutValue 1) C.TxOutDatumNone C.ReferenceScriptNone
@@ -139,8 +146,10 @@ balanceTransactionBody NodeParams{npSystemStart, npEraHistory, npProtocolParamet
 
   txbody3 <- first (BalancingError . C.TxBodyError) $ C.makeTransactionBody finalBodyContent
 
+  balances <- maybe (Left ComputeBalanceChangeError) Right (balanceChanges csiUtxo finalBodyContent)
+
   let mkBalancedBody b = C.BalancedTxBody b (C.TxOut csiChangeAddress balance C.TxOutDatumNone C.ReferenceScriptNone) t_fee
-  return (mkBalancedBody txbody3)
+  return (mkBalancedBody txbody3, balances)
 
 checkMinUTxOValue
   :: C.TxOut C.CtxTx C.BabbageEra
@@ -273,9 +282,45 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
         , let witness' = f (C.ScriptWitnessIndexMint ix) witness
         ]
 
+{-| Get the 'BalanceChanges' for a tx body. Returns 'Nothing' if
+a UTXO couldnt be found
+-}
+balanceChanges :: UTxO ERA -> TxBodyContent BuildTx ERA -> Maybe BalanceChanges
+balanceChanges (C.UTxO lookups) body = do
+  let outputs = foldMap txOutChange (body ^. L.txOuts)
+  inputs <- inv . foldMap (txOutChange . id) <$> traverse (\(txi, _) -> Map.lookup txi lookups) (body ^. L.txIns)
+  pure (outputs <> inputs)
+
+txOutChange :: TxOut ctx C.BabbageEra -> BalanceChanges
+txOutChange (view L._TxOut -> (anyBabbageAddress -> address, view L._TxOutValue -> value, _, _)) =
+  BalanceChanges (Map.singleton address value)
+
+anyBabbageAddress :: AddressInEra C.BabbageEra -> C.AddressAny
+anyBabbageAddress = \case
+  C.AddressInEra (C.ShelleyAddressInEra _) addr -> C.toAddressAny addr
+  C.AddressInEra (C.ByronAddressInAnyEra) addr  -> C.toAddressAny addr
+
+changeFor :: AddressInEra C.BabbageEra -> BalanceChanges -> C.Value
+changeFor (anyBabbageAddress -> addr) (BalanceChanges c) =
+  Map.findWithDefault mempty addr c
+
+{-| A type capturing the effect a transaction has on the total balance of each address that it touches
+-}
+newtype BalanceChanges = BalanceChanges{tbBalances :: Map C.AddressAny C.Value }
+
+inv :: BalanceChanges -> BalanceChanges
+inv = BalanceChanges . Map.map C.negateValue . tbBalances
+
+instance Semigroup BalanceChanges where
+  (BalanceChanges l) <> (BalanceChanges r) =
+    BalanceChanges (Map.unionWith (<>) l r)
+
+instance Monoid BalanceChanges where
+  mempty = BalanceChanges mempty
+
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => NodeParams -> Wallet -> TxBodyContent BuildTx ERA -> m (C.Tx ERA)
+balanceForWallet :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => NodeParams -> Wallet -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
 balanceForWallet nodeParams@NodeParams{npNetworkId, npProtocolParameters} wallet txb = do
   let walletAddress = Wallet.addressInEra npNetworkId wallet
       txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just npProtocolParameters)
@@ -289,10 +334,14 @@ balanceForWallet nodeParams@NodeParams{npNetworkId, npProtocolParameters} wallet
   let walletUtxo = Wallet.fromUtxos npNetworkId wallet walletFunds
   finalBody <- either (fail . show) pure (addMissingInputs nodeParams combinedTxIns walletAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
   csi <- prepCSInputs walletAddress combinedTxIns finalBody
-  C.BalancedTxBody txbody _changeOutput _fee <- either (fail . show) pure (balanceTransactionBody nodeParams csi)
+  first (signForWallet wallet) <$> either (fail . show) pure (balanceTransactionBody nodeParams csi)
+
+{-| Sign a transaction with the wallet's key
+-}
+signForWallet :: Wallet -> C.BalancedTxBody ERA -> C.Tx ERA
+signForWallet wallet (C.BalancedTxBody txbody _changeOutput _fee) =
   let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
-      stx = C.makeSignedTransaction wit txbody
-  pure stx
+  in C.makeSignedTransaction wit txbody
 
 addOwnInput :: TxBodyContent BuildTx ERA -> WalletUtxo -> TxBodyContent BuildTx ERA
 addOwnInput body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOutputs})

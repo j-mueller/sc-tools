@@ -64,19 +64,19 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 payToPlutusScript :: Mockchain C.TxIn
 payToPlutusScript = do
   let tx = emptyTx & payToPlutusV1 Defaults.networkId txInscript () (C.lovelaceToValue 10_000_000)
-  i <- CoinSelection.balanceForWallet Defaults.nodeParams Wallet.w1 tx >>= sendTx
+  i <- CoinSelection.balanceForWallet Defaults.nodeParams Wallet.w1 tx >>= sendTx . fst
   pure (C.TxIn i (C.TxIx 0))
 
 spendPlutusScript :: C.TxIn -> Mockchain C.TxId
 spendPlutusScript ref = do
   let tx = emptyTx & spendPlutusV1 ref txInscript () ()
-  CoinSelection.balanceForWallet Defaults.nodeParams Wallet.w1 tx >>= sendTx
+  CoinSelection.balanceForWallet Defaults.nodeParams Wallet.w1 tx >>= sendTx . fst
 
 mintingPlutus :: Mockchain C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
   let tx = emptyTx & mintPlutusV1 mintingScript () "assetName" 100
-  CoinSelection.balanceForWallet Defaults.nodeParams Wallet.w1 tx >>= sendTx
+  CoinSelection.balanceForWallet Defaults.nodeParams Wallet.w1 tx >>= sendTx . fst
 
 spendTokens :: C.TxId -> Mockchain C.TxId
 spendTokens _ = do
@@ -88,7 +88,7 @@ spendTokens _ = do
 paymentTo :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => Wallet -> Wallet -> m C.TxId
 paymentTo wFrom wTo = do
   let tx = emptyTx & payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000)
-  CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx
+  CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx . fst
 
 nativeAssetPaymentTo :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
@@ -99,4 +99,4 @@ nativeAssetPaymentTo q wFrom wTo = do
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
-  CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx
+  CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx . fst
