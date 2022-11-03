@@ -31,16 +31,21 @@ library
       Convex.Class
       Convex.Constants
       Convex.Era
+      Convex.Event
       Convex.Lenses
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
       lens,
-      containers
+      containers,
+      aeson,
+      mtl
       
     build-depends:
       cardano-api,
       cardano-ledger-shelley,
       small-steps,
       cardano-ledger-core,
-      cardano-ledger-babbage
+      cardano-ledger-babbage,
+      cardano-ledger-alonzo,
+      ouroboros-consensus-shelley

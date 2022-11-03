@@ -4,15 +4,16 @@
 module Main(main) where
 
 import qualified Cardano.Api.Shelley       as C
-import           Control.Lens              ((&))
+import           Control.Lens              (mapped, over, (&))
 import           Control.Monad             (void)
 import           Convex.BuildTx            (assetValue, mintPlutusV1,
                                             payToAddress, payToPlutusV1,
-                                            spendPlutusV1)
+                                            setMinAdaDeposit, spendPlutusV1)
 import           Convex.Class              (MonadBlockchain (..),
                                             MonadBlockchainQuery)
 import qualified Convex.CoinSelection      as CoinSelection
 import           Convex.Lenses             (emptyTx)
+import qualified Convex.Lenses             as L
 import           Convex.MockChain          (Mockchain, runMockchain0)
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)
@@ -91,6 +92,11 @@ paymentTo wFrom wTo = do
 
 nativeAssetPaymentTo :: (MonadBlockchain m, MonadBlockchainQuery m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
-  let vl = C.lovelaceToValue 3_000_000 <> assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
-      tx = emptyTx & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+  let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
+      tx = emptyTx
+            & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.protocolParameters)
+  -- create a public key output for the sender to make
+  -- sure that the sender has enough Ada in ada-only inputs
+  void $ wTo `paymentTo` wFrom
   CoinSelection.balanceForWallet Defaults.nodeParams wFrom tx >>= sendTx

@@ -6,7 +6,7 @@
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE TupleSections      #-}
-module Convex.NodeClient.Event(
+module Convex.Event(
     TxWithEvents(..),
     NewOutputEvent(..),
     OutputSpentEvent(..),

@@ -19,6 +19,7 @@ module Convex.Wallet(
   fromUtxo,
   fromUtxos,
   selectAdaInputsCovering,
+  selectAnyInputsCovering,
   selectMixedInputsCovering,
   removeTxIns
 ) where
@@ -131,11 +132,22 @@ fromUtxos nw (addressInEra nw -> a) (C.UTxO mp) =
 {-| Select Ada-only inputs controlled by the wallet that cover the given amount of lovelace
 -}
 selectAdaInputsCovering :: WalletUtxo -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectAdaInputsCovering WalletUtxo{wiAdaOnlyOutputs} (C.Lovelace target) =
+selectAdaInputsCovering WalletUtxo{wiAdaOnlyOutputs} target =
+  selectInputsForAda target wiAdaOnlyOutputs
+
+{-| Select Ada-only inputs controlled by the wallet that cover the given amount of lovelace
+-}
+selectAnyInputsCovering :: WalletUtxo -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAnyInputsCovering WalletUtxo{wiAdaOnlyOutputs, wiMixedOutputs} target =
+  let others = Map.map (\txo -> txo ^. L._TxOut . _2 . L._TxOutValue . to C.selectLovelace) wiMixedOutputs
+  in selectInputsForAda target (wiAdaOnlyOutputs `Map.union` others)
+
+selectInputsForAda :: C.Lovelace -> Map C.TxIn C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectInputsForAda (C.Lovelace target) =
   let append (C.Lovelace total_, txIns) (txIn, C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
   find (\(C.Lovelace c, _) -> c >= target)
-  $ scanl append (C.Lovelace 0, [])
-  $ Map.toAscList wiAdaOnlyOutputs
+  . scanl append (C.Lovelace 0, [])
+  . Map.toAscList
 
 {-| Select inputs controlled by the wallet that cover the given amount of non-Ada
 assets.

@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-node-client
+name:          convex-muesli-core
 version:       0.0.1
-synopsis:      Conveniences for cardano-node clients
+synopsis:      Muesli types
 license: Apache-2.0
 license-files:
   LICENSE
@@ -28,34 +28,28 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.NodeClient.Fold
-      Convex.NodeClient.Progress
-      Convex.NodeClient.Resuming
-      Convex.NodeClient.Types
+      Convex.Muesli.Contract
+      Convex.Muesli.Constants
+      Convex.Muesli.KnownOrder
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      mtl,
-      transformers,
-      text,
-      time,
-      containers,
+      convex-base,
+      convex-coin-selection,
       aeson,
-      strict-containers
+      containers,
+      plutus-tx -any,
+      text,
+      validation -any,
 
     -- cardano dependencies
     build-depends:
       cardano-api >= 1.35.3,
-      cardano-ledger-byron,
-      cardano-ledger-alonzo,
-      cardano-ledger-babbage,
-      cardano-ledger-shelley,
-      cardano-ledger-core,
-      cardano-crypto-wrapper,
-      cardano-slotting,
-      ouroboros-consensus,
-      ouroboros-consensus-cardano,
-      ouroboros-consensus-shelley,
-      ouroboros-network,
-      typed-protocols
-
+      cardano-ledger-core -any,
+      cardano-ledger-shelley -any,
+      cardano-ledger-babbage -any,
+      plutus-core -any,
+      cardano-ledger-alonzo -any,
+      plutus-ledger-api -any,
+      cardano-binary -any,
+      plutus-ledger-api -any

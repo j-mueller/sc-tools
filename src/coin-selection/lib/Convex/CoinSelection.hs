@@ -29,10 +29,11 @@ import           Cardano.Api.Shelley   (AddressInEra, BabbageEra, BuildTx,
 import qualified Cardano.Api.Shelley   as C
 import           Cardano.Ledger.Crypto (StandardCrypto)
 import qualified Cardano.Ledger.Keys   as Keys
-import           Control.Lens          (_1, _2, at, makeLensesFor, over,
-                                        preview, set, traversed, view, (&),
-                                        (.~), (^.), (^..), (|>))
-import           Convex.BuildTx        (addCollateral, spendPublicKeyOutput)
+import           Control.Lens          (_1, _2, makeLensesFor, over, preview,
+                                        set, to, traversed, view, (&), (.~),
+                                        (^.), (^..), (|>))
+import           Convex.BuildTx        (addCollateral, setMinAdaDeposit,
+                                        spendPublicKeyOutput)
 import           Convex.Class          (MonadBlockchain (..),
                                         MonadBlockchainQuery (..))
 import qualified Convex.Lenses         as L
@@ -44,8 +45,7 @@ import           Data.Function         (on)
 import qualified Data.List             as List
 import           Data.Map              (Map)
 import qualified Data.Map              as Map
-import           Data.Maybe            (fromMaybe, isNothing, mapMaybe,
-                                        maybeToList)
+import           Data.Maybe            (isNothing, mapMaybe, maybeToList)
 import           Data.Set              (Set)
 import qualified Data.Set              as Set
 
@@ -303,14 +303,20 @@ addOwnInput body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOu
 
 setCollateral :: TxBodyContent BuildTx ERA -> WalletUtxo -> TxBodyContent BuildTx ERA
 setCollateral body (Wallet.removeTxIns (spentTxIns body) -> WalletUtxo{wiAdaOnlyOutputs}) =
+  if not (runsScripts body)
+    then body -- no script witnesses in inputs.
+    else
+      case Map.lookupMax wiAdaOnlyOutputs of
+        Nothing     -> body -- TODO: Throw error
+        Just (k, _) -> addCollateral k body
+
+{-| Whether the transaction runs any plutus scripts
+-}
+runsScripts :: TxBodyContent BuildTx ERA -> Bool
+runsScripts body =
   let scriptIns = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
       minting   = body ^. (L.txMintValue . L._TxMintValue . _2)
-  in  if (null scriptIns && Map.null minting)
-        then body -- no script witnesses in inputs.
-        else
-          case Map.lookupMax wiAdaOnlyOutputs of
-            Nothing     -> body -- TODO: Throw error
-            Just (k, _) -> addCollateral k body
+  in not (null scriptIns && Map.null minting)
 
 {-| Add inputs to ensure that the balance is strictly positive
 -}
@@ -327,9 +333,12 @@ addMissingInputs NodeParams{npProtocolParameters, npStakePools} utxo_ returnAddr
 
       -- minimum positive balance (in lovelace) that must be available to cover
       -- * minimum deposit on the ada-only change output, if required, and
-      -- * transaction fee incl. script fee
+      -- * transaction fee, incl. script fee if required
       -- we set it to rather large value to ensure that we can build a valid transaction.
-  let threshold = 8_000_000
+  let threshold =
+        if runsScripts txBodyContent
+          then 8_000_000
+          else 2_500_000
       C.Lovelace l = C.selectLovelace bal0
       missingLovelace = C.Lovelace (deposit + threshold - l)
 
@@ -375,14 +384,10 @@ addOutputForNonAdaAssets ::
 addOutputForNonAdaAssets pparams returnAddress (C.valueFromList . snd . splitValue -> positives) txBodyContent
   | isNothing (C.valueToLovelace positives) =
       let vlWithAda = positives <> C.lovelaceToValue 1_000_000 -- add a dummy ada value to make sure the Ada asset ID is considered in 'C.calculateMinimumUTxO'
-          output :: forall ctx. C.TxOut ctx BabbageEra
-          output = C.TxOut returnAddress (C.TxOutValue C.MultiAssetInBabbageEra vlWithAda) C.TxOutDatumNone C.ReferenceScriptNone
-          C.Quantity minUTxO = fromMaybe (C.Quantity 0) $ do
-            k <- either (const Nothing) pure (C.calculateMinimumUTxO C.ShelleyBasedEraBabbage output pparams)
-            C.Lovelace l <- C.valueToLovelace k
-            pure (C.Quantity l)
-          output' = output & (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId .~ Just (C.Quantity minUTxO))
-      in (txBodyContent & over L.txOuts (|> output'), C.Lovelace minUTxO)
+          output =
+            setMinAdaDeposit pparams
+            $ C.TxOut returnAddress (C.TxOutValue C.MultiAssetInBabbageEra vlWithAda) C.TxOutDatumNone C.ReferenceScriptNone
+      in (txBodyContent & over L.txOuts (|> output), output ^. L._TxOut . _2 . L._TxOutValue . to C.selectLovelace)
   | otherwise = (txBodyContent, C.Lovelace 0)
 
 splitValue :: C.Value -> ([(C.AssetId, C.Quantity)], [(C.AssetId, C.Quantity)])
