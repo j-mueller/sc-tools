@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TupleSections      #-}
 {-# LANGUAGE TypeApplications   #-}
-module Convex.Muesli.KnownOrder(
+module Convex.Muesli.Orderbook.KnownOrder(
   KnownOrder(..),
   knownOrderHash,
   FromMetadataError(..),
@@ -20,38 +20,39 @@ module Convex.Muesli.KnownOrder(
   ) where
 
 
-import           Cardano.Api                     (Address, AssetId,
-                                                  Quantity (..), ShelleyAddr,
-                                                  TxIn (..))
-import qualified Cardano.Api                     as C
-import qualified Cardano.Api.Shelley             as C
-import qualified Cardano.Binary                  as CBOR
-import qualified Cardano.Ledger.Alonzo.Data      as Data
-import qualified Cardano.Ledger.Babbage          as Babbage
-import           Cardano.Ledger.Crypto           (StandardCrypto)
-import           Cardano.Ledger.Keys             (KeyHash, KeyRole (Payment))
-import           Cardano.Ledger.Shelley.Metadata (Metadatum (..))
-import           Control.Lens                    (over)
-import           Convex.BuildTx                  (TxBuild)
-import qualified Convex.BuildTx                  as BuildTx
-import           Convex.Event                    (NewOutputEvent (..),
-                                                  ScriptOutDataHash)
-import qualified Convex.Lenses                   as L
-import qualified Convex.Muesli.Constants         as Constants
-import           Convex.Muesli.Contract          (Order (..), OrderAction (..),
-                                                  OrderDatum (..))
-import           Data.Map.Lazy                   (Map)
-import qualified Data.Map.Lazy                   as Map
-import           Data.Text                       (Text)
-import qualified Data.Text                       as Text
-import qualified Data.Text.Encoding              as Text
-import           Data.Validation                 (Validation (..))
-import           Data.Word                       (Word64)
-import qualified Plutus.V1.Ledger.Api            as Plutus
-import           Plutus.V1.Ledger.Crypto         (PubKeyHash (..))
-import qualified Plutus.V1.Ledger.Value          as Value
-import qualified PlutusTx.Prelude                as PlutusTx
-import           Text.Read                       (readMaybe)
+import           Cardano.Api                       (Address, AssetId,
+                                                    Quantity (..), ShelleyAddr,
+                                                    TxIn (..))
+import qualified Cardano.Api                       as C
+import qualified Cardano.Api.Shelley               as C
+import qualified Cardano.Binary                    as CBOR
+import qualified Cardano.Ledger.Alonzo.Data        as Data
+import qualified Cardano.Ledger.Babbage            as Babbage
+import           Cardano.Ledger.Crypto             (StandardCrypto)
+import           Cardano.Ledger.Keys               (KeyHash, KeyRole (Payment))
+import           Cardano.Ledger.Shelley.Metadata   (Metadatum (..))
+import           Control.Lens                      (over)
+import           Convex.BuildTx                    (TxBuild)
+import qualified Convex.BuildTx                    as BuildTx
+import           Convex.Event                      (NewOutputEvent (..),
+                                                    ScriptOutDataHash)
+import qualified Convex.Lenses                     as L
+import qualified Convex.Muesli.Orderbook.Constants as Constants
+import           Convex.Muesli.Orderbook.Contract  (Order (..),
+                                                    OrderAction (..),
+                                                    OrderDatum (..))
+import           Data.Map.Lazy                     (Map)
+import qualified Data.Map.Lazy                     as Map
+import           Data.Text                         (Text)
+import qualified Data.Text                         as Text
+import qualified Data.Text.Encoding                as Text
+import           Data.Validation                   (Validation (..))
+import           Data.Word                         (Word64)
+import qualified Plutus.V1.Ledger.Api              as Plutus
+import           Plutus.V1.Ledger.Crypto           (PubKeyHash (..))
+import qualified Plutus.V1.Ledger.Value            as Value
+import qualified PlutusTx.Prelude                  as PlutusTx
+import           Text.Read                         (readMaybe)
 
 data KnownOrder =
     KnownOrder

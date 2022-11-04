@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeFamilies       #-}
 {-|
 -}
-module Convex.Muesli.Cli.Config(
+module Convex.Muesli.Orderbook.Cli.Config(
   ConfigMode(..),
   Config(..),
   ConfigError(..),

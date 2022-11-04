@@ -1,6 +1,6 @@
 {-# LANGUAGE ApplicativeDo  #-}
 {-# LANGUAGE NamedFieldPuns #-}
-module Convex.Muesli.Match(
+module Convex.Muesli.Orderbook.Match(
   Match(..),
   Valid(..),
   matchValue,
@@ -11,15 +11,16 @@ module Convex.Muesli.Match(
 --   valuePaid
   ) where
 
-import qualified Cardano.Api              as C
-import qualified Cardano.Api.Shelley      as C
-import           Convex.Event             (NewOutputEvent (..),
-                                           OutputSpentEvent (..))
-import           Convex.Muesli.Constants  (MuesliVersion)
-import           Convex.Muesli.KnownOrder (KnownOrder (..),
-                                           knownOrderFromMetadata, orderTxOut)
-import qualified Convex.Muesli.KnownOrder as KnownOrder
-import           Data.Validation          (Validation (..))
+import qualified Cardano.Api                        as C
+import qualified Cardano.Api.Shelley                as C
+import           Convex.Event                       (NewOutputEvent (..),
+                                                     OutputSpentEvent (..))
+import           Convex.Muesli.Orderbook.Constants  (MuesliVersion)
+import           Convex.Muesli.Orderbook.KnownOrder (KnownOrder (..),
+                                                     knownOrderFromMetadata,
+                                                     orderTxOut)
+import qualified Convex.Muesli.Orderbook.KnownOrder as KnownOrder
+import           Data.Validation                    (Validation (..))
 
 data Match =
   Match

@@ -28,10 +28,10 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.Muesli.Contract
-      Convex.Muesli.Constants
-      Convex.Muesli.KnownOrder
-      Convex.Muesli.Match
+      Convex.Muesli.Orderbook.Contract
+      Convex.Muesli.Orderbook.Constants
+      Convex.Muesli.Orderbook.KnownOrder
+      Convex.Muesli.Orderbook.Match
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,

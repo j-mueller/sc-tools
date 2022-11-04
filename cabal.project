@@ -6,7 +6,7 @@ packages:
   src/coin-selection
   src/mockchain
   src/muesli-core
-  src/muesli-matcher
+  src/muesli-node-client
   src/node-client
   src/wallet
 

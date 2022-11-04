@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
-module Convex.Muesli.Contract(
+module Convex.Muesli.Orderbook.Contract(
   Order(..),
   OrderAction(..),
   OrderDatum(..)

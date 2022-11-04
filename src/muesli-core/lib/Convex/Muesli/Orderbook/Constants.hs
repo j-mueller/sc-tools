@@ -2,7 +2,7 @@
 {-# LANGUAGE TypeApplications  #-}
 {-| Constants for muesli contract on mainnet
 -}
-module Convex.Muesli.Constants(
+module Convex.Muesli.Orderbook.Constants(
   muesliScriptJSON,
   muesliTextEnvelope,
   muesliScript,
@@ -14,16 +14,16 @@ module Convex.Muesli.Constants(
   MuesliVersion(..)
 ) where
 
-import           Cardano.Api            (NetworkId, PlutusScript,
-                                         PlutusScriptV1, Script, ScriptHash,
-                                         TextEnvelope)
-import qualified Cardano.Api            as C
-import qualified Cardano.Api.Shelley    as C
-import           Convex.Muesli.Contract (OrderAction (..))
-import           Data.Aeson             (Result (..), Value, fromJSON, object,
-                                         (.=))
-import           Data.Proxy             (Proxy (..))
-import qualified Plutus.V1.Ledger.Api   as Plutus
+import           Cardano.Api                      (NetworkId, PlutusScript,
+                                                   PlutusScriptV1, Script,
+                                                   ScriptHash, TextEnvelope)
+import qualified Cardano.Api                      as C
+import qualified Cardano.Api.Shelley              as C
+import           Convex.Muesli.Orderbook.Contract (OrderAction (..))
+import           Data.Aeson                       (Result (..), Value, fromJSON,
+                                                   object, (.=))
+import           Data.Proxy                       (Proxy (..))
+import qualified Plutus.V1.Ledger.Api             as Plutus
 
 
 muesliScriptJSON :: Value

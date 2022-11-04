@@ -1,44 +1,47 @@
 {-# LANGUAGE NamedFieldPuns  #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns    #-}
-module Convex.Muesli.NodeClient(
+module Convex.Muesli.Orderbook.NodeClient(
   muesliClient
 ) where
 
-import           Cardano.Api.Shelley        (AssetId, BlockInMode, CardanoMode,
-                                             ChainPoint, Env, NetworkId,
-                                             Quantity (..), ScriptHash, TxIn)
-import qualified Cardano.Api.Shelley        as C
-import           Control.Lens               (anon, at, makeLenses, use, (&),
-                                             (.=), (.~), (?=), (^.))
-import           Control.Monad              (guard, join, unless)
-import           Control.Monad.IO.Class     (MonadIO (..))
-import           Control.Monad.State.Strict (MonadState, execStateT)
-import           Control.Monad.Trans.Maybe  (runMaybeT)
-import qualified Convex.Constants           as Constants
-import           Convex.Event               (NewOutputEvent (..),
-                                             OutputSpentEvent (..),
-                                             ResolvedInputs, TxWithEvents (..),
-                                             extract, splitEvent, txIn)
-import           Convex.Muesli.Constants    (MuesliVersion, muesliHash,
-                                             muesliVersion)
-import           Convex.Muesli.KnownOrder   (KnownOrder (..))
-import qualified Convex.Muesli.KnownOrder   as KnownOrder
-import           Convex.Muesli.Match        (Match (..), Valid)
-import qualified Convex.Muesli.Match        as Match
-import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
-                                             foldClient)
-import           Convex.NodeClient.Resuming (resumingClient)
-import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
-import           Data.Either                (partitionEithers)
-import           Data.Foldable              (fold, toList, traverse_)
-import qualified Data.IntMap                as IntMap
-import           Data.IntMap.Strict         (IntMap)
-import           Data.Map.Strict            (Map)
-import qualified Data.Map.Strict            as Map
-import           Data.Maybe                 (catMaybes, mapMaybe)
-import           Data.Validation            (Validation (..))
-import           Prelude                    hiding (log)
+import           Cardano.Api.Shelley                (AssetId, BlockInMode,
+                                                     CardanoMode, Env,
+                                                     NetworkId, Quantity (..),
+                                                     TxIn)
+import qualified Cardano.Api.Shelley                as C
+import           Control.Lens                       (anon, at, makeLenses, use,
+                                                     (&), (.=), (.~), (?=),
+                                                     (^.))
+import           Control.Monad                      (join, unless)
+import           Control.Monad.IO.Class             (MonadIO (..))
+import           Control.Monad.State.Strict         (MonadState, execStateT)
+import           Control.Monad.Trans.Maybe          (runMaybeT)
+import qualified Convex.Constants                   as Constants
+import           Convex.Event                       (NewOutputEvent (..),
+                                                     OutputSpentEvent (..),
+                                                     ResolvedInputs,
+                                                     TxWithEvents (..), extract,
+                                                     splitEvent, txIn)
+import           Convex.Muesli.Orderbook.Constants  (MuesliVersion,
+                                                     muesliVersion)
+import           Convex.Muesli.Orderbook.KnownOrder (KnownOrder (..))
+import qualified Convex.Muesli.Orderbook.KnownOrder as KnownOrder
+import           Convex.Muesli.Orderbook.Match      (Match (..), Valid)
+import qualified Convex.Muesli.Orderbook.Match      as Match
+import           Convex.NodeClient.Fold             (CatchingUp (..),
+                                                     catchingUp, foldClient)
+import           Convex.NodeClient.Resuming         (resumingClient)
+import           Convex.NodeClient.Types            (PipelinedLedgerStateClient)
+import           Data.Either                        (partitionEithers)
+import           Data.Foldable                      (fold, toList, traverse_)
+import qualified Data.IntMap                        as IntMap
+import           Data.IntMap.Strict                 (IntMap)
+import           Data.Map.Strict                    (Map)
+import qualified Data.Map.Strict                    as Map
+import           Data.Maybe                         (catMaybes, mapMaybe)
+import           Data.Validation                    (Validation (..))
+import           Prelude                            hiding (log)
 
 data MuesliState =
   MuesliState
@@ -98,18 +101,9 @@ insertMatch orderOne@KnownOrder{orderAsk=(askC, askQ)} orderOneEvent = do
 
 
 applyTx :: (MonadState MuesliState m) => TxWithEvents MuesliVersion -> m [(KnownOrder, NewOutputEvent MuesliVersion, [Match])]
-applyTx TxWithEvents{twEvents, twSlot, twTx} = do
+applyTx TxWithEvents{twEvents} = do
   let (spent, produced) = partitionEithers $ fmap splitEvent $ toList twEvents
-  case spent of
-    [outputSpent1, outputSpent2] -> do
-      traverse_ (deleteTxIn . oseTxIn) spent
-      -- let created = neSlot . oseTxOutput
-          -- fulfilmentTime = twSlot - max (created outputSpent1) (created outputSpent2)
-      -- tell (Stats.countOrderFulfilledTotal fulfilmentTime)
-      -- tell (Stats.countOrderFulfilledTotal fulfilmentTime)
-      -- handleTx fulfilmentTime twTx
-    -- [_] -> tell Stats.countOrderCancelled
-    _ -> pure ()
+  traverse_ (deleteTxIn . oseTxIn) spent
   catMaybes <$> traverse applyNewOutputEvent produced
 
 deleteTxIn :: MonadState MuesliState m => TxIn -> m ()
@@ -130,7 +124,6 @@ applyNewOutputEvent orderOneEvent@NewOutputEvent{neTxMetadata} = do
   let offerValue = Match.getOfferValue orderOneEvent
   case KnownOrder.knownOrderFromMetadata neTxMetadata of
     Left _ -> do
-      -- tell Stats.countMetadataFailed
       return Nothing
     Right orderOne@KnownOrder{orderAsk=(askC, askQ)} -> do
       potentialMatches <- fmap join <$> flip traverse (C.valueToList offerValue) $ \(bidC, bidQ) -> do
@@ -141,8 +134,6 @@ applyNewOutputEvent orderOneEvent@NewOutputEvent{neTxMetadata} = do
             mx = foldMap (Map.toList . snd) (IntMap.toAscList potentialOffers')
         flip traverse mx $ \(_, (orderTwo, orderTwoEvent)) -> do
           return Match{orderOne, orderOneEvent, orderTwo, orderTwoEvent}
-      let numMatches = length potentialMatches
-      -- tell (Stats.countTotalMatches numMatches)
       return (Just (orderOne, orderOneEvent, potentialMatches))
 
 log :: MonadIO m => String -> m ()
@@ -154,13 +145,12 @@ logUnless w m = unless w (log m)
 quantityInt :: Quantity -> Int
 quantityInt (Quantity q) = fromIntegral q
 
-validate :: (MonadIO m, Monad m) => Match -> m (Maybe (Valid Match))
+validate :: (MonadIO m) => Match -> m (Maybe (Valid Match))
 validate match = case Match.validateMatch match of
   Failure{} -> do
     liftIO (putStrLn "Invalid match")
     pure Nothing
   Success validMatch -> do
-    -- tell Stats.countValidMatch
     pure (Just validMatch)
 
 addMatch :: MonadIO m => Valid Match -> m ()

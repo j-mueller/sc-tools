@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-muesli-matcher
+name:          convex-muesli-node-client
 version:       0.0.1
-synopsis:      Muesli matcher
+synopsis:      Muesli node clients
 license: Apache-2.0
 license-files:
   LICENSE
@@ -28,10 +28,10 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.Muesli.Cli
-      Convex.Muesli.Cli.Command
-      Convex.Muesli.Cli.Config
-      Convex.Muesli.NodeClient
+      Convex.Muesli.Orderbook.Cli
+      Convex.Muesli.Orderbook.Cli.Command
+      Convex.Muesli.Orderbook.Cli.Config
+      Convex.Muesli.Orderbook.NodeClient
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -42,7 +42,6 @@ library
       convex-node-client,
       convex-wallet,
       convex-muesli-core,
-      aeson,
       transformers,
       optparse-applicative,
       mtl,
@@ -55,13 +54,13 @@ library
       cardano-ledger-babbage,
       cardano-ledger-core
 
-executable convex-muesli-matcher
+executable convex-muesli-node-client-orderbook
     import: lang
     main-is:          Main.hs
     build-depends:
         base ^>=4.14.3.0,
-        convex-muesli-matcher
-    hs-source-dirs:   app
+        convex-muesli-node-client
+    hs-source-dirs:   app/orderbook
     default-language: Haskell2010
     ghc-options:
       -threaded -rtsopts -O2
