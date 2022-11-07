@@ -65,8 +65,8 @@ foldClient initialState env applyBlock =
   foldClient' @s @()
     initialState
     env
-    (\_ _ s -> pure ((), s))
-    (\c s -> fmap (fmap pure) . applyBlock c s)
+    (\_ _ !s -> pure ((), s))
+    (\c !s -> fmap (fmap pure) . applyBlock c s)
 
 {-| A variant of 'foldClient' that supports handling rollbacks.
 -}
@@ -83,7 +83,7 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
 -- NB: The code below was adapted from https://input-output-hk.github.io/cardano-node/cardano-api/src/Cardano.Api.LedgerState.html#foldBlocks
 
   let
-    pipelineSize = 50 -- TODO: Configurable
+    pipelineSize = 10 -- TODO: Configurable
 
     initialHistory = initialStateHistory (mempty, initialState)
 

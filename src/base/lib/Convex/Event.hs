@@ -22,13 +22,12 @@ module Convex.Event(
     extractBabbageTxn
     ) where
 
-import           Cardano.Api                      (AssetName, BabbageEra,
-                                                   Block (..), BlockHeader,
+import           Cardano.Api                      (BabbageEra, Block (..),
+                                                   BlockHeader,
                                                    BlockInMode (..), BlockNo,
                                                    CardanoMode, EraInMode (..),
-                                                   PolicyId, ScriptHash, SlotNo,
-                                                   Tx (..), TxId, TxIn (..),
-                                                   TxIx (..))
+                                                   ScriptHash, SlotNo, Tx (..),
+                                                   TxId, TxIn (..), TxIx (..))
 import qualified Cardano.Api                      as C
 import           Cardano.Api.Shelley              (TxBody (..))
 import qualified Cardano.Api.Shelley              as CS
@@ -51,7 +50,6 @@ import qualified Cardano.Ledger.TxIn              as CT
 import           Control.Monad.State.Strict       (MonadState, get, put,
                                                    runState)
 import           Convex.Era                       (ERA)
-import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Bifunctor                   (Bifunctor (..))
 import           Data.Foldable                    (foldl', toList)
 import           Data.List                        (sortOn)
@@ -66,10 +64,6 @@ import           GHC.Generics                     (Generic)
 import           Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
 
 type ScriptOutDataHash = DataHash (Era.Crypto ERA)
-
-data Currency = Ada | Native{policyId :: PolicyId, assetName :: AssetName}
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving anyclass (ToJSON, FromJSON)
 
 data Event a =
   AnOutputSpentEvent !(OutputSpentEvent a)

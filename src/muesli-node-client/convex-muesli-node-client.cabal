@@ -32,6 +32,11 @@ library
       Convex.Muesli.Orderbook.Cli.Command
       Convex.Muesli.Orderbook.Cli.Config
       Convex.Muesli.Orderbook.NodeClient
+      Convex.Muesli.LP.Cli
+      Convex.Muesli.LP.Cli.Command
+      Convex.Muesli.LP.Cli.Config
+      Convex.Muesli.LP.NodeClient
+      Convex.Muesli.LP.Stats
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -58,6 +63,17 @@ executable convex-muesli-node-client-orderbook
         base ^>=4.14.3.0,
         convex-muesli-node-client
     hs-source-dirs:   app/orderbook
+    default-language: Haskell2010
+    ghc-options:
+      -threaded -rtsopts -O2
+
+executable convex-muesli-node-client-lp
+    import: lang
+    main-is:          Main.hs
+    build-depends:
+        base ^>=4.14.3.0,
+        convex-muesli-node-client
+    hs-source-dirs:   app/lp
     default-language: Haskell2010
     ghc-options:
       -threaded -rtsopts -O2
