@@ -49,10 +49,7 @@ library
 
     -- cardano dependencies
     build-depends:
-      cardano-api >= 1.35.3,
-      cardano-ledger-shelley,
-      cardano-ledger-babbage,
-      cardano-ledger-core
+      cardano-api >= 1.35.3
 
 executable convex-muesli-node-client-orderbook
     import: lang

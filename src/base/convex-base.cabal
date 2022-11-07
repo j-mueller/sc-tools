@@ -33,6 +33,7 @@ library
       Convex.Era
       Convex.Event
       Convex.Lenses
+      Convex.Utils
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -48,4 +49,5 @@ library
       cardano-ledger-core,
       cardano-ledger-babbage,
       cardano-ledger-alonzo,
-      ouroboros-consensus-shelley
+      ouroboros-consensus-shelley,
+      plutus-ledger-api
