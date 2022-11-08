@@ -18,6 +18,8 @@ module Convex.MockChain(
   env,
   poolState,
   transactions,
+  utxoState,
+  walletUtxo,
   -- * Transaction validation
   ExUnitsError(..),
   _Phase1Error,
@@ -44,7 +46,7 @@ module Convex.MockChain(
   execMockchain0
   ) where
 
-import           Cardano.Api.Shelley                   (AddressInEra,
+import           Cardano.Api.Shelley                   (AddressInEra, NetworkId,
                                                         ShelleyLedgerEra,
                                                         SlotNo)
 import qualified Cardano.Api.Shelley                   as Cardano.Api
@@ -87,9 +89,8 @@ import           Cardano.Ledger.Shelley.LedgerState    (DPState (..),
 import           Cardano.Ledger.Shelley.TxBody         (DCert, Wdrl)
 import           Cardano.Ledger.ShelleyMA.Timelocks    (ValidityInterval)
 import qualified Cardano.Ledger.Val                    as Val
-import           Control.Lens                          (_1, over, preview, set,
-                                                        to, view, (&), (.~),
-                                                        (^.))
+import           Control.Lens                          (_1, over, set, to, view,
+                                                        (&), (.~), (^.))
 import           Control.Lens.TH                       (makeLensesFor,
                                                         makePrisms)
 import           Control.Monad.Except                  (ExceptT,
@@ -100,7 +101,6 @@ import           Control.Monad.Reader                  (ReaderT, ask,
 import           Control.Monad.State                   (StateT, get, gets,
                                                         modify, put, runStateT)
 import           Convex.Class                          (MonadBlockchain (..),
-                                                        MonadBlockchainQuery (..),
                                                         MonadMockchain (..))
 import           Convex.Era                            (ERA)
 import qualified Convex.Lenses                         as L
@@ -108,6 +108,9 @@ import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.NodeParams                     (NodeParams (..))
 import           Convex.Wallet                         (Wallet, addressInEra)
+import           Convex.Wallet.Utxos                   (UtxoState (..),
+                                                        fromApiUtxo,
+                                                        onlyAddress)
 import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))
 import           Data.Default                          (Default (def))
@@ -212,9 +215,9 @@ getTxExUnits nodeParams utxo (Cardano.Api.ShelleyTx _ tx) =
 applyTransaction :: NodeParams -> MockChainState -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
   let currentSlot = state ^. env . L.slot
-      utxoState = state ^. poolState . L.utxoState
-      utxo = utxoState ^. L._UTxOState . _1
-  vtx <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState tx)
+      utxoState_ = state ^. poolState . L.utxoState
+      utxo = utxoState_ ^. L._UTxOState . _1
+  vtx <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
   result <- applyTx params state vtx
 
   -- Not sure if this step is needed.
@@ -331,11 +334,17 @@ instance Monad m => MonadMockchain (MockchainT m) where
     modify (set (poolState . L.utxoState . L._UTxOState . _1) u')
     pure a
 
-instance Monad m => MonadBlockchainQuery (MockchainT m) where
-  utxoByAddress addr = MockchainT $ do
-    Cardano.Api.UTxO allUTXOs <- gets (view $ poolState . L.utxoState . L._UTxOState . _1 . to (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage))
-    let flt = (==) (Just addr) . preview (L._TxOut . _1)
-    pure (Cardano.Api.UTxO $ Map.filter flt allUTXOs)
+{-| All transaction outputs
+-}
+utxoState :: MonadMockchain m => m UtxoState
+utxoState =
+  let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxos)
+  in modifyUtxo f
+
+{-| The wallet's transaction outputs
+-}
+walletUtxo :: MonadMockchain m => NetworkId -> Wallet -> m UtxoState
+walletUtxo networkId wallet = fmap (onlyAddress (addressInEra networkId wallet)) utxoState
 
 {-| Run the 'MockchainT' action with the @NodeParams@ from an initial state
 -}

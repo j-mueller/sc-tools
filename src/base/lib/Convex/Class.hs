@@ -3,7 +3,6 @@
 module Convex.Class(
   MonadBlockchain(..),
   MonadMockchain(..),
-  MonadBlockchainQuery(..),
   getSlot,
   nextSlot
 ) where
@@ -25,12 +24,6 @@ class Monad m => MonadBlockchain m where
 class Monad m => MonadMockchain m where
   modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
-
-{-| UTxO queries that cannot be answered by the cardano node efficiently.
-These require an extra index to be maintained somewhere.
--}
-class Monad m => MonadBlockchainQuery m where
-  utxoByAddress :: C.AddressInEra C.BabbageEra -> m (C.UTxO C.BabbageEra)
 
 {-| Get the current slot number
 -}

@@ -33,6 +33,11 @@ library
       Convex.Muesli.Orderbook.KnownOrder
       Convex.Muesli.Orderbook.Match
       Convex.Muesli.LP.Constants
+      Convex.Muesli.LP.OnChain.Coin
+      Convex.Muesli.LP.OnChain.NFT
+      Convex.Muesli.LP.OnChain.OnChainUtils
+      Convex.Muesli.LP.OnChain.Types
+      Convex.Muesli.LP.Types
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -40,10 +45,10 @@ library
       convex-coin-selection,
       aeson,
       containers,
-      plutus-tx -any,
       text,
       validation -any,
-      lens -any
+      lens -any,
+      bytestring -any
 
     -- cardano dependencies
     build-depends:
@@ -54,4 +59,6 @@ library
       plutus-core -any,
       cardano-ledger-alonzo -any,
       plutus-ledger-api -any,
+      plutus-tx,
       cardano-binary -any,
+      cardano-crypto-class -any

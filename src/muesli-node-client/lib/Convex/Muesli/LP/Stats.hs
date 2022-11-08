@@ -93,7 +93,7 @@ fromScriptType st =
             FactoryMPS       -> factoryMintingEvents
             LPMPS            -> lpMintingEvents
             NFTMPS           -> nftMintingEvents
-            PoolScript       -> poolEvents
+            PoolScript{}     -> poolEvents
   in mempty & over l succ
 
 fromEvent :: Event ScriptType -> LPStats

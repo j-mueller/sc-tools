@@ -6,9 +6,18 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TupleSections      #-}
 module Convex.Wallet.Utxos(
+  -- * Utxo sets
   UtxoState(..),
   _UtxoState,
   totalBalance,
+  partition,
+  onlyAda,
+  onlyPubKey,
+  onlyAddress,
+  removeUtxos,
+  fromApiUtxo,
+
+  -- * Changes to utxo sets
   UtxoChange(..),
   outputsAdded,
   outputsRemoved,
@@ -23,7 +32,7 @@ import           Cardano.Api                   (AddressInEra, BabbageEra,
                                                 Block (..), BlockInMode (..),
                                                 CardanoMode, EraInMode (..),
                                                 Tx (..), TxIn (..), TxIx (..),
-                                                Value)
+                                                UTxO (..), Value)
 import qualified Cardano.Api                   as C
 import           Cardano.Api.Shelley           (TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
@@ -31,30 +40,68 @@ import qualified Cardano.Ledger.Babbage.TxBody as Babbage.TxBody
 import qualified Cardano.Ledger.BaseTypes      as CT
 import qualified Cardano.Ledger.TxIn           as CT
 import           Control.Lens                  (_1, _2, makeLenses, makePrisms,
-                                                view)
+                                                over, preview, view)
 import qualified Convex.Lenses                 as L
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
-import           Data.Maybe                    (mapMaybe)
+import           Data.Maybe                    (isJust, mapMaybe)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           Prelude                       hiding (null)
 
-newtype UtxoState = UtxoState{ _utxos :: Map C.TxIn (C.TxOut C.CtxTx C.BabbageEra) }
+newtype UtxoState = UtxoState{ _utxos :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra) }
   deriving stock (Eq, Show)
   deriving newtype (Semigroup, Monoid)
 
 makePrisms ''UtxoState
 
+fromApiUtxo :: UTxO BabbageEra -> UtxoState
+fromApiUtxo (UTxO x) = UtxoState x
+
+{-| Restrict the 'UtxoState' to outputs that only have Ada values (no native assets)
+-}
+onlyAda :: UtxoState -> UtxoState
+onlyAda =
+  let flt = isJust . C.valueToLovelace . view (L._TxOut . _2 . L._TxOutValue)
+  in fst . partition flt
+
+{-| Partition the UtxoState according to a predicate. The first UtxoState contains all
+utxos that satisfy the predicate, the second all utxos that fail the predicate.
+-}
+partition :: (C.TxOut C.CtxUTxO C.BabbageEra -> Bool) -> UtxoState -> (UtxoState, UtxoState)
+partition p (UtxoState s) =
+  bimap UtxoState UtxoState (Map.partition p s)
+
+{-| Restrict the 'UtxoState' to outputs at the address
+-}
+onlyAddress :: AddressInEra BabbageEra -> UtxoState -> UtxoState
+onlyAddress addr =
+  let flt = (==) addr . view (L._TxOut . _1)
+  in fst . partition flt
+
+{-| Restrict the 'UtxoState' to public key outputs
+-}
+onlyPubKey :: UtxoState -> UtxoState
+onlyPubKey =
+  let flt = isJust . preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)
+  in fst . partition flt
+
+{-| The combined 'Value' of all outputs in the set
+-}
 totalBalance :: UtxoState -> Value
 totalBalance = foldMap (view (L._TxOut . _2 . L._TxOutValue)) . _utxos
 
+{-| Delete some outputs from the 'UtxoState'
+-}
+removeUtxos :: Set.Set C.TxIn -> UtxoState -> UtxoState
+removeUtxos ins = over _UtxoState (flip Map.withoutKeys ins)
+
 data UtxoChange =
   UtxoChange
-    { _outputsAdded   :: Map C.TxIn (C.TxOut C.CtxTx C.BabbageEra)
-    , _outputsRemoved :: Map C.TxIn (C.TxOut C.CtxTx C.BabbageEra)
+    { _outputsAdded   :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra)
+    , _outputsRemoved :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra)
     }
 
 makeLenses ''UtxoChange
@@ -109,12 +156,12 @@ extractBabbageTxn UtxoState{_utxos} addr (Tx txBody _) =
 
       allOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody' scriptData
 
-      checkInput :: TxIn -> Maybe (TxIn, C.TxOut C.CtxTx C.BabbageEra)
+      checkInput :: TxIn -> Maybe (TxIn, C.TxOut C.CtxUTxO C.BabbageEra)
       checkInput txIn = fmap (txIn,) $ Map.lookup txIn _utxos
 
-      checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, C.TxOut C.CtxTx C.BabbageEra)
+      checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, C.TxOut C.CtxUTxO C.BabbageEra)
       checkOutput txIx_ txOut
-        | view (L._TxOut . _1) txOut == addr = Just (TxIn txId txIx_, txOut)
+        | view (L._TxOut . _1) txOut == addr = Just (TxIn txId txIx_, C.toCtxUTxOTxOut txOut)
         | otherwise = Nothing
 
       _outputsAdded =

@@ -7,6 +7,7 @@
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE TupleSections      #-}
 module Convex.Event(
+    Extract,
     TxWithEvents(..),
     NewOutputEvent(..),
     OutputSpentEvent(..),
@@ -65,6 +66,8 @@ import           Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
 
 type ScriptOutDataHash = DataHash (Era.Crypto ERA)
 
+type Extract a = C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe a
+
 data Event a =
   AnOutputSpentEvent !(OutputSpentEvent a)
   | ANewOutputEvent !(NewOutputEvent a)
@@ -118,7 +121,7 @@ newtype ResolvedInputs a = ResolvedInputs (Map TxIn (NewOutputEvent a))
   deriving newtype (Semigroup, Monoid)
 
 extract ::
-  (ScriptHash -> Maybe a)
+  Extract a
   -> ResolvedInputs a -- ^ Resolved inputs
   -> BlockInMode CardanoMode -- ^ New block
   -> ([TxWithEvents a], ResolvedInputs a) -- ^ Defi events extracted from block
@@ -126,17 +129,17 @@ extract ex resolvedInputs = \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbageBlock ex resolvedInputs block
   _                                        -> ([], resolvedInputs)
 
-extractBabbageBlock :: (ScriptHash -> Maybe a) -> ResolvedInputs a -> Block BabbageEra -> ([TxWithEvents a], ResolvedInputs a)
+extractBabbageBlock :: Extract a -> ResolvedInputs a -> Block BabbageEra -> ([TxWithEvents a], ResolvedInputs a)
 extractBabbageBlock ex resolvedInputs (Block blockHeader txns) =
   first catMaybes $ flip runState resolvedInputs $ traverse (extractBabbageTxn ex blockHeader) txns
 
 type ScriptOut = Babbage.TxBody.TxOut (Babbage.BabbageEra StandardCrypto)
 
-extractBabbageTxn' :: ResolvedInputs a -> (ScriptHash -> Maybe a) -> BlockHeader -> Tx BabbageEra -> ([TxWithEvents a], ResolvedInputs a)
+extractBabbageTxn' :: ResolvedInputs a -> Extract a -> BlockHeader -> Tx BabbageEra -> ([TxWithEvents a], ResolvedInputs a)
 extractBabbageTxn' resolvedInputs ex blockHeader tx =
   first maybeToList $ runState (extractBabbageTxn ex blockHeader tx) resolvedInputs
 
-extractBabbageTxn :: forall a m. MonadState (ResolvedInputs a) m => (ScriptHash -> Maybe a) -> BlockHeader -> Tx BabbageEra -> m (Maybe (TxWithEvents a))
+extractBabbageTxn :: forall a m. MonadState (ResolvedInputs a) m => Extract a -> BlockHeader -> Tx BabbageEra -> m (Maybe (TxWithEvents a))
 extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(Tx txBody keyWitnesses) = do
   ResolvedInputs resolvedInputs <- get
   let txId = C.getTxId txBody
@@ -149,19 +152,21 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
         C.TxBodyScriptData C.ScriptDataInBabbageEra _ (TxWitness.Redeemers txReds') -> txReds'
         _                                                                          -> mempty
 
-      mapOutput :: TxIx -> ScriptOut -> Maybe (ScriptHash, ScriptOut, TxIx, ScriptOutDataHash, a)
-      mapOutput ix (scriptOut@(Babbage.TxBody.TxOut address _value (Babbage.TxBody.DatumHash dataHash) _)) = case address of -- FIXME: Could also be Datum?
+      capiTxOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody' scriptData
+
+      mapOutput :: TxIx -> (ScriptOut, C.TxOut C.CtxTx C.BabbageEra) -> Maybe (ScriptHash, ScriptOut, TxIx, ScriptOutDataHash, a)
+      mapOutput ix (scriptOut@(Babbage.TxBody.TxOut address _value (Babbage.TxBody.DatumHash dataHash) _), capiOut) = case address of -- FIXME: Could also be Datum?
           Address.Addr _network paymentCredential _stakeReference -> case paymentCredential of
               Credential.ScriptHashObj hsh ->
                   let hsh' = CS.fromShelleyScriptHash hsh in
-                  case ex hsh' of
+                  case ex capiOut hsh' of
                     Just a  -> Just (hsh', scriptOut, ix, dataHash, a)
                     Nothing -> Nothing
               _ -> Nothing
           _ -> Nothing
       mapOutput _ _ = Nothing
 
-      relevantOutputs = mapMaybe (uncurry mapOutput) (zip (toEnum <$> [0..]) (fmap Cardano.Ledger.Serialization.sizedValue $ toList outputs)) -- $ zip (toList outputs) (toList txOuts))
+      relevantOutputs = mapMaybe (uncurry mapOutput) (zip (toEnum <$> [0..]) (fmap (first Cardano.Ledger.Serialization.sizedValue) $ zip (toList outputs) capiTxOuts))
 
       outputEvents :: [NewOutputEvent a]
       outputEvents = fmap mkEvent relevantOutputs where

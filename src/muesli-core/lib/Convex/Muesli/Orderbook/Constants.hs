@@ -64,7 +64,7 @@ fullMatchRedeemer = C.fromPlutusData (Plutus.toData FullMatch)
 data MuesliVersion = V1
   deriving Show
 
-muesliVersion :: ScriptHash -> Maybe MuesliVersion
-muesliVersion sc
+muesliVersion :: a -> ScriptHash -> Maybe MuesliVersion
+muesliVersion _ sc
   | sc == muesliHash = Just V1
   | otherwise        = Nothing

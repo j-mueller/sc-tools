@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.MockChain.Defaults
+      Convex.MockChain.Utils
       Convex.MockChain
       Convex.NodeParams
     hs-source-dirs: lib
@@ -42,7 +43,8 @@ library
       array,
       data-default,
       mtl,
-      strict-containers
+      strict-containers,
+      HUnit
 
     -- cardano dependencies
     build-depends:

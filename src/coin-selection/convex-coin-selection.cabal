@@ -30,6 +30,7 @@ library
     exposed-modules:
       Convex.BuildTx
       Convex.CoinSelection
+      Convex.MockChain.CoinSelection
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,

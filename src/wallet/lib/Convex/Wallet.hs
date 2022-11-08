@@ -15,32 +15,26 @@ module Convex.Wallet(
   generateWallet,
   parse,
   -- * UTxOs and coin selection
-  WalletUtxo(..),
-  fromUtxo,
-  fromUtxos,
   selectAdaInputsCovering,
   selectAnyInputsCovering,
-  selectMixedInputsCovering,
-  removeTxIns
+  selectMixedInputsCovering
 ) where
 
-import           Cardano.Api     (Address, AddressInEra, IsShelleyBasedEra,
-                                  NetworkId, PaymentCredential, PaymentKey,
-                                  ShelleyAddr, SigningKey)
-import qualified Cardano.Api     as C
-import           Control.Lens    (_1, _2, to, view, (^.))
-import qualified Convex.Lenses   as L
-import           Data.Aeson      (FromJSON (..), ToJSON (..), object,
-                                  withObject, (.:), (.=))
-import           Data.Foldable   (fold)
-import           Data.List       (find)
-import           Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
-import           Data.Maybe      (mapMaybe)
-import           Data.Set        (Set)
-import qualified Data.Set        as Set
-import           Data.Text       (Text)
-import qualified Data.Text       as Text
+import           Cardano.Api         (Address, AddressInEra, IsShelleyBasedEra,
+                                      NetworkId, PaymentCredential, PaymentKey,
+                                      ShelleyAddr, SigningKey)
+import qualified Cardano.Api         as C
+import           Control.Lens        (_2, view)
+import qualified Convex.Lenses       as L
+import           Convex.Wallet.Utxos (UtxoState (..), onlyAda)
+import           Data.Aeson          (FromJSON (..), ToJSON (..), object,
+                                      withObject, (.:), (.=))
+import           Data.List           (find)
+import qualified Data.Map.Strict     as Map
+import           Data.Maybe          (mapMaybe)
+import qualified Data.Set            as Set
+import           Data.Text           (Text)
+import qualified Data.Text           as Text
 
 newtype Wallet = Wallet { getWallet :: SigningKey PaymentKey }
 
@@ -85,76 +79,25 @@ generateWallet = Wallet <$> C.generateSigningKey C.AsPaymentKey
 parse :: Text -> Either C.Bech32DecodeError Wallet
 parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 
-{-| The wallet's transaction outputs
+{-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-data WalletUtxo =
-  WalletUtxo
-    { wiAdaOnlyOutputs :: !(Map C.TxIn C.Lovelace)
-    , wiMixedOutputs   :: !(Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra))
-    }
+selectAdaInputsCovering :: UtxoState -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAdaInputsCovering utxoState target = selectAnyInputsCovering (onlyAda utxoState) target
 
-adaOnly :: C.TxIn -> C.Lovelace -> WalletUtxo
-adaOnly i c = WalletUtxo (Map.singleton i c) mempty
-
-mixed :: C.TxIn -> C.TxOut C.CtxUTxO C.BabbageEra -> WalletUtxo
-mixed i o = WalletUtxo mempty (Map.singleton i o)
-
-removeTxIns :: Set C.TxIn -> WalletUtxo -> WalletUtxo
-removeTxIns txIns WalletUtxo{wiAdaOnlyOutputs, wiMixedOutputs} =
-  WalletUtxo
-    (Map.withoutKeys wiAdaOnlyOutputs txIns)
-    (Map.withoutKeys wiMixedOutputs txIns)
-
-instance Semigroup WalletUtxo where
-  l <> r =
-    WalletUtxo
-      { wiAdaOnlyOutputs = Map.unionWith (<>) (wiAdaOnlyOutputs l) (wiAdaOnlyOutputs r)
-      , wiMixedOutputs   = Map.union (wiMixedOutputs l) (wiMixedOutputs r)
-      }
-
-instance Monoid WalletUtxo where
-  mempty = WalletUtxo mempty mempty
-
-fromUtxo :: AddressInEra C.BabbageEra -> C.TxIn -> C.TxOut C.CtxUTxO C.BabbageEra -> Maybe WalletUtxo
-fromUtxo addr txIn txOut
-  | view (L._TxOut . _1) txOut == addr =
-      case (txOut ^. L._TxOut . _2 . L._TxOutValue . to C.valueToLovelace) of
-        Just l -> Just (adaOnly txIn l)
-        _      -> Just (mixed txIn txOut)
-  | otherwise = Nothing
-
-fromUtxos :: NetworkId -> Wallet -> C.UTxO C.BabbageEra -> WalletUtxo
-fromUtxos nw (addressInEra nw -> a) (C.UTxO mp) =
-  fold
-  $ mapMaybe (uncurry $ fromUtxo a)
-  $ Map.toList mp
-
-{-| Select Ada-only inputs controlled by the wallet that cover the given amount of lovelace
+{-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAdaInputsCovering :: WalletUtxo -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectAdaInputsCovering WalletUtxo{wiAdaOnlyOutputs} target =
-  selectInputsForAda target wiAdaOnlyOutputs
-
-{-| Select Ada-only inputs controlled by the wallet that cover the given amount of lovelace
--}
-selectAnyInputsCovering :: WalletUtxo -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectAnyInputsCovering WalletUtxo{wiAdaOnlyOutputs, wiMixedOutputs} target =
-  let others = Map.map (\txo -> txo ^. L._TxOut . _2 . L._TxOutValue . to C.selectLovelace) wiMixedOutputs
-  in selectInputsForAda target (wiAdaOnlyOutputs `Map.union` others)
-
-selectInputsForAda :: C.Lovelace -> Map C.TxIn C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectInputsForAda (C.Lovelace target) =
-  let append (C.Lovelace total_, txIns) (txIn, C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
+selectAnyInputsCovering :: UtxoState -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAnyInputsCovering UtxoState{_utxos} (C.Lovelace target) =
+  let append (C.Lovelace total_, txIns) (txIn, C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) -> C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
   find (\(C.Lovelace c, _) -> c >= target)
-  . scanl append (C.Lovelace 0, [])
-  . Map.toAscList
+  $ scanl append (C.Lovelace 0, [])
+  $ Map.toAscList _utxos
 
-{-| Select inputs controlled by the wallet that cover the given amount of non-Ada
+{-| Select inputs that cover the given amount of non-Ada
 assets.
 -}
-selectMixedInputsCovering :: WalletUtxo -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
-selectMixedInputsCovering _                          [] = Just (mempty, [])
-selectMixedInputsCovering WalletUtxo{wiMixedOutputs} xs =
+selectMixedInputsCovering :: UtxoState -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
+selectMixedInputsCovering UtxoState{_utxos} xs =
   let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
       coversTarget (candidateVl, _txIns) =
         all (\(policyId, assetName, quantity) -> C.selectAsset candidateVl (C.AssetId policyId assetName) >= quantity) xs
@@ -171,4 +114,4 @@ selectMixedInputsCovering WalletUtxo{wiMixedOutputs} xs =
     find coversTarget
     $ scanl append (mempty, mempty)
     $ mapMaybe relevantValue
-    $ Map.toAscList wiMixedOutputs
+    $ Map.toAscList _utxos

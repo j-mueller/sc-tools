@@ -68,7 +68,7 @@ foldClient initialState env applyBlock =
     (\_ _ !s -> pure ((), s))
     (\c !s -> fmap (fmap pure) . applyBlock c s)
 
-{-| A variant of 'foldClient' that supports handling rollbacks.
+{-| A variant of 'foldClient' with more detailed control over rollbacks.
 -}
 foldClient' ::
   forall s w.

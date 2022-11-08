@@ -1,6 +1,8 @@
-{-# LANGUAGE NamedFieldPuns  #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns     #-}
 module Convex.Muesli.LP.NodeClient(
   muesliClient
 ) where
@@ -13,16 +15,20 @@ import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.State.Strict (execStateT)
 import           Control.Monad.Trans.Maybe  (runMaybeT)
 import qualified Convex.Constants           as Constants
-import           Convex.Event               (ResolvedInputs, TxWithEvents (..),
-                                             extract)
-import           Convex.Muesli.LP.Constants (ScriptType, scriptType)
+import           Convex.Event               (NewOutputEvent (..),
+                                             ResolvedInputs (..),
+                                             TxWithEvents (..), extract)
+import           Convex.Muesli.LP.Constants (ScriptType (..), scriptType)
 import           Convex.Muesli.LP.Stats     (LPStats)
 import qualified Convex.Muesli.LP.Stats     as Stats
+import           Convex.Muesli.LP.Types     (prettyPair)
 import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
                                              foldClient)
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
 import           Data.Foldable              (toList)
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (mapMaybe)
 import           Prelude                    hiding (log)
 
 data ClientState =
@@ -56,9 +62,22 @@ applyBlock _networkId (catchingUp -> isCatchingUp) oldState block = runMaybeT $ 
                   & lpStats        .~ totalStats
   flip execStateT newState $ do
     logUnless isCatchingUp (unlines ["Total stats:", Stats.prettyStats totalStats])
+    logUnless isCatchingUp (showPairs newResolvedInputs)
 
 logUnless :: MonadIO m => Bool -> String -> m ()
 logUnless w m = unless w (log m)
 
 log :: MonadIO m => String -> m ()
 log = liftIO . putStrLn
+
+showPairs :: ResolvedInputs ScriptType -> String
+showPairs (ResolvedInputs inputs) =
+  let mkEntry = \case
+        PoolScript (Right (pair, vl)) -> Just (" " <> prettyPair pair <> ": " <> show @Double (fromRational vl))
+        PoolScript (Left err) -> Just (" " <> show err)
+        _ -> Nothing
+
+  in unlines
+      $ mapMaybe mkEntry
+      $ fmap (neEvent . snd)
+      $ Map.toList inputs
