@@ -47,13 +47,14 @@ muesliClient networkId env =
 applyBlock :: NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
 applyBlock _networkId (catchingUp -> isCatchingUp) oldState block = runMaybeT $ do
   let (newEvents, newResolvedInputs) = extract scriptType (oldState ^. resolvedInputs) block
-      newStats = foldMap (foldMap Stats.fromEvent . toList . twEvents) newEvents
+      newStats =
+        foldMap (foldMap Stats.fromEvent . toList . twEvents) newEvents
+        <> Stats.fromResolvedInputs newResolvedInputs
       totalStats = (oldState ^. lpStats) <> newStats
       newState = oldState
                   & resolvedInputs .~ newResolvedInputs
                   & lpStats        .~ totalStats
   flip execStateT newState $ do
-    -- logUnless (null newEvents) (unlines ["New stats:", Stats.prettyStats newStats])
     logUnless isCatchingUp (unlines ["Total stats:", Stats.prettyStats totalStats])
 
 logUnless :: MonadIO m => Bool -> String -> m ()

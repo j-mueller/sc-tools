@@ -7,10 +7,10 @@ module Convex.Muesli.LP.Cli.Command(
   ) where
 
 import           Convex.Muesli.LP.Cli.Config (Config, ConfigMode (..),
-                                                     configParser)
-import           Options.Applicative                (CommandFields, Mod, Parser,
-                                                     command, fullDesc, info,
-                                                     progDesc, subparser)
+                                              configParser)
+import           Options.Applicative         (CommandFields, Mod, Parser,
+                                              command, fullDesc, info, progDesc,
+                                              subparser)
 data CliCommand =
   StartMatcher (Config 'Str)
 

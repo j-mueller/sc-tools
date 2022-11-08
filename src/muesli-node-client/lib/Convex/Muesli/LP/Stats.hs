@@ -5,7 +5,13 @@ module Convex.Muesli.LP.Stats(
   LPStats(..),
   outputsCreated,
   outputsSpent,
+  outputCount,
   fromEvent,
+  fromResolvedInputs,
+
+  -- * Output counts
+  OutputCount(..),
+  numLPPools,
 
   -- * Script counts
   ScriptCount(..),
@@ -20,9 +26,11 @@ module Convex.Muesli.LP.Stats(
 
 import           Control.Lens               (makeLenses, over, (&), (.~))
 import           Convex.Event               (Event (..), NewOutputEvent (..),
-                                             OutputSpentEvent (..))
+                                             OutputSpentEvent (..),
+                                             ResolvedInputs (..))
 import           Convex.Muesli.LP.Constants (ScriptType (..))
 import           Data.List                  (intercalate)
+import qualified Data.Map                   as Map
 
 data ScriptCount =
   ScriptCount
@@ -48,10 +56,21 @@ instance Semigroup ScriptCount where
 instance Monoid ScriptCount where
   mempty = ScriptCount 0 0 0 0 0
 
+data OutputCount =
+  OutputCount
+    { _numLPPools :: !Int
+    }
+
+makeLenses ''OutputCount
+
+instance Semigroup OutputCount where
+  _ <> r = r
+
 data LPStats =
   LPStats
     { _outputsCreated :: !ScriptCount
     , _outputsSpent   :: !ScriptCount
+    , _outputCount    :: !(Maybe OutputCount)
     }
 
 makeLenses ''LPStats
@@ -61,10 +80,11 @@ instance Semigroup LPStats where
     LPStats
       { _outputsCreated = _outputsCreated l <> _outputsCreated r
       , _outputsSpent   = _outputsSpent l <> _outputsSpent r
+      , _outputCount    = _outputCount l <> _outputCount r
       }
 
 instance Monoid LPStats where
-  mempty = LPStats mempty mempty
+  mempty = LPStats mempty mempty mempty
 
 fromScriptType :: ScriptType -> ScriptCount
 fromScriptType st =
@@ -83,6 +103,10 @@ fromEvent = \case
   ANewOutputEvent NewOutputEvent{neEvent} ->
     mempty & outputsCreated .~ fromScriptType neEvent
 
+fromResolvedInputs :: ResolvedInputs ScriptType -> LPStats
+fromResolvedInputs (ResolvedInputs mp) =
+  mempty & outputCount .~ Just (OutputCount $ Map.size mp)
+
 prettyCount :: ScriptCount -> String
 prettyCount ScriptCount{_batchOrderEvents, _factoryMintingEvents, _nftMintingEvents, _lpMintingEvents, _poolEvents} =
   intercalate ", "
@@ -96,7 +120,16 @@ prettyCount ScriptCount{_batchOrderEvents, _factoryMintingEvents, _nftMintingEve
       ]
 
 prettyStats :: LPStats -> String
-prettyStats LPStats{_outputsCreated, _outputsSpent} =
+prettyStats LPStats{_outputsCreated, _outputsSpent, _outputCount} =
   let x1 = prettyCount _outputsCreated
       x2 = prettyCount _outputsCreated
-  in intercalate ", " [unwords ["Outputs created:", x1], unwords ["Outputs spent:", x2]]
+      x3 = case _outputCount of
+            Just (OutputCount i) | i > 0 -> show i
+            _                            -> ""
+  in intercalate ", "
+      $ fmap (\(n, s) -> unwords [n, s])
+      $ filter (not . null . snd)
+      $ [ ("Outputs created:", x1)
+        , ("Outputs spent:", x2)
+        , ("Active outputs:", x3)
+        ]
