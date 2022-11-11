@@ -16,8 +16,8 @@ module Convex.Muesli.LP.Constants(
   poolScript
 ) where
 
-import           Cardano.Api            (PlutusScript, PlutusScriptV2,
-                                         ScriptHash)
+import           Cardano.Api            (Lovelace, PlutusScript, PlutusScriptV2,
+                                         Quantity, ScriptHash)
 import qualified Cardano.Api.Shelley    as C
 import           Control.Applicative    (Alternative (..))
 import           Convex.Muesli.LP.Types (Pair, PairFromOutputError,
@@ -47,7 +47,7 @@ data ScriptType =
   | FactoryMPS
   | LPMPS
   | NFTMPS
-  | PoolScript (Either PairFromOutputError (Pair, Rational))
+  | PoolScript (Either PairFromOutputError (Pair, Maybe (Lovelace, Quantity)))
   deriving stock (Eq, Ord, Show)
 
 scriptTypes :: Map ScriptHash ScriptType

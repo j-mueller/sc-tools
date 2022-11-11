@@ -8,7 +8,8 @@ module Convex.Muesli.LP.NodeClient(
 ) where
 
 import           Cardano.Api.Shelley        (BlockInMode, CardanoMode, Env,
-                                             NetworkId)
+                                             Lovelace (..), NetworkId,
+                                             Quantity (..))
 import           Control.Lens               (makeLenses, (&), (.~), (^.))
 import           Control.Monad              (unless)
 import           Control.Monad.IO.Class     (MonadIO (..))
@@ -29,6 +30,7 @@ import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
 import           Data.Foldable              (toList)
 import qualified Data.Map                   as Map
 import           Data.Maybe                 (mapMaybe)
+import           Data.Ratio                 ((%))
 import           Prelude                    hiding (log)
 
 data ClientState =
@@ -44,7 +46,7 @@ initialState = ClientState mempty mempty
 
 muesliClient :: NetworkId -> Env -> PipelinedLedgerStateClient
 muesliClient networkId env =
-  resumingClient [Constants.lessRecent] $ \_ ->
+  resumingClient [Constants.recent] $ \_ ->
     foldClient
       initialState
       env
@@ -72,8 +74,11 @@ log = liftIO . putStrLn
 
 showPairs :: ResolvedInputs ScriptType -> String
 showPairs (ResolvedInputs inputs) =
-  let mkEntry = \case
-        PoolScript (Right (pair, vl)) -> Just (" " <> prettyPair pair <> ": " <> show @Double (fromRational vl))
+  let showPrice Nothing = ""
+      showPrice (Just (Lovelace lvl, Quantity q)) =
+        show @Double (fromRational $ lvl % q)
+      mkEntry = \case
+        PoolScript (Right (pair, vl)) -> Just (" " <> prettyPair pair <> ": " <> showPrice vl)
         PoolScript (Left err) -> Just (" " <> show err)
         _ -> Nothing
 

@@ -36,6 +36,7 @@ library
       Convex.Muesli.LP.Cli.Command
       Convex.Muesli.LP.Cli.Config
       Convex.Muesli.LP.NodeClient
+      Convex.Muesli.LP.Prices
       Convex.Muesli.LP.Stats
     hs-source-dirs: lib
     build-depends:
@@ -50,7 +51,9 @@ library
       transformers,
       optparse-applicative,
       mtl,
-      validation
+      validation,
+      fingertree,
+      strict-containers
 
     -- cardano dependencies
     build-depends:
