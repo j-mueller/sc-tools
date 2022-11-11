@@ -33,6 +33,7 @@ library
       Convex.Era
       Convex.Event
       Convex.Lenses
+      Convex.Measures
       Convex.Utils
     hs-source-dirs: lib
     build-depends:
