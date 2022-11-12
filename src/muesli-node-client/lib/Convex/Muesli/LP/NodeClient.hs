@@ -7,42 +7,48 @@ module Convex.Muesli.LP.NodeClient(
   muesliClient
 ) where
 
-import           Cardano.Api.Shelley        (BlockInMode, CardanoMode, Env,
-                                             Lovelace (..), NetworkId,
-                                             Quantity (..))
-import           Control.Lens               (makeLenses, (&), (.~), (^.))
-import           Control.Monad              (unless)
+import           Cardano.Api.Shelley        (AssetName, Block (..),
+                                             BlockHeader (..), BlockInMode (..),
+                                             BlockNo, CardanoMode, Env,
+                                             Lovelace (..), NetworkId, PolicyId,
+                                             Quantity (..), SlotNo)
+import           Control.Lens               (anon, at, makeLenses, (%=), (&),
+                                             (.~), (^.))
+import           Control.Monad              (unless, when)
 import           Control.Monad.IO.Class     (MonadIO (..))
-import           Control.Monad.State.Strict (execStateT)
+import           Control.Monad.State.Strict (MonadState, execStateT)
 import           Control.Monad.Trans.Maybe  (runMaybeT)
 import qualified Convex.Constants           as Constants
 import           Convex.Event               (NewOutputEvent (..),
                                              ResolvedInputs (..),
                                              TxWithEvents (..), extract)
 import           Convex.Muesli.LP.Constants (ScriptType (..), scriptType)
+import           Convex.Muesli.LP.Prices    (AssetPrices (..), LPPrices)
+import qualified Convex.Muesli.LP.Prices    as Prices
 import           Convex.Muesli.LP.Stats     (LPStats)
 import qualified Convex.Muesli.LP.Stats     as Stats
-import           Convex.Muesli.LP.Types     (prettyPair)
+import           Convex.Muesli.LP.Types     (adaPair)
 import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
                                              foldClient)
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
-import           Data.Foldable              (toList)
-import qualified Data.Map                   as Map
+import           Data.Foldable              (toList, traverse_)
+import           Data.Map.Strict            (Map)
+import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (mapMaybe)
-import           Data.Ratio                 ((%))
 import           Prelude                    hiding (log)
 
 data ClientState =
   ClientState
     { _resolvedInputs :: !(ResolvedInputs ScriptType)
     , _lpStats        :: !LPStats
+    , _lpPrices       :: !(Map (PolicyId, AssetName) LPPrices)
     }
 
 makeLenses ''ClientState
 
 initialState :: ClientState
-initialState = ClientState mempty mempty
+initialState = ClientState mempty mempty mempty
 
 muesliClient :: NetworkId -> Env -> PipelinedLedgerStateClient
 muesliClient networkId env =
@@ -53,8 +59,10 @@ muesliClient networkId env =
       (applyBlock networkId)
 
 applyBlock :: NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
-applyBlock _networkId (catchingUp -> isCatchingUp) oldState block = runMaybeT $ do
+applyBlock _networkId c oldState block = runMaybeT $ do
   let (newEvents, newResolvedInputs) = extract scriptType (oldState ^. resolvedInputs) block
+      BlockInMode (Block blockHeader _) _ = block
+      BlockHeader currentSlot _ currentBlockNo = blockHeader
       newStats =
         foldMap (foldMap Stats.fromEvent . toList . twEvents) newEvents
         <> Stats.fromResolvedInputs newResolvedInputs
@@ -63,8 +71,7 @@ applyBlock _networkId (catchingUp -> isCatchingUp) oldState block = runMaybeT $ 
                   & resolvedInputs .~ newResolvedInputs
                   & lpStats        .~ totalStats
   flip execStateT newState $ do
-    logUnless isCatchingUp (unlines ["Total stats:", Stats.prettyStats totalStats])
-    logUnless isCatchingUp (showPairs newResolvedInputs)
+    updatePrices c currentBlockNo currentSlot (getPrices $ oldState ^. resolvedInputs) (getPrices newResolvedInputs)
 
 logUnless :: MonadIO m => Bool -> String -> m ()
 logUnless w m = unless w (log m)
@@ -72,17 +79,24 @@ logUnless w m = unless w (log m)
 log :: MonadIO m => String -> m ()
 log = liftIO . putStrLn
 
-showPairs :: ResolvedInputs ScriptType -> String
-showPairs (ResolvedInputs inputs) =
-  let showPrice Nothing = ""
-      showPrice (Just (Lovelace lvl, Quantity q)) =
-        show @Double (fromRational $ lvl % q)
-      mkEntry = \case
-        PoolScript (Right (pair, vl)) -> Just (" " <> prettyPair pair <> ": " <> showPrice vl)
-        PoolScript (Left err) -> Just (" " <> show err)
-        _ -> Nothing
+updatePrices :: (MonadIO m, MonadState ClientState m) => CatchingUp -> BlockNo -> SlotNo -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> m ()
+updatePrices c blck slt oldPrices newPrices = flip traverse_ (Map.toList newPrices) $ \(k, newPrice) -> do
+  let oldPrice = Map.findWithDefault (0, 0) k oldPrices
+      pAt = Prices.pricesAt blck slt oldPrice newPrice
+      AssetPrices{apPrice} = Prices._stats pAt
+  when (Prices.pmVolume apPrice > 0) $ do
+    logUnless (catchingUp c) $ " " <> show (snd k) <> ": " <> Prices.showPriceMeasure apPrice
+    lpPrices . at k . anon Prices.empty Prices.null %= Prices.prepend pAt
 
-  in unlines
-      $ mapMaybe mkEntry
-      $ fmap (neEvent . snd)
-      $ Map.toList inputs
+getPrices :: ResolvedInputs ScriptType -> Map (PolicyId, AssetName) (Lovelace, Quantity)
+getPrices (ResolvedInputs inputs) =
+  let f (_, neEvent -> PoolScript (Right (adaPair -> Just k, Just v))) = Just (k, v)
+      f _                                                = Nothing
+  in Map.fromList $ mapMaybe f $ Map.toList inputs
+
+-- ScriptType -> LPPoolEvent (PolicyId, AssetName, Lovelace, Quantity)
+-- change type of 'extract'
+-- Add other LP dexes
+-- rules
+-- position mgmt
+-- execution

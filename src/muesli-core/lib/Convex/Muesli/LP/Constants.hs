@@ -7,6 +7,7 @@
 module Convex.Muesli.LP.Constants(
   ScriptType(..),
   scriptType,
+  getPoolScript,
   -- * Batch order script
   batchOrderScript,
   -- * Factory minting policy
@@ -62,12 +63,14 @@ scriptTypes =
     ]
 
 scriptType :: C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe ScriptType
-scriptType output sh = Map.lookup sh scriptTypes <|> getPoolScript output sh
+scriptType output sh = Map.lookup sh scriptTypes <|> fmap PoolScript (getPoolScript output sh)
 
 psHash :: ScriptHash
 psHash = C.hashScript (C.PlutusScript C.PlutusScriptV2 poolScript)
 
-getPoolScript :: C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe ScriptType
+{-| Extract the asset pair and values of a Muesli LP pool script output
+-}
+getPoolScript :: C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe (Either PairFromOutputError (Pair, Maybe (Lovelace, Quantity)))
 getPoolScript output sh
-  | sh == psHash = Just $ PoolScript $ pairFromOutput output
+  | sh == psHash = Just (pairFromOutput output)
   | otherwise = Nothing

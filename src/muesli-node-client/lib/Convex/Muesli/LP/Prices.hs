@@ -4,12 +4,16 @@
 module Convex.Muesli.LP.Prices(
   PriceMeasure(..),
   observeLP,
+  showPriceMeasure,
+  AssetPrices(..),
 
   -- * Statistics over time
-  LPStats,
+  LPPrices,
   prepend,
   PricesAt(..),
-  emptyStats,
+  pricesAt,
+  empty,
+  null,
   splitLastNSlots,
   lastHour,
   lastDay,
@@ -18,14 +22,14 @@ module Convex.Muesli.LP.Prices(
   toList
 ) where
 
-import           Cardano.Api       (AssetName, BlockNo, Lovelace (..), PolicyId,
-                                    Quantity (..), SlotNo)
-import           Convex.Measures   (Mean, countMany)
+import           Cardano.Api       (BlockNo, Lovelace (..), Quantity (..),
+                                    SlotNo)
+import           Convex.Measures   (Mean, countMany, getMean)
 import           Data.FingerTree   (FingerTree, Measured (..), split, (<|))
+import qualified Data.FingerTree   as FT
 import qualified Data.Foldable     as F
-import           Data.Map.Strict   (Map)
-import qualified Data.Map.Strict   as Map
 import           Data.Maybe.Strict (StrictMaybe (SJust, SNothing))
+import           Prelude           hiding (null)
 
 data PriceMeasure =
   PriceMeasure
@@ -43,6 +47,11 @@ instance Semigroup PriceMeasure where
 instance Monoid PriceMeasure where
   mempty = PriceMeasure mempty mempty
 
+showPriceMeasure :: PriceMeasure -> String
+showPriceMeasure PriceMeasure{pmPrice, pmVolume} =
+  let m = maybe "N/A" show (getMean pmPrice)
+  in unwords ["Price:", m, "Volume:", show pmVolume]
+
 {-| Measure the price and volume, given the old and the new contents of the LP
 -}
 observeLP ::
@@ -58,14 +67,14 @@ observeLP (Lovelace oldLvl, _) (Lovelace newLvl, Quantity newQ) =
 
 data AssetPrices =
   AssetPrices
-    { apByAsset   :: !(Map (PolicyId, AssetName) PriceMeasure)
+    { apPrice     :: !PriceMeasure
     , apSlotRange :: !(StrictMaybe (SlotNo, SlotNo))
     }
 
 instance Semigroup AssetPrices where
   l <> r =
     AssetPrices
-      { apByAsset = Map.unionWith (<>) (apByAsset l) (apByAsset r)
+      { apPrice = apPrice l <> apPrice r
       , apSlotRange =
           case (apSlotRange l, apSlotRange r) of
             (SNothing, x) -> x
@@ -88,44 +97,55 @@ data PricesAt =
 instance Measured AssetPrices PricesAt where
   measure = _stats
 
-newtype LPStats = LPStats{unLPStats :: FingerTree AssetPrices PricesAt }
+pricesAt :: BlockNo -> SlotNo -> (Lovelace, Quantity) -> (Lovelace, Quantity) -> PricesAt
+pricesAt _blockNo _slotNo old new =
+  PricesAt
+    { _blockNo
+    , _slotNo
+    , _stats = AssetPrices{apPrice = observeLP old new, apSlotRange = SJust (_slotNo, _slotNo)}
+    }
 
-prepend :: PricesAt -> LPStats -> LPStats
-prepend s LPStats{unLPStats} = LPStats $ s <| unLPStats
+newtype LPPrices = LPPrices{unLPPrices :: FingerTree AssetPrices PricesAt }
 
-emptyStats :: LPStats
-emptyStats = LPStats mempty
+prepend :: PricesAt -> LPPrices -> LPPrices
+prepend s LPPrices{unLPPrices} = LPPrices $ s <| unLPPrices
 
-splitLastNSlots :: Int -> LPStats -> (LPStats, LPStats)
-splitLastNSlots n (LPStats s) =
+empty :: LPPrices
+empty = LPPrices mempty
+
+null :: LPPrices -> Bool
+null LPPrices{unLPPrices} = FT.null unLPPrices
+
+splitLastNSlots :: Int -> LPPrices -> (LPPrices, LPPrices)
+splitLastNSlots n (LPPrices s) =
   case (apSlotRange $ measure s) of
-    SNothing -> (LPStats mempty, LPStats s)
+    SNothing -> (LPPrices mempty, LPPrices s)
     SJust (_, maxSlot) ->
       let cutoffPoint :: SlotNo = maxSlot - (fromIntegral n)
           f AssetPrices{apSlotRange = SNothing}            = True
           f AssetPrices{apSlotRange = SJust (minSlot', _)} = minSlot' < cutoffPoint
           (this, that) = split f s
-      in (LPStats this, LPStats that)
+      in (LPPrices this, LPPrices that)
 
 -- | Split a 'MuesliStats' value into one with the values for the last hour
 --   and one with the rest
-lastHour :: LPStats -> (LPStats, LPStats)
+lastHour :: LPPrices -> (LPPrices, LPPrices)
 lastHour = splitLastNSlots (60 * 60)
 
--- | Split a 'LPStats' value into one with the values for the last day
+-- | Split a 'LPPrices' value into one with the values for the last day
 --   and one with the rest
-lastDay :: LPStats -> (LPStats, LPStats)
+lastDay :: LPPrices -> (LPPrices, LPPrices)
 lastDay = splitLastNSlots (60 * 60 * 24)
 
--- | Split a 'LPStats' value into one with the values for the last week
+-- | Split a 'LPPrices' value into one with the values for the last week
 --   and one with the rest
-lastWeek :: LPStats -> (LPStats, LPStats)
+lastWeek :: LPPrices -> (LPPrices, LPPrices)
 lastWeek = splitLastNSlots (60 * 60 * 24 * 7)
 
 -- | The raw stats
-stats :: LPStats -> AssetPrices
-stats = measure . unLPStats
+stats :: LPPrices -> AssetPrices
+stats = measure . unLPPrices
 
 -- | A list with all stats that were recorded
-toList :: LPStats -> [PricesAt]
-toList = F.toList . unLPStats
+toList :: LPPrices -> [PricesAt]
+toList = F.toList . unLPPrices

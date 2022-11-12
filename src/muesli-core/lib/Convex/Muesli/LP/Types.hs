@@ -8,12 +8,14 @@ module Convex.Muesli.LP.Types(
   Pair,
   PairFromOutputError(..),
   mkPair,
+  adaPair,
   prettyPair,
   pairFromValue,
   pairFromOutput
   ) where
 
-import           Cardano.Api                    (AssetId, Lovelace (..),
+import           Cardano.Api                    (AssetId (..), AssetName,
+                                                 Lovelace (..), PolicyId,
                                                  Quantity (..), Value)
 import qualified Cardano.Api.Shelley            as C
 import qualified Cardano.Crypto.Hash.Class      as CCHC
@@ -70,6 +72,13 @@ pairFromValue value k l =
           C.AdaAssetId -> Just (Lovelace q1, q2)
           _            -> Nothing
   in (pair, adaPrice)
+
+{-| The other side of the Ada pair (if one of the two currencies is Ada)
+-}
+adaPair :: Pair -> Maybe (PolicyId, AssetName)
+adaPair Pair{a1=AdaAssetId, a2=AssetId p a} = Just (p, a)
+adaPair Pair{a2=AdaAssetId, a1=AssetId p a} = Just (p, a)
+adaPair _                                   = Nothing
 
 fromPlutusAssetId :: V2.CurrencySymbol -> V2.TokenName -> Either PairFromOutputError AssetId
 fromPlutusAssetId (V2.CurrencySymbol s) (V2.TokenName nm')
