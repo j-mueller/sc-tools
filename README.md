@@ -7,6 +7,7 @@ A collection of libraries that are helpful for building Cardano apps with Haskel
 * `convex-wallet`: Minimal wallet implementation
 * `convex-coin-selection`: Coin selection and transaction balancing
 * `convex-mockchain`: Minimal mockchain for tests
+* `convex-trading-bot`: Simple trading bot
 
 ## Building transactions
 

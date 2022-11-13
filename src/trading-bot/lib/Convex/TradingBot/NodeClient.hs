@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns     #-}
-module Convex.Muesli.LP.NodeClient(
+module Convex.TradingBot.NodeClient(
   muesliClient
 ) where
 
@@ -23,15 +23,15 @@ import           Convex.Event               (NewOutputEvent (..),
                                              ResolvedInputs (..),
                                              TxWithEvents (..), extract)
 import           Convex.Muesli.LP.Constants (ScriptType (..), scriptType)
-import           Convex.Muesli.LP.Prices    (AssetPrices (..), LPPrices)
-import qualified Convex.Muesli.LP.Prices    as Prices
-import           Convex.Muesli.LP.Stats     (LPStats)
-import qualified Convex.Muesli.LP.Stats     as Stats
 import           Convex.Muesli.LP.Types     (adaPair)
 import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
                                              foldClient)
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
+import           Convex.TradingBot.Prices   (AssetPrices (..), LPPrices)
+import qualified Convex.TradingBot.Prices   as Prices
+import           Convex.TradingBot.Stats    (LPStats)
+import qualified Convex.TradingBot.Stats    as Stats
 import           Data.Foldable              (toList, traverse_)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map

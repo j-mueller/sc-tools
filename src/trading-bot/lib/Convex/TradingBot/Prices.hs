@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-| Keeping track of asset prices
 -}
-module Convex.Muesli.LP.Prices(
+module Convex.TradingBot.Prices(
   PriceMeasure(..),
   observeLP,
   showPriceMeasure,

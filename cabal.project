@@ -8,6 +8,7 @@ packages:
   src/muesli-core
   src/muesli-node-client
   src/node-client
+  src/trading-bot
   src/wallet
 
 -- TODO This was patched to work with aeson 1 & 2 with the help of hw-aeson.

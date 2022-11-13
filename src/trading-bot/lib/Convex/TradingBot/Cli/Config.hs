@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeFamilies       #-}
 {-|
 -}
-module Convex.Muesli.LP.Cli.Config(
+module Convex.TradingBot.Cli.Config(
   ConfigMode(..),
   Config(..),
   ConfigError(..),

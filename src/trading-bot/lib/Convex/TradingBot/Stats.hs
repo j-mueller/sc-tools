@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE NamedFieldPuns  #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Convex.Muesli.LP.Stats(
+module Convex.TradingBot.Stats(
   LPStats(..),
   outputsCreated,
   outputsSpent,

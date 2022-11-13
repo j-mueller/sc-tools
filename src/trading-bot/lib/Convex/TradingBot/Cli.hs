@@ -1,21 +1,22 @@
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE NamedFieldPuns #-}
-module Convex.Muesli.LP.Cli (runMain) where
+module Convex.TradingBot.Cli (runMain) where
 
-import qualified Cardano.Api                  as C
-import           Control.Monad.Except         (MonadError (..))
-import           Control.Monad.IO.Class       (MonadIO (..))
-import           Control.Monad.Trans.Except   (runExceptT)
-import           Convex.Muesli.LP.Cli.Command (CliCommand (..), commandParser)
-import           Convex.Muesli.LP.Cli.Config  (Config (..), ConfigMode (..))
-import qualified Convex.Muesli.LP.Cli.Config  as Config
-import qualified Convex.Muesli.LP.NodeClient  as NC
-import           Convex.NodeClient.Types      (runNodeClient)
-import qualified Data.Text                    as Text
-import           Options.Applicative          (customExecParser, disambiguate,
-                                               helper, idm, info, prefs,
-                                               showHelpOnEmpty, showHelpOnError)
-import           System.Exit                  (exitFailure)
+import qualified Cardano.Api                   as C
+import           Control.Monad.Except          (MonadError (..))
+import           Control.Monad.IO.Class        (MonadIO (..))
+import           Control.Monad.Trans.Except    (runExceptT)
+import           Convex.NodeClient.Types       (runNodeClient)
+import           Convex.TradingBot.Cli.Command (CliCommand (..), commandParser)
+import           Convex.TradingBot.Cli.Config  (Config (..), ConfigMode (..))
+import qualified Convex.TradingBot.Cli.Config  as Config
+import qualified Convex.TradingBot.NodeClient  as NC
+import qualified Data.Text                     as Text
+import           Options.Applicative           (customExecParser, disambiguate,
+                                                helper, idm, info, prefs,
+                                                showHelpOnEmpty,
+                                                showHelpOnError)
+import           System.Exit                   (exitFailure)
 
 runMain :: IO ()
 runMain = do
