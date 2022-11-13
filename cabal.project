@@ -5,8 +5,8 @@ packages:
   src/base
   src/coin-selection
   src/mockchain
-  src/muesli-core
-  src/muesli-node-client
+  src/dex/muesli/muesli-core
+  src/dex/muesli/muesli-node-client
   src/node-client
   src/trading-bot
   src/wallet
