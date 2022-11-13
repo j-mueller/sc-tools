@@ -35,6 +35,7 @@ library
       Convex.TradingBot.LPPoolEvent
       Convex.TradingBot.NodeClient
       Convex.TradingBot.Prices
+      Convex.TradingBot.Rules
       Convex.TradingBot.Stats
     hs-source-dirs: lib
     build-depends:

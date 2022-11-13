@@ -6,6 +6,7 @@ module Convex.TradingBot.Prices(
   observeLP,
   showPriceMeasure,
   AssetPrices(..),
+  price,
 
   -- * Statistics over time
   LPPrices,
@@ -67,14 +68,25 @@ observeLP (Lovelace oldLvl, _) (Lovelace newLvl, Quantity newQ) =
 
 data AssetPrices =
   AssetPrices
-    { apPrice     :: !PriceMeasure
+    { apPrice     :: !(StrictMaybe PriceMeasure)
     , apSlotRange :: !(StrictMaybe (SlotNo, SlotNo))
     }
+
+price :: AssetPrices -> Maybe PriceMeasure
+price AssetPrices{apPrice} = case apPrice of
+  SJust a  -> Just a
+  SNothing -> Nothing
+
+smMappend :: Semigroup a => StrictMaybe a -> StrictMaybe a -> StrictMaybe a
+smMappend x y = case (x, y) of
+  (SNothing, k)      -> k
+  (k, SNothing)      -> k
+  (SJust l, SJust k) -> SJust (l <> k)
 
 instance Semigroup AssetPrices where
   l <> r =
     AssetPrices
-      { apPrice = apPrice l <> apPrice r
+      { apPrice = smMappend (apPrice l) (apPrice r)
       , apSlotRange =
           case (apSlotRange l, apSlotRange r) of
             (SNothing, x) -> x
@@ -83,7 +95,7 @@ instance Semigroup AssetPrices where
       }
 
 instance Monoid AssetPrices where
-  mempty = AssetPrices mempty SNothing
+  mempty = AssetPrices SNothing SNothing
 
 {-| Asset prices observed at a point in time
 -}
@@ -102,7 +114,7 @@ pricesAt _blockNo _slotNo old new =
   PricesAt
     { _blockNo
     , _slotNo
-    , _stats = AssetPrices{apPrice = observeLP old new, apSlotRange = SJust (_slotNo, _slotNo)}
+    , _stats = AssetPrices{apPrice = SJust (observeLP old new), apSlotRange = SJust (_slotNo, _slotNo)}
     }
 
 newtype LPPrices = LPPrices{unLPPrices :: FingerTree AssetPrices PricesAt }
