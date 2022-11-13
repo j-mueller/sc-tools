@@ -17,28 +17,20 @@ module Convex.TradingBot.Stats(
   ScriptCount(..),
   prettyStats,
   fromScriptType,
-  batchOrderEvents,
-  factoryMintingEvents,
-  nftMintingEvents,
-  lpMintingEvents,
   poolEvents
 ) where
 
-import           Control.Lens               (makeLenses, over, (&), (.~))
-import           Convex.Event               (Event (..), NewOutputEvent (..),
-                                             OutputSpentEvent (..),
-                                             ResolvedInputs (..))
-import           Convex.Muesli.LP.Constants (ScriptType (..))
-import           Data.List                  (intercalate)
-import qualified Data.Map                   as Map
+import           Control.Lens                  (makeLenses, over, (&), (.~))
+import           Convex.Event                  (Event (..), NewOutputEvent (..),
+                                                OutputSpentEvent (..),
+                                                ResolvedInputs (..))
+import           Convex.TradingBot.LPPoolEvent (LPPoolEvent (..))
+import           Data.List                     (intercalate)
+import qualified Data.Map                      as Map
 
 data ScriptCount =
   ScriptCount
-    { _batchOrderEvents     :: !Int
-    , _factoryMintingEvents :: !Int
-    , _nftMintingEvents     :: !Int
-    , _lpMintingEvents      :: !Int
-    , _poolEvents           :: !Int
+    { _poolEvents           :: !Int
     }
 
 makeLenses ''ScriptCount
@@ -46,15 +38,11 @@ makeLenses ''ScriptCount
 instance Semigroup ScriptCount where
   l <> r =
     ScriptCount
-      { _batchOrderEvents = _batchOrderEvents l + _batchOrderEvents r
-      , _factoryMintingEvents = _factoryMintingEvents l + _factoryMintingEvents r
-      , _nftMintingEvents = _nftMintingEvents l + _nftMintingEvents r
-      , _lpMintingEvents = _lpMintingEvents l + _lpMintingEvents r
-      , _poolEvents = _poolEvents l + _poolEvents r
+      { _poolEvents = _poolEvents l + _poolEvents r
       }
 
 instance Monoid ScriptCount where
-  mempty = ScriptCount 0 0 0 0 0
+  mempty = ScriptCount 0
 
 data OutputCount =
   OutputCount
@@ -86,37 +74,29 @@ instance Semigroup LPStats where
 instance Monoid LPStats where
   mempty = LPStats mempty mempty mempty
 
-fromScriptType :: ScriptType -> ScriptCount
+fromScriptType :: LPPoolEvent -> ScriptCount
 fromScriptType st =
   let l = case st of
-            BatchOrderScript -> batchOrderEvents
-            FactoryMPS       -> factoryMintingEvents
-            LPMPS            -> lpMintingEvents
-            NFTMPS           -> nftMintingEvents
-            PoolScript{}     -> poolEvents
+            LPPoolEvent{}     -> poolEvents
   in mempty & over l succ
 
-fromEvent :: Event ScriptType -> LPStats
+fromEvent :: Event LPPoolEvent -> LPStats
 fromEvent = \case
   AnOutputSpentEvent OutputSpentEvent{oseTxOutput=NewOutputEvent{neEvent}} ->
     mempty & outputsSpent .~ fromScriptType neEvent
   ANewOutputEvent NewOutputEvent{neEvent} ->
     mempty & outputsCreated .~ fromScriptType neEvent
 
-fromResolvedInputs :: ResolvedInputs ScriptType -> LPStats
+fromResolvedInputs :: ResolvedInputs LPPoolEvent -> LPStats
 fromResolvedInputs (ResolvedInputs mp) =
   mempty & outputCount .~ Just (OutputCount $ Map.size mp)
 
 prettyCount :: ScriptCount -> String
-prettyCount ScriptCount{_batchOrderEvents, _factoryMintingEvents, _nftMintingEvents, _lpMintingEvents, _poolEvents} =
+prettyCount ScriptCount{_poolEvents} =
   intercalate ", "
     $ fmap (\(n, s) -> unwords [n <> ":", show s])
     $ filter (\(_, s) -> s > 0)
-    $ [ ("Batch orders", _batchOrderEvents)
-      , ("Factory minting", _factoryMintingEvents)
-      , ("LP minting", _lpMintingEvents)
-      , ("NFT minting", _nftMintingEvents)
-      , ("Pool script", _poolEvents)
+    $ [ ("Pool script", _poolEvents)
       ]
 
 prettyStats :: LPStats -> String

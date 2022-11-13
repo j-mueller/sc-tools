@@ -32,6 +32,7 @@ library
       Convex.TradingBot.Cli.Command
       Convex.TradingBot.Cli.Config
       Convex.TradingBot.Cli
+      Convex.TradingBot.LPPoolEvent
       Convex.TradingBot.NodeClient
       Convex.TradingBot.Prices
       Convex.TradingBot.Stats
