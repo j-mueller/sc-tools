@@ -34,6 +34,7 @@ library
       Convex.Event
       Convex.Lenses
       Convex.Measures
+      Convex.MonadLog
       Convex.Utils
     hs-source-dirs: lib
     build-depends:
@@ -41,7 +42,10 @@ library
       lens,
       containers,
       aeson,
-      mtl
+      mtl,
+      katip,
+      prettyprinter,
+      transformers
       
     build-depends:
       cardano-api,

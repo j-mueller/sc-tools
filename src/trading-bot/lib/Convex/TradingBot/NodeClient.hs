@@ -19,13 +19,14 @@ import           Control.Lens                  (Lens', anon, at, makeLenses,
                                                 use, (%=), (&), (.=), (.~),
                                                 (^.))
 import           Control.Monad                 (guard, unless, when)
-import           Control.Monad.IO.Class        (MonadIO (..))
 import           Control.Monad.State.Strict    (MonadState, execStateT)
 import           Control.Monad.Trans.Maybe     (runMaybeT)
 import qualified Convex.Constants              as Constants
 import           Convex.Event                  (NewOutputEvent (..),
                                                 ResolvedInputs (..),
                                                 TxWithEvents (..), extract)
+import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
+                                                logInfoS)
 import           Convex.NodeClient.Fold        (CatchingUp (..), catchingUp,
                                                 foldClient)
 import           Convex.NodeClient.Resuming    (resumingClient)
@@ -47,6 +48,7 @@ import           Data.Foldable                 (toList, traverse_)
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (fromMaybe, mapMaybe)
+import qualified Katip                         as K
 import           Prelude                       hiding (log)
 
 data ClientState =
@@ -62,16 +64,16 @@ makeLenses ''ClientState
 initialState :: ClientState
 initialState = ClientState mempty mempty mempty (emptyPortfolio $ Lovelace 3_000_000_000)
 
-muesliClient :: NetworkId -> Env -> PipelinedLedgerStateClient
-muesliClient networkId env =
+muesliClient :: K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
+muesliClient logEnv ns networkId env =
   resumingClient [Constants.lessRecent] $ \_ ->
     foldClient
       initialState
       env
-      (applyBlock networkId)
+      (applyBlock logEnv ns networkId)
 
-applyBlock :: NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
-applyBlock _networkId c oldState block = runMaybeT $ do
+applyBlock :: K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
+applyBlock le initialNamespace _networkId c oldState block = K.runKatipContextT le () initialNamespace $ runMonadLogKatipT $ runMaybeT $ do
   let (newEvents, newResolvedInputs) = extract LPPoolEvent.extract (oldState ^. resolvedInputs) block
       BlockInMode (Block blockHeader _) _ = block
       BlockHeader currentSlot _ currentBlockNo = blockHeader
@@ -86,16 +88,13 @@ applyBlock _networkId c oldState block = runMaybeT $ do
     updatePrices c currentBlockNo currentSlot (getPrices $ oldState ^. resolvedInputs) (getPrices newResolvedInputs)
     guard (catchingUp c)
 
-logUnless :: MonadIO m => Bool -> String -> m ()
-logUnless w m = unless w (log m)
-
-log :: MonadIO m => String -> m ()
-log = liftIO . putStrLn
+logUnless :: MonadLog m => Bool -> String -> m ()
+logUnless w m = unless w (logInfoS m)
 
 pricesFor :: (PolicyId, AssetName) -> Lens' ClientState LPPrices
 pricesFor k = lpPrices . at k . anon Prices.empty Prices.null
 
-updatePrices :: (MonadIO m, MonadState ClientState m) => CatchingUp -> BlockNo -> SlotNo -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> m ()
+updatePrices :: (MonadLog m, MonadState ClientState m) => CatchingUp -> BlockNo -> SlotNo -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> m ()
 updatePrices c blck slt oldPrices newPrices = flip traverse_ (Map.toList newPrices) $ \(k, newPrice) -> do
   let oldPrice = Map.findWithDefault (0, 0) k oldPrices
       pAt = Prices.pricesAt blck slt oldPrice newPrice

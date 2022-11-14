@@ -34,6 +34,7 @@ import           Control.Monad.Reader       (MonadReader (..), ReaderT,
                                              runReaderT)
 import           Control.Monad.State.Strict (MonadState (..), StateT, gets,
                                              runStateT)
+import           Convex.MonadLog            (MonadLog, logInfoS, logWarnS)
 import           Data.Foldable              (toList)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
@@ -150,16 +151,16 @@ markToMarket q l p =
 -- TODO: Separate market pricing info from position (so that we don't need to change the position entries in the map)
 
 newtype SimulatedPortfolioT m a = SimulatedPortfolioT{ unSimulatedPortfolioT :: ReaderT PortfolioConfig (StateT Portfolio m) a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
 
-instance MonadIO m => MonadTrade (SimulatedPortfolioT m) where
+instance MonadLog m => MonadTrade (SimulatedPortfolioT m) where
   update (policyId, assetName, q, l) = do
     shouldSell <- SimulatedPortfolioT $ do
       position policyId assetName . traversed %= markToMarket q l
       stopLosses <- filter triggerStopLoss . toList <$> use (position policyId assetName)
       limits <- filter triggerLimit . toList <$> use (position policyId assetName)
-      when (not $ null stopLosses) $ liftIO $ putStrLn $ "  Stop loss triggered for " <> show assetName
-      when (not $ null limits) $ liftIO $ putStrLn $ "  Limit triggered for " <> show assetName
+      when (not $ null stopLosses) $ logInfoS $ "  Stop loss triggered for " <> show assetName
+      when (not $ null limits) $ logInfoS $ "  Limit triggered for " <> show assetName
       return $ not $ null stopLosses && null limits
     when shouldSell $ sell 1 (policyId, assetName, q, l)
 
@@ -196,10 +197,10 @@ instance MonadIO m => MonadTrade (SimulatedPortfolioT m) where
           position pPolicyId pAssetName %= (|> newPosition)
           ada -= p
           tradeCount += 1
-          liftIO $ putStrLn $ "BUY: " <> show (round @_ @Integer unitsPurchased) <> " " <> show pAssetName <> " for " <> formatAda p
+          logInfoS $ "BUY: " <> show (round @_ @Integer unitsPurchased) <> " " <> show pAssetName <> " for " <> formatAda p
       else do
         -- shouldn't happen!
-        liftIO $ putStrLn "WARNING: purchase price too high"
+        logWarnS "WARNING: purchase price too high"
 
   sell _ (policyId, assetName, q, l) = SimulatedPortfolioT $ do
     pos <- use (position policyId assetName)
@@ -209,7 +210,7 @@ instance MonadIO m => MonadTrade (SimulatedPortfolioT m) where
           purchasePrice = foldMap pPurchasePrice pos
 
       ada += marketVal
-      liftIO $ putStrLn (closePositionMsg assetName marketVal purchasePrice)
+      logInfoS (closePositionMsg assetName marketVal purchasePrice)
       position policyId assetName .= Seq.empty
       tradeCount += 1
       printPortfolioInfo
@@ -230,13 +231,13 @@ closePositionMsg pAssetName (Lovelace marketPrice) (Lovelace purchasePrice) =
       <> mvAda
       <> " Ada (" <> show (round @Rational @Integer percChange) <> "%)"
 
-printPortfolioInfo :: (MonadState Portfolio m, MonadIO m) => m ()
+printPortfolioInfo :: (MonadLog m, MonadState Portfolio m) => m ()
 printPortfolioInfo = do
   lvl <- gets aum
   numPos <- Map.size <$> use positions
   a <- use ada
   numTrades <- use tradeCount
-  liftIO $ putStrLn $ "New portfolio value: " <> formatAda lvl <> " with " <> show numPos <> " native assets and " <> formatAda a <> " Ada in cash. Made " <> show numTrades <> " trades."
+  logInfoS $ "New portfolio value: " <> formatAda lvl <> " with " <> show numPos <> " native assets and " <> formatAda a <> " Ada in cash. Made " <> show numTrades <> " trades."
 
 {-| How much Ada we can spend on a particular asset, considering
 * the amount already invested in this asset
