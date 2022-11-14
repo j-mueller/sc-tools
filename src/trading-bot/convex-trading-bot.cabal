@@ -53,7 +53,8 @@ library
       mtl,
       fingertree,
       strict-containers,
-      katip
+      katip,
+      stm
 
     -- cardano dependencies
     build-depends:

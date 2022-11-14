@@ -9,9 +9,11 @@ module Convex.TradingBot.Portfolio(
 
   -- * Portfolios
   Position(..),
-  Portfolio,
+  Portfolio(..),
+  printPortfolioInfo,
   emptyPortfolio,
   distribution,
+  tradeCount,
   PortfolioConfig(..),
   defaultPortfolioConfig,
 
@@ -213,7 +215,7 @@ instance MonadLog m => MonadTrade (SimulatedPortfolioT m) where
       logInfoS (closePositionMsg assetName marketVal purchasePrice)
       position policyId assetName .= Seq.empty
       tradeCount += 1
-      printPortfolioInfo
+      get >>= printPortfolioInfo
 
 position :: PolicyId -> AssetName -> Lens' Portfolio (Seq Position)
 position p a = positions . at (p, a) . anon Seq.empty Seq.null
@@ -231,13 +233,11 @@ closePositionMsg pAssetName (Lovelace marketPrice) (Lovelace purchasePrice) =
       <> mvAda
       <> " Ada (" <> show (round @Rational @Integer percChange) <> "%)"
 
-printPortfolioInfo :: (MonadLog m, MonadState Portfolio m) => m ()
-printPortfolioInfo = do
-  lvl <- gets aum
-  numPos <- Map.size <$> use positions
-  a <- use ada
-  numTrades <- use tradeCount
-  logInfoS $ "New portfolio value: " <> formatAda lvl <> " with " <> show numPos <> " native assets and " <> formatAda a <> " Ada in cash. Made " <> show numTrades <> " trades."
+printPortfolioInfo :: (MonadLog m) => Portfolio -> m ()
+printPortfolioInfo p@Portfolio{_positions, _ada, _tradeCount}= do
+  let lvl = aum p
+      numPos = Map.size _positions
+  logInfoS $ "Portfolio value: " <> formatAda lvl <> " with " <> show numPos <> " native assets and " <> formatAda _ada <> " Ada in cash. Made " <> show _tradeCount <> " trades."
 
 {-| How much Ada we can spend on a particular asset, considering
 * the amount already invested in this asset

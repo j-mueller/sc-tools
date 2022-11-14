@@ -11,6 +11,7 @@ module Convex.MonadLog(
   MonadLogKatipT(..)
 ) where
 
+import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (ReaderT (..), lift)
 import           Control.Monad.State        (StateT (..))
 import qualified Control.Monad.State.Strict as State.Strict
@@ -63,7 +64,7 @@ instance Monad m => MonadLog (MonadLogIgnoreT m) where
   logWarn' _ = pure ()
 
 newtype MonadLogKatipT m a = MonadLogKatipT { runMonadLogKatipT :: m a }
-  deriving newtype (Functor, Applicative, Monad)
+  deriving newtype (Functor, Applicative, Monad, MonadIO)
 
 instance KatipContext m => MonadLog (MonadLogKatipT m) where
     logInfo' s =

@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
 module Convex.TradingBot.NodeClient(
-  muesliClient
+  backtestingClient
 ) where
 
 import           Cardano.Api.Shelley           (AssetName, Block (..),
@@ -15,10 +15,12 @@ import           Cardano.Api.Shelley           (AssetName, Block (..),
                                                 CardanoMode, Env, Lovelace (..),
                                                 NetworkId, PolicyId,
                                                 Quantity (..), SlotNo)
+import qualified Control.Concurrent.STM        as STM
 import           Control.Lens                  (Lens', anon, at, makeLenses,
                                                 use, (%=), (&), (.=), (.~),
                                                 (^.))
 import           Control.Monad                 (guard, unless, when)
+import           Control.Monad.IO.Class        (MonadIO (..))
 import           Control.Monad.State.Strict    (MonadState, execStateT)
 import           Control.Monad.Trans.Maybe     (runMaybeT)
 import qualified Convex.Constants              as Constants
@@ -26,7 +28,7 @@ import           Convex.Event                  (NewOutputEvent (..),
                                                 ResolvedInputs (..),
                                                 TxWithEvents (..), extract)
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
-                                                logInfoS)
+                                                logInfoS, logWarnS)
 import           Convex.NodeClient.Fold        (CatchingUp (..), catchingUp,
                                                 foldClient)
 import           Convex.NodeClient.Resuming    (resumingClient)
@@ -64,16 +66,16 @@ makeLenses ''ClientState
 initialState :: ClientState
 initialState = ClientState mempty mempty mempty (emptyPortfolio $ Lovelace 3_000_000_000)
 
-muesliClient :: K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
-muesliClient logEnv ns networkId env =
+backtestingClient :: STM.TMVar Portfolio -> K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
+backtestingClient resultVar logEnv ns networkId env =
   resumingClient [Constants.lessRecent] $ \_ ->
     foldClient
       initialState
       env
-      (applyBlock logEnv ns networkId)
+      (applyBlock resultVar logEnv ns networkId)
 
-applyBlock :: K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
-applyBlock le initialNamespace _networkId c oldState block = K.runKatipContextT le () initialNamespace $ runMonadLogKatipT $ runMaybeT $ do
+applyBlock :: STM.TMVar Portfolio -> K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
+applyBlock resultVar le initialNamespace _networkId c oldState block = K.runKatipContextT le () initialNamespace $ runMonadLogKatipT $ runMaybeT $ do
   let (newEvents, newResolvedInputs) = extract LPPoolEvent.extract (oldState ^. resolvedInputs) block
       BlockInMode (Block blockHeader _) _ = block
       BlockHeader currentSlot _ currentBlockNo = blockHeader
@@ -86,7 +88,10 @@ applyBlock le initialNamespace _networkId c oldState block = K.runKatipContextT 
                   & lpStats        .~ totalStats
   flip execStateT newState $ do
     updatePrices c currentBlockNo currentSlot (getPrices $ oldState ^. resolvedInputs) (getPrices newResolvedInputs)
-    guard (catchingUp c)
+    unless (catchingUp c) $ do
+      p <- use portfolio
+      liftIO (STM.atomically $ STM.putTMVar resultVar p)
+      guard False
 
 logUnless :: MonadLog m => Bool -> String -> m ()
 logUnless w m = unless w (logInfoS m)
@@ -112,14 +117,14 @@ updatePrices c blck slt oldPrices newPrices = flip traverse_ (Map.toList newPric
         Sell -> Portfolio.sell 1.0 pricePoint
         _    -> pure ()
     portfolio .= portf'
+    when (Portfolio._tradeCount portf == 0 && Portfolio._tradeCount portf' > 0) $ do
+      logWarnS $ "First trade: " <> show blck <> " in slot " <> show slt
 
 getPrices :: ResolvedInputs LPPoolEvent -> Map (PolicyId, AssetName) (Lovelace, Quantity)
 getPrices (ResolvedInputs inputs) =
   let f (_, neEvent -> LPPoolEvent{lpePolicyId, lpeAssetName, lpeLovelace, lpeNativeTokenAmount}) = Just ((lpePolicyId, lpeAssetName), (lpeLovelace, lpeNativeTokenAmount))
   in Map.fromList $ mapMaybe f $ Map.toList inputs
 
--- change type of 'extract'
--- Add other LP dexes
--- rules
--- position mgmt
+-- TODO:
 -- execution
+-- Add other LP dexes
