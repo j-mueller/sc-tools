@@ -124,7 +124,6 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
                   let (newHistory, _) = pushHistoryState env history slotNo s'
                   return (clientIdle_RequestMoreN newClientTip newServerTip n newHistory)
         , recvMsgRollBackward = \chainPoint serverChainTip -> do
-            putStrLn $ "foldClient: Rolling back to " <> show chainPoint
             let newClientTip = Origin
                 newServerTip = fromChainTip serverChainTip
                 (rolledBack, truncatedHistory) = case chainPoint of

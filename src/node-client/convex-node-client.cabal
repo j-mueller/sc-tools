@@ -40,8 +40,6 @@ library
       text,
       time,
       containers,
-      aeson,
-      strict-containers
 
     -- cardano dependencies
     build-depends:
