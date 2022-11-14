@@ -126,5 +126,7 @@ getPrices (ResolvedInputs inputs) =
   in Map.fromList $ mapMaybe f $ Map.toList inputs
 
 -- TODO:
+-- backtesting for multiple sets of rules
+-- annealing lib.
 -- execution
 -- Add other LP dexes
