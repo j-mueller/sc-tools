@@ -14,7 +14,8 @@ import           Cardano.Api.Shelley           (AssetName, Block (..),
                                                 BlockInMode (..), BlockNo,
                                                 CardanoMode, Env, Lovelace (..),
                                                 NetworkId, PolicyId,
-                                                Quantity (..), SlotNo)
+                                                Quantity (..), SlotNo, Value)
+import qualified Cardano.Api.Shelley           as C
 import qualified Control.Concurrent.STM        as STM
 import           Control.Lens                  (Lens', anon, at, makeLenses,
                                                 use, (%=), (&), (.=), (.~),
@@ -28,7 +29,7 @@ import           Convex.Event                  (NewOutputEvent (..),
                                                 ResolvedInputs (..),
                                                 TxWithEvents (..), extract)
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
-                                                logInfoS, logWarnS)
+                                                logInfoS)
 import           Convex.NodeClient.Fold        (CatchingUp (..), catchingUp,
                                                 foldClient)
 import           Convex.NodeClient.Resuming    (resumingClient)
@@ -37,8 +38,7 @@ import           Convex.TradingBot.LPPoolEvent (LPPoolEvent (..))
 import qualified Convex.TradingBot.LPPoolEvent as LPPoolEvent
 import           Convex.TradingBot.Portfolio   (Portfolio,
                                                 defaultPortfolioConfig,
-                                                emptyPortfolio,
-                                                execSimulatedPortfolioT)
+                                                emptyPortfolio)
 import qualified Convex.TradingBot.Portfolio   as Portfolio
 import           Convex.TradingBot.Prices      (LPPrices)
 import qualified Convex.TradingBot.Prices      as Prices
@@ -58,15 +58,15 @@ data ClientState =
     { _resolvedInputs :: !(ResolvedInputs LPPoolEvent)
     , _lpStats        :: !LPStats
     , _lpPrices       :: !(Map (PolicyId, AssetName) LPPrices)
-    , _portfolio      :: !Portfolio
+    , _portfolio      :: !(Portfolio, Value)
     }
 
 makeLenses ''ClientState
 
 initialState :: ClientState
-initialState = ClientState mempty mempty mempty (emptyPortfolio $ Lovelace 3_000_000_000)
+initialState = ClientState mempty mempty mempty (emptyPortfolio, C.lovelaceToValue $ Lovelace 3_000_000_000)
 
-backtestingClient :: STM.TMVar Portfolio -> K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
+backtestingClient :: STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
 backtestingClient resultVar logEnv ns networkId env =
   resumingClient [Constants.lessRecent] $ \_ ->
     foldClient
@@ -74,7 +74,7 @@ backtestingClient resultVar logEnv ns networkId env =
       env
       (applyBlock resultVar logEnv ns networkId)
 
-applyBlock :: STM.TMVar Portfolio -> K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
+applyBlock :: STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
 applyBlock resultVar le initialNamespace _networkId c oldState block = K.runKatipContextT le () initialNamespace $ runMonadLogKatipT $ runMaybeT $ do
   let (newEvents, newResolvedInputs) = extract LPPoolEvent.extract (oldState ^. resolvedInputs) block
       BlockInMode (Block blockHeader _) _ = block
@@ -109,7 +109,7 @@ updatePrices c blck slt oldPrices newPrices = flip traverse_ (Map.toList newPric
     pricesFor k %= Prices.prepend pAt
     newPrices' <- use (pricesFor k)
     portf <- use portfolio
-    portf' <- execSimulatedPortfolioT defaultPortfolioConfig portf $ do
+    portf' <- Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
       let pricePoint = (fst k, snd k, snd newPrice, fst newPrice)
       Portfolio.update pricePoint
       case Rules.movingAverage newPrices' of
@@ -117,8 +117,6 @@ updatePrices c blck slt oldPrices newPrices = flip traverse_ (Map.toList newPric
         Sell -> Portfolio.sell 1.0 pricePoint
         _    -> pure ()
     portfolio .= portf'
-    when (Portfolio._tradeCount portf == 0 && Portfolio._tradeCount portf' > 0) $ do
-      logWarnS $ "First trade: " <> show blck <> " in slot " <> show slt
 
 getPrices :: ResolvedInputs LPPoolEvent -> Map (PolicyId, AssetName) (Lovelace, Quantity)
 getPrices (ResolvedInputs inputs) =

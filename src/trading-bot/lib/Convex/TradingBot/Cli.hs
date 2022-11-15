@@ -36,12 +36,12 @@ runMain = do
                         (info (helper <*> commandParser) idm))
     case command of
       StartMatcher config ->
-        getConfig config >>= runBacktest initLogEnv >>= printPortfolioInfo
+        getConfig config >>= runBacktest initLogEnv >>= uncurry (flip printPortfolioInfo)
 
-runBacktest :: (MonadLog m, MonadIO m) => K.LogEnv -> Config 'Typed -> m Portfolio
+runBacktest :: (MonadLog m, MonadIO m) => K.LogEnv -> Config 'Typed -> m (Portfolio, C.Value)
 runBacktest logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = do
   logInfoS "Starting backtest"
-  tv <- liftIO (STM.newEmptyTMVarIO)
+  tv <- liftIO STM.newEmptyTMVarIO
   result <- liftIO $ do
     let makeLogEnv = do
           backtestingWorkerScribe <- K.mkHandleScribe (K.ColorLog True) stdout (K.permitItem K.NoticeS) K.V2

@@ -5,46 +5,70 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TypeApplications   #-}
 module Convex.TradingBot.Portfolio(
-  MonadTrade(..),
+  -- * Prices
+  Price(..),
+  scale,
+  unitPrice,
+  unitsOf,
+  valueOf,
+
+  -- * Positions
+  Position(..),
+  lastPrice,
+  stopLoss,
+  limit,
+  setLimits,
 
   -- * Portfolios
-  Position(..),
   Portfolio(..),
   printPortfolioInfo,
   emptyPortfolio,
   distribution,
   tradeCount,
+  BuyOrder(..),
+  buyOrder,
+  SellOrder(..),
+  updatePrice,
+
+  -- * Config
   PortfolioConfig(..),
   defaultPortfolioConfig,
 
-  -- ** Simulation / Backtesting
+  -- * Executing trades
+  MonadTrade(..),
+
+  -- ** Simulated portfolios
   SimulatedPortfolioT,
   runSimulatedPortfolioT,
-  execSimulatedPortfolioT
+  execSimulatedPortfolioT,
+
+  -- ** Real portfolios
+
+  -- * Etc.
+  closePositionMsg,
+  availableFunds
 ) where
 
 import           Cardano.Api                (AssetId (..), AssetName,
                                              Lovelace (..), PolicyId,
-                                             Quantity (..))
-import           Control.Lens               (Lens', _Just, anon, at, makeLenses,
-                                             makeLensesFor, over, traversed,
-                                             use, view, (%=), (&), (+=), (-=),
-                                             (.=), (.~))
-import           Control.Monad              (unless, when)
+                                             Quantity (..), Value)
+import qualified Cardano.Api                as C
+import           Control.Lens               (Lens', _1, _2, _Just, at,
+                                             makeLenses, makeLensesFor, over,
+                                             set, use, view, (&), (+=), (.=),
+                                             (.~))
+import           Control.Monad              (guard, when)
 import           Control.Monad.IO.Class     (MonadIO (..))
-import           Control.Monad.Reader       (MonadReader (..), ReaderT,
-                                             runReaderT)
-import           Control.Monad.State.Strict (MonadState (..), StateT, gets,
-                                             runStateT)
-import           Convex.MonadLog            (MonadLog, logInfoS, logWarnS)
-import           Data.Foldable              (toList)
+import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
+import           Control.Monad.State.Strict (MonadState, StateT, get, put,
+                                             runState, runStateT)
+import           Convex.MonadLog            (MonadLog, logInfoS)
+import           Data.Foldable              (fold, traverse_)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
+import           Data.Maybe                 (fromMaybe, isJust, isNothing)
 import           Data.Ratio                 ((%))
-import           Data.Sequence              (Seq, (|>))
-import qualified Data.Sequence              as Seq
 
-type Confidence = Rational
 type PricePoint = (PolicyId, AssetName, Quantity, Lovelace)
 
 data PortfolioConfig =
@@ -64,34 +88,71 @@ defaultPortfolioConfig =
     , pfMinPositionSize = Lovelace 10_000_000
     }
 
-{-| Buying and selling native tokens
--}
-class Monad m => MonadTrade m where
-  update :: PricePoint -> m () -- ^ Update the positions with new pricing data
-  buy    :: Confidence -> PricePoint -> m ()
-  sell   :: Confidence -> PricePoint -> m ()
+data BuyOrder = BuyOrder{ buyCurrency :: (PolicyId, AssetName), buyQuantity :: Quantity, buyPrice :: Price }
+  deriving (Eq, Ord, Show)
 
+data SellOrder = SellOrder{ sellCurrency :: (PolicyId, AssetName), sellQuantity :: Quantity, sellPrice :: Price }
+  deriving (Eq, Ord, Show)
+
+-- | Price of one unit of an asset in Lovelace
+newtype Price = Price Rational
+  deriving stock (Eq, Ord, Show)
+  deriving newtype Num
+
+-- | Multiply the price by a scalar value
+scale :: Rational -> Price -> Price
+scale n (Price p) = Price (n * p)
+
+-- | Value of a quantity priced in Ada
+valueOf :: Quantity -> Price -> Lovelace
+valueOf (Quantity q) (Price p) =
+  Lovelace $ round $ fromIntegral q * p
+
+{-| Price of one unit of the native token in Ada
+-}
+unitPrice :: Quantity -> Lovelace -> Price
+unitPrice (Quantity q) (Lovelace l) = Price (l % q)
+
+-- | Largest 'Quantity' whose Ada value is smaller than or
+--   equal to the given amount
+unitsOf :: Lovelace -> Price -> Quantity
+unitsOf (Lovelace l) (Price p) =
+  Quantity $ floor $ fromIntegral l / p
+
+{-| Position in our portfolio. Note that this does not include the
+size of the position (this information is obtained from the wallet
+in form of a 'Value' value)
+-}
 data Position =
   Position
-    { pPolicyId      :: !PolicyId
-    , pAssetName     :: !AssetName
-    , pQuantity      :: !Quantity
-    , pPurchasePrice :: !Lovelace
-    , pLastPrice     :: !Lovelace -- ^ last market price
-    , pStopLoss      :: Maybe Lovelace
-    , pLimit         :: Maybe Lovelace
+    { pLastPrice :: !Price -- ^ last market price per unit of currency
+    , pStopLoss  :: Maybe Price -- ^ stop (price per unit of currency)
+    , pLimit     :: Maybe Price
     }
+    deriving (Eq, Ord, Show)
 
 makeLensesFor
   [ ("pLastPrice", "lastPrice")
   , ("pStopLoss", "stopLoss")
+  , ("pLimit", "limit")
   ]
   ''Position
 
+initPosition :: Price -> Position
+initPosition p = Position p Nothing Nothing
+
+setLimits :: PortfolioConfig -> Position -> Position
+setLimits PortfolioConfig{pfDefaultLimit, pfDefaultStopLoss} position@Position{pLastPrice} =
+  position
+    & set stopLoss (Just $ pfDefaultStopLoss `scale` pLastPrice)
+    & set limit (Just $ pfDefaultLimit `scale` pLastPrice)
+
+-- | Whether the stop loss of the position has been triggered
 triggerStopLoss :: Position -> Bool
 triggerStopLoss Position{pStopLoss, pLastPrice} =
   maybe False (\sl -> sl > pLastPrice) pStopLoss
 
+-- | Whether the limit of the position has been triggered
 triggerLimit :: Position -> Bool
 triggerLimit Position{pLimit, pLastPrice} =
   maybe False (\l -> l < pLastPrice) pLimit
@@ -99,126 +160,112 @@ triggerLimit Position{pLimit, pLastPrice} =
 {-| Simulated portfolio for testing
 -}
 data Portfolio = Portfolio
-  { _positions  :: !(Map (PolicyId, AssetName) (Seq Position))
-  , _ada        :: !Lovelace
+  { _positions  :: !(Map (PolicyId, AssetName) Position)
   , _tradeCount :: !Int
   }
 
 makeLenses ''Portfolio
 
+-- | Create a buy order if it conforms with the portfolio configuration
+buyOrder :: PortfolioConfig -> Value -> Portfolio -> PolicyId -> AssetName -> Maybe BuyOrder
+buyOrder PortfolioConfig{pfMaxPositionSize, pfMinPositionSize} vl portfolio p a = do
+  let Lovelace totalAum          = aum vl portfolio
+      Lovelace currentAllocation = allocatedTo vl portfolio p a
+      maxAllocation = pfMaxPositionSize * fromIntegral totalAum
+      newPositionSize = Lovelace (floor (maxAllocation - fromIntegral currentAllocation))
+  guard (newPositionSize > 0)
+  guard (newPositionSize > pfMinPositionSize)
+  Position{pLastPrice} <- view (position p a) portfolio
+  guard (pLastPrice > 0)
+  let units = unitsOf newPositionSize pLastPrice
+  pure
+    BuyOrder
+      { buyCurrency = (p, a)
+      , buyQuantity = units
+      , buyPrice = pLastPrice
+      }
+
+-- TODO: don't need PricePoint in sellOrder
+
+sellOrder :: Value -> Portfolio -> PricePoint -> SellOrder
+sellOrder vl _portfolio (p, a, q, l) =
+  let currentSize = C.selectAsset vl (AssetId p a)
+      price = unitPrice q l
+      -- pos = view (position p a) portfolio
+  in SellOrder{sellCurrency = (p, a), sellQuantity = currentSize, sellPrice = price }
+
+-- | Update the portfolio with the price point
+updatePrice :: PortfolioConfig -> Value -> Portfolio -> PricePoint -> (Maybe SellOrder, Portfolio)
+updatePrice config vl portfolio (p, a, q, l) = flip runState portfolio $ do
+  let currentSize = C.selectAsset vl (AssetId p a)
+      price = unitPrice q l
+  pos <- use (position p a)
+  case pos of
+    -- first time we are seeing this currency, make a new position.
+    Nothing -> do
+      let pos' = initPosition price
+          pos'' = if currentSize > 0 then (setLimits config pos') else pos'
+      position p a .= Just pos''
+      pure Nothing
+    -- update the position
+    Just pos_
+      | currentSize > 0 && isJust (pStopLoss pos_) -> do
+          let pos' = updatePosition q l pos_
+          position p a .= Just pos'
+          if (triggerStopLoss pos' || triggerLimit pos')
+            then pure $ Just $ SellOrder{sellCurrency = (p, a), sellQuantity = currentSize, sellPrice = price }
+            else pure Nothing
+      | currentSize > 0 || isNothing (pStopLoss pos_) -> do
+          let pos' = updatePosition q l (setLimits config pos_)
+          position p a .= Just pos'
+          pure Nothing
+      | otherwise -> do
+          let pos' = initPosition price
+          position p a .= Just pos'
+          pure Nothing
+
 {-| Initialise the portfolio with the amount of Ada available for purchases
 -}
-emptyPortfolio :: Lovelace -> Portfolio
-emptyPortfolio _ada = Portfolio{_positions = mempty, _ada, _tradeCount = 0}
+emptyPortfolio :: Portfolio
+emptyPortfolio = Portfolio{_positions = mempty, _tradeCount = 0}
 
-{-| Distribution of assets priced in Ada
+{-| Distribution of non-Ada assets, priced in Ada
 -}
-distribution :: Portfolio -> Map AssetId Lovelace
-distribution Portfolio{_positions, _ada} =
-  let k ((pol, as), positions_) = ((AssetId pol as), (foldMap pLastPrice positions_))
-  in Map.fromList $ (AdaAssetId, _ada) : (k <$> Map.toList _positions)
+distribution ::
+  Value -- ^ Sum of all assets in the portfolio
+  -> Portfolio -- ^ List of positions and prices
+  -> Map AssetId Lovelace
+distribution value Portfolio{_positions} =
+  let getPrice assetId = maybe 0 pLastPrice (Map.lookup assetId _positions)
+      k (AssetId p a, quantity) = (AssetId p a, valueOf quantity (getPrice (p, a)))
+      k (AdaAssetId, Quantity quantity) = (AdaAssetId, Lovelace quantity)
+  in Map.fromList
+  $ fmap k (C.valueToList value)
 
-aum :: Portfolio -> Lovelace
-aum Portfolio{_positions, _ada} = _ada + foldMap (foldMap pLastPrice) _positions
+-- | Total "assets under management"
+aum :: Value -> Portfolio -> Lovelace
+aum vl pf = fold (distribution vl pf)
 
 {-| Lovelace amount allocated to the native asset
 -}
-allocatedTo :: PolicyId -> AssetName -> Portfolio -> Lovelace
-allocatedTo p a = maybe 0 (foldMap pLastPrice) . Map.lookup (p, a) . _positions
+allocatedTo :: Value -> Portfolio -> PolicyId -> AssetName -> Lovelace
+allocatedTo vl Portfolio{_positions} p a = fromMaybe 0 $ do
+  Position{pLastPrice} <- Map.lookup (p, a) _positions
+  let q = C.selectAsset vl (AssetId p a)
+  pure (valueOf q pLastPrice)
 
-{-| Price of one unit of the native token in Ada
--}
-unitPrice :: Quantity -> Lovelace -> Rational
-unitPrice (Quantity q) (Lovelace l) = l % q
-
-marketValue :: Rational -> Quantity -> Lovelace
-marketValue price (Quantity q) =
-  Lovelace $ floor $ fromIntegral q * price
-
-markToMarket :: Quantity -> Lovelace -> Position -> Position
-markToMarket q l p =
-  let oldVal = view lastPrice p
-      newVal = marketValue (unitPrice q l) (pQuantity p)
-      diff   = max 0 (newVal - oldVal)
+updatePosition :: Quantity -> Lovelace -> Position -> Position
+updatePosition q l p =
+  let oldPrice = view lastPrice p
+      newPrice = unitPrice q l
+      diff   = max 0 (newPrice - oldPrice)
   in p
-        & lastPrice .~ newVal
+        & lastPrice .~ newPrice
         -- update the stop loss (trailing stop loss)
         & over (stopLoss . _Just) (+ diff)
 
--- TODO: Wallet trade,
--- * pending positions:
---     - submitting an order returns a pair of TxIns. The first item is currently in the UTxO set. The second item is not in the UTxO set. When the second UTxO appears in the set, the order is complete. When the first UTxO disappears, the order is cancelled.
---     - watch the wallet's UTxOs until the TxIn appears, then mark the order as completed or cancelled.
-
--- TODO: Separate market pricing info from position (so that we don't need to change the position entries in the map)
-
-newtype SimulatedPortfolioT m a = SimulatedPortfolioT{ unSimulatedPortfolioT :: ReaderT PortfolioConfig (StateT Portfolio m) a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
-
-instance MonadLog m => MonadTrade (SimulatedPortfolioT m) where
-  update (policyId, assetName, q, l) = do
-    shouldSell <- SimulatedPortfolioT $ do
-      position policyId assetName . traversed %= markToMarket q l
-      stopLosses <- filter triggerStopLoss . toList <$> use (position policyId assetName)
-      limits <- filter triggerLimit . toList <$> use (position policyId assetName)
-      when (not $ null stopLosses) $ logInfoS $ "  Stop loss triggered for " <> show assetName
-      when (not $ null limits) $ logInfoS $ "  Limit triggered for " <> show assetName
-      return $ not $ null stopLosses && null limits
-    when shouldSell $ sell 1 (policyId, assetName, q, l)
-
-  buy confidence (pPolicyId, pAssetName, q, l) = SimulatedPortfolioT $ do
-    PortfolioConfig{pfDefaultLimit, pfDefaultStopLoss, pfMinPositionSize} <- ask
-    Lovelace maxPositionSize <- availableFunds pPolicyId pAssetName
-    let -- size of the position in Lovelace
-        actualPositionSize = confidence * fromIntegral maxPositionSize
-
-        unitsPurchased = actualPositionSize / unitPrice q l
-
-        purchasePrice = unitsPurchased * unitPrice q l
-
-        pStopLoss = Just (Lovelace $ round $ pfDefaultStopLoss * purchasePrice)
-
-        pLimit = Just (Lovelace $ round $ pfDefaultLimit * purchasePrice)
-
-        newPosition =
-          Position
-            { pPolicyId
-            , pAssetName
-            , pQuantity      = Quantity (floor unitsPurchased)
-            , pPurchasePrice = Lovelace (round purchasePrice)
-            , pLastPrice     = Lovelace (round purchasePrice)
-            , pStopLoss
-            , pLimit
-            }
-
-    Lovelace available <- use ada
-    if (available >= round purchasePrice)
-      then do
-        let p = Lovelace (round purchasePrice)
-        when (p >= pfMinPositionSize) $ do
-          position pPolicyId pAssetName %= (|> newPosition)
-          ada -= p
-          tradeCount += 1
-          logInfoS $ "BUY: " <> show (round @_ @Integer unitsPurchased) <> " " <> show pAssetName <> " for " <> formatAda p
-      else do
-        -- shouldn't happen!
-        logWarnS "WARNING: purchase price too high"
-
-  sell _ (policyId, assetName, q, l) = SimulatedPortfolioT $ do
-    pos <- use (position policyId assetName)
-    unless (Seq.null pos) $ do
-      let currentPrice = unitPrice q l
-          marketVal     = foldMap (marketValue currentPrice . pQuantity) pos
-          purchasePrice = foldMap pPurchasePrice pos
-
-      ada += marketVal
-      logInfoS (closePositionMsg assetName marketVal purchasePrice)
-      position policyId assetName .= Seq.empty
-      tradeCount += 1
-      get >>= printPortfolioInfo
-
-position :: PolicyId -> AssetName -> Lens' Portfolio (Seq Position)
-position p a = positions . at (p, a) . anon Seq.empty Seq.null
+position :: PolicyId -> AssetName -> Lens' Portfolio (Maybe Position)
+position p a = positions . at (p, a)
 
 formatAda :: Lovelace -> String
 formatAda (Lovelace v) = show (round @Double @Integer (fromIntegral v / (1_000_000 :: Double)))
@@ -233,30 +280,74 @@ closePositionMsg pAssetName (Lovelace marketPrice) (Lovelace purchasePrice) =
       <> mvAda
       <> " Ada (" <> show (round @Rational @Integer percChange) <> "%)"
 
-printPortfolioInfo :: (MonadLog m) => Portfolio -> m ()
-printPortfolioInfo p@Portfolio{_positions, _ada, _tradeCount}= do
-  let lvl = aum p
-      numPos = Map.size _positions
-  logInfoS $ "Portfolio value: " <> formatAda lvl <> " with " <> show numPos <> " native assets and " <> formatAda _ada <> " Ada in cash. Made " <> show _tradeCount <> " trades."
+printPortfolioInfo :: (MonadLog m) => Value -> Portfolio -> m ()
+printPortfolioInfo vl p@Portfolio{_positions, _tradeCount}= do
+  let lvl = aum vl p
+      numPos = pred (length $ C.valueToList vl)
+  logInfoS $ "Portfolio value: " <> formatAda lvl <> " with " <> show numPos <> " native assets and " <> formatAda (C.selectLovelace vl) <> " Ada in cash. Made " <> show _tradeCount <> " trades."
 
 {-| How much Ada we can spend on a particular asset, considering
 * the amount already invested in this asset
 * the available cash
 * the configuration in 'PortfolioConfig'
 -}
-availableFunds :: (MonadReader PortfolioConfig m, MonadState Portfolio m) => PolicyId -> AssetName -> m Lovelace
-availableFunds p a = do
-  PortfolioConfig{pfMaxPositionSize} <- ask
-  Lovelace totalLvl <- gets aum
-  Lovelace alloc    <- gets (allocatedTo p a)
-  Lovelace cash     <- use ada
-  let maxAvailable = pfMaxPositionSize * fromIntegral totalLvl
+availableFunds :: PortfolioConfig -> Value -> Portfolio -> PolicyId -> AssetName -> Lovelace
+availableFunds PortfolioConfig{pfMaxPositionSize} vl portfolio p a =
+  let Lovelace totalLvl = aum vl portfolio
+      Lovelace alloc    = allocatedTo vl portfolio p a
+      Lovelace cash     = C.selectLovelace vl
+      maxAvailable = pfMaxPositionSize * fromIntegral totalLvl
       remaining    = min cash (floor (max 0 (maxAvailable - fromIntegral alloc)))
-  pure (Lovelace remaining)
+  in  Lovelace remaining
 
-runSimulatedPortfolioT :: PortfolioConfig -> Portfolio -> SimulatedPortfolioT m a -> m (a, Portfolio)
+type Confidence = Double
+
+class Monad m => MonadTrade m where
+  update :: PricePoint -> m () -- ^ Update the positions with new pricing data
+  buy    :: Confidence -> PricePoint -> m ()
+  sell   :: Confidence -> PricePoint -> m ()
+
+newtype SimulatedPortfolioT m a = SimulatedPortfolioT{ unSimulatedPortfolioT :: ReaderT PortfolioConfig (StateT (Portfolio, Value) m) a }
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
+
+runSimulatedPortfolioT :: PortfolioConfig -> (Portfolio, Value) -> SimulatedPortfolioT m a -> m (a, (Portfolio, Value))
 runSimulatedPortfolioT config portfolio SimulatedPortfolioT{unSimulatedPortfolioT} =
   runStateT (runReaderT unSimulatedPortfolioT config ) portfolio
 
-execSimulatedPortfolioT :: Functor m => PortfolioConfig -> Portfolio -> SimulatedPortfolioT m a -> m Portfolio
+execSimulatedPortfolioT :: Functor m => PortfolioConfig -> (Portfolio, Value) -> SimulatedPortfolioT m a -> m (Portfolio, Value)
 execSimulatedPortfolioT config portfolio = fmap snd <$> runSimulatedPortfolioT config portfolio
+
+instance Monad m => MonadTrade (SimulatedPortfolioT m) where
+  update pricePoint = SimulatedPortfolioT $ do
+    (p, v) <- get
+    c <- ask
+    let (sellOrder', p') = updatePrice c v p pricePoint
+    put (p', v)
+    traverse_ applySellOrder sellOrder'
+
+  sell _confidence pricePoint = SimulatedPortfolioT $ do
+    (p, v) <- get
+    applySellOrder (sellOrder v p pricePoint)
+
+  buy _confidence (p, a, _, _) = SimulatedPortfolioT $ do
+    (portfolio, v) <- get
+    c <- ask
+    let order = buyOrder c v portfolio p a
+    traverse_ applyBuyOrder order
+
+
+applySellOrder :: MonadState (Portfolio, Value) m => SellOrder -> m ()
+applySellOrder SellOrder{sellCurrency, sellQuantity, sellPrice} = do
+  oldV <- use _2
+  let newV = oldV <> C.lovelaceToValue (valueOf sellQuantity sellPrice) <> C.negateValue (C.valueFromList [(uncurry C.AssetId sellCurrency, sellQuantity)])
+  when (all (\q -> q > 0) $ fmap snd $ C.valueToList newV) $ do
+    _2 .= newV
+    _1 . tradeCount += 1
+
+applyBuyOrder :: MonadState (Portfolio, Value) m => BuyOrder -> m ()
+applyBuyOrder BuyOrder{buyCurrency, buyQuantity, buyPrice} = do
+  oldV <- use _2
+  let newV = oldV <> C.negateValue (C.lovelaceToValue (valueOf buyQuantity buyPrice)) <> (C.valueFromList [(uncurry C.AssetId buyCurrency, buyQuantity)])
+  when (all (\q -> q > 0) $ fmap snd $ C.valueToList newV) $ do
+    _2 .= newV
+    _1 . tradeCount += 1
