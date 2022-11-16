@@ -62,3 +62,23 @@ library
       plutus-tx,
       cardano-binary -any,
       cardano-crypto-class -any
+
+test-suite convex-muesli-core-test
+  import: lang
+  type: exitcode-stdio-1.0
+  hs-source-dirs:     test
+  ghc-options: -threaded -rtsopts
+  main-is: Spec.hs
+  build-depends:
+    base >= 4.14.0,
+    tasty,
+    tasty-hunit,
+    lens,
+    convex-coin-selection,
+    convex-muesli-core,
+    convex-mockchain,
+    convex-base,
+    convex-wallet,
+    cardano-api >= 1.35.3,
+    plutus-ledger-api,
+    plutus-tx

@@ -16,6 +16,7 @@ module Convex.Wallet.Utxos(
   onlyAddress,
   removeUtxos,
   fromApiUtxo,
+  selectUtxo,
 
   -- * Changes to utxo sets
   UtxoChange(..),
@@ -45,7 +46,7 @@ import qualified Convex.Lenses                 as L
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
-import           Data.Maybe                    (isJust, mapMaybe)
+import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
@@ -59,6 +60,13 @@ makePrisms ''UtxoState
 
 fromApiUtxo :: UTxO BabbageEra -> UtxoState
 fromApiUtxo (UTxO x) = UtxoState x
+
+{-| Pick an unspent output from the 'UtxoState', if there is one.
+-}
+selectUtxo :: UtxoState -> Maybe (C.TxIn, C.TxOut C.CtxUTxO C.BabbageEra)
+selectUtxo =
+  -- sorting by key is pretty much a random order
+  listToMaybe . Map.toAscList . _utxos
 
 {-| Restrict the 'UtxoState' to outputs that only have Ada values (no native assets)
 -}
