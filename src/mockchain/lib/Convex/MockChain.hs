@@ -46,7 +46,7 @@ module Convex.MockChain(
   execMockchain0
   ) where
 
-import           Cardano.Api.Shelley                   (AddressInEra, NetworkId,
+import           Cardano.Api.Shelley                   (AddressInEra,
                                                         ShelleyLedgerEra,
                                                         SlotNo)
 import qualified Cardano.Api.Shelley                   as Cardano.Api
@@ -65,8 +65,8 @@ import           Cardano.Ledger.Alonzo.TxWitness       (RdmrPtr)
 import qualified Cardano.Ledger.Alonzo.TxWitness       as Alonzo
 import           Cardano.Ledger.Babbage.PParams        (PParams' (..))
 import           Cardano.Ledger.Babbage.Tx             (IsValid (..))
-import           Cardano.Ledger.BaseTypes              (Globals (..), ProtVer,
-                                                        epochInfo)
+import           Cardano.Ledger.BaseTypes              (Globals (systemStart),
+                                                        ProtVer, epochInfo)
 import qualified Cardano.Ledger.Core                   as Core
 import           Cardano.Ledger.Crypto                 (StandardCrypto)
 import           Cardano.Ledger.Era                    (Crypto, Era,
@@ -96,7 +96,7 @@ import           Control.Lens.TH                       (makeLensesFor,
 import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)
-import           Control.Monad.Reader                  (ReaderT, ask,
+import           Control.Monad.Reader                  (ReaderT, ask, asks,
                                                         runReaderT)
 import           Control.Monad.State                   (StateT, get, gets,
                                                         modify, put, runStateT)
@@ -107,10 +107,11 @@ import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.NodeParams                     (NodeParams (..))
-import           Convex.Wallet                         (Wallet, addressInEra)
+import           Convex.Wallet                         (Wallet, addressInEra,
+                                                        paymentCredential)
 import           Convex.Wallet.Utxos                   (UtxoState (..),
                                                         fromApiUtxo,
-                                                        onlyAddress)
+                                                        onlyCredential)
 import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))
 import           Data.Default                          (Default (def))
@@ -321,6 +322,11 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     Cardano.Api.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState . _1 . to (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage))
     let mp' = Map.restrictKeys mp txIns
     pure (Cardano.Api.UTxO mp')
+  queryProtocolParameters = MockchainT (asks npProtocolParameters)
+  queryStakePools = MockchainT (asks npStakePools)
+  networkId = MockchainT (asks npNetworkId)
+  querySystemStart = MockchainT (asks npSystemStart)
+  queryEraHistory = MockchainT (asks npEraHistory)
 
 instance Monad m => MonadMockchain (MockchainT m) where
   modifySlot f = MockchainT $ do
@@ -341,10 +347,11 @@ utxoState =
   let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxos)
   in modifyUtxo f
 
-{-| The wallet's transaction outputs
+{-| The wallet's transaction outputs on the mockchain
 -}
-walletUtxo :: MonadMockchain m => NetworkId -> Wallet -> m UtxoState
-walletUtxo networkId wallet = fmap (onlyAddress (addressInEra networkId wallet)) utxoState
+walletUtxo :: MonadMockchain m => Wallet -> m UtxoState
+walletUtxo wallet = do
+  fmap (onlyCredential (paymentCredential wallet)) utxoState
 
 {-| Run the 'MockchainT' action with the @NodeParams@ from an initial state
 -}

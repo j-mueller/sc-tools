@@ -16,8 +16,11 @@ module Convex.BuildTx(
   spendPlutusV2,
   mintPlutusV1,
   mintPlutusV2,
+  payToPlutusV2Inline,
+  addReference,
   addCollateral,
   assetValue,
+  setScriptsValid,
   -- * Minimum Ada deposit
   minAdaDeposit,
   setMinAdaDeposit,
@@ -88,6 +91,9 @@ mintPlutusV2 script redeemer assetName quantity =
 addCollateral :: C.TxIn -> TxBuild
 addCollateral i = over (L.txInsCollateral . L._TxInsCollateral) ((:) i)
 
+addReference :: C.TxIn -> TxBuild
+addReference i = over (L.txInsReference . L._TxInsReference) ((:) i)
+
 payToAddressTxOut :: C.AddressInEra C.BabbageEra -> C.Value -> C.TxOut C.CtxTx C.BabbageEra
 payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone C.ReferenceScriptNone
 
@@ -120,6 +126,13 @@ payToPlutusV2 network s datum vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 s)
       dt = C.fromPlutusData (Plutus.toData datum)
   in payToScriptHash network sh dt vl
+
+payToPlutusV2Inline :: C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> TxBuild
+payToPlutusV2Inline addr script vl =
+  let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone (C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script))
+  in over L.txOuts ((:) txo)
+
+-- TODO: Functions for building outputs (Output -> Output)
 
 setScriptsValid :: C.TxBodyContent v C.BabbageEra -> C.TxBodyContent v C.BabbageEra
 setScriptsValid = set L.txScriptValidity (C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid)

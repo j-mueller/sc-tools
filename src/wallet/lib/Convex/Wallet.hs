@@ -9,6 +9,7 @@
 module Convex.Wallet(
   Wallet(..),
   paymentCredential,
+  shelleyPaymentCredential,
   address,
   addressInEra,
   privateKey,
@@ -20,21 +21,24 @@ module Convex.Wallet(
   selectMixedInputsCovering
 ) where
 
-import           Cardano.Api         (Address, AddressInEra, IsShelleyBasedEra,
-                                      NetworkId, PaymentCredential, PaymentKey,
-                                      ShelleyAddr, SigningKey)
-import qualified Cardano.Api         as C
-import           Control.Lens        (_2, view)
-import qualified Convex.Lenses       as L
-import           Convex.Wallet.Utxos (UtxoState (..), onlyAda)
-import           Data.Aeson          (FromJSON (..), ToJSON (..), object,
-                                      withObject, (.:), (.=))
-import           Data.List           (find)
-import qualified Data.Map.Strict     as Map
-import           Data.Maybe          (mapMaybe)
-import qualified Data.Set            as Set
-import           Data.Text           (Text)
-import qualified Data.Text           as Text
+import           Cardano.Api               (Address, AddressInEra,
+                                            IsShelleyBasedEra, NetworkId,
+                                            PaymentCredential, PaymentKey,
+                                            ShelleyAddr, SigningKey)
+import qualified Cardano.Api               as C
+import qualified Cardano.Ledger.Credential as Shelley
+import           Cardano.Ledger.Crypto     (StandardCrypto)
+import           Control.Lens              (_2, preview, view)
+import qualified Convex.Lenses             as L
+import           Convex.Wallet.Utxos       (UtxoState (..), onlyAda)
+import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
+                                            withObject, (.:), (.=))
+import           Data.List                 (find)
+import qualified Data.Map.Strict           as Map
+import           Data.Maybe                (fromMaybe, mapMaybe)
+import qualified Data.Set                  as Set
+import           Data.Text                 (Text)
+import qualified Data.Text                 as Text
 
 newtype Wallet = Wallet { getWallet :: SigningKey PaymentKey }
 
@@ -57,6 +61,12 @@ paymentCredential :: Wallet -> PaymentCredential
 paymentCredential Wallet{getWallet} =
   let hsh = C.verificationKeyHash (C.getVerificationKey getWallet)
   in C.PaymentCredentialByKey hsh
+
+shelleyPaymentCredential :: Wallet -> Shelley.PaymentCredential StandardCrypto
+shelleyPaymentCredential =
+  fromMaybe (error "shelleyPaymentCredential: Expected ShelleyAddress in babbage era")
+  . preview (L._AddressInEra . L._Address . _2)
+  . addressInEra C.Mainnet
 
 {-| The address of the wallet
 -}

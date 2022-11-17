@@ -6,50 +6,44 @@
 {-|
 -}
 module Convex.TradingBot.Cli.Config(
-  ConfigMode(..),
-  Config(..),
-  ConfigError(..),
-  configParser,
-  mkTyped
+  BuyOrder(..),
+  buyOrderParser
 ) where
 
-import qualified Cardano.Api         as C
-import           Convex.Wallet       (Wallet (..))
-import qualified Convex.Wallet       as Wallet
-import           Data.Bifunctor      (Bifunctor (..))
-import qualified Data.Text           as Text
-import           Options.Applicative (Parser, help, long, strOption)
+import           Cardano.Api              (AssetName, Lovelace, PolicyId,
+                                           Quantity)
+import qualified Cardano.Api              as C
+import           Convex.Wallet.Cli.Config (ConfigField,
+                                           ConfigMode (..), ParseField (..),
+                                           ParseFields (..))
+import           Options.Applicative      (Parser, auto, help, long, option,
+                                           strOption)
 
-data ConfigMode = Str | Typed
-
-type family CliField t where
-  CliField 'Str = String
-  CliField 'Typed = Wallet
-
-data Config (m :: ConfigMode) =
-  Config
-    { cardanoNodeConfigFile :: FilePath
-    , cardanoNodeSocket     :: FilePath
-    , wallet                :: CliField m
+data BuyOrder (m :: ConfigMode) =
+  BuyOrder
+    { policyId  :: ConfigField m PolicyId
+    , assetName :: ConfigField m AssetName
+    , quantity  :: Quantity
+    , lovelace  :: Lovelace
     }
 
-deriving stock instance Eq (Config 'Str)
-deriving stock instance Ord (Config 'Str)
-deriving stock instance Show (Config 'Str)
-deriving stock instance Show (Config 'Typed)
+deriving stock instance Eq (BuyOrder 'Str)
+deriving stock instance Ord (BuyOrder 'Str)
+deriving stock instance Show (BuyOrder 'Str)
+deriving stock instance Show (BuyOrder 'Typed)
 
-configParser :: Parser (Config 'Str)
-configParser =
-  Config
-    <$> strOption (long "node-config" <> help "Cardano node config JSON file")
-    <*> strOption (long "node-socket" <> help "Cardano node socket")
-    <*> strOption (long "wallet-key" <> help "Serialised private key of the wallet")
+buyOrderParser :: Parser (BuyOrder 'Str)
+buyOrderParser =
+  BuyOrder
+    <$> strOption (long "policy-id" <> help "Policy ID (hex) of the native currency")
+    <*> strOption (long "asset-name" <> help "Asset name (hex) of the native currency")
+    <*> fmap C.Quantity (option auto (long "quantity" <> help "Amount of units of the native currency"))
+    <*> fmap C.Lovelace (option auto (long "lovelace" <> help "Price in lovelace"))
 
-data ConfigError =
-  ParseKeyError C.Bech32DecodeError
-  deriving Show
-
-mkTyped :: Config 'Str -> Either ConfigError (Config 'Typed)
-mkTyped Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} = do
-  key <- first ParseKeyError (Wallet.parse (Text.pack wallet))
-  pure Config{cardanoNodeSocket, cardanoNodeConfigFile, wallet = key}
+instance ParseFields BuyOrder where
+  parseFields BuyOrder{policyId, assetName, quantity, lovelace} =
+    BuyOrder
+      <$> parseField policyId
+      <*> parseField assetName
+      <*> pure quantity
+      <*> pure lovelace

@@ -1,7 +1,9 @@
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE ViewPatterns   #-}
+{-# LANGUAGE NamedFieldPuns    #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns      #-}
 module Convex.TradingBot.LPPoolEvent(
   LPPoolEvent(..),
+  OrderbookEvent(..),
   extract
 ) where
 
@@ -19,8 +21,15 @@ data LPPoolEvent =
     , lpeNativeTokenAmount :: !Quantity
     }
 
-extract :: C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe LPPoolEvent
+data OrderbookEvent =
+  OrderbookEvent
+
+extract :: C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe (Either LPPoolEvent OrderbookEvent)
 extract out sh = case Muesli.getPoolScript out sh of
   Just (Right (Muesli.adaPair -> Just (lpePolicyId, lpeAssetName), Just (lpeLovelace, lpeNativeTokenAmount))) ->
-    Just LPPoolEvent{lpePolicyId, lpeAssetName, lpeLovelace, lpeNativeTokenAmount}
-  _ -> Nothing
+    Just (Left LPPoolEvent{lpePolicyId, lpeAssetName, lpeLovelace, lpeNativeTokenAmount})
+  _ | sh == orderbookScriptHash -> Just (Right OrderbookEvent)
+    | otherwise -> Nothing
+
+orderbookScriptHash :: C.ScriptHash
+orderbookScriptHash = "00fb107bfbd51b3a5638867d3688e986ba38ff34fb738f5bd42b20d5"

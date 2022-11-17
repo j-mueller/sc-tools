@@ -34,6 +34,7 @@ library
       Convex.Wallet.Cli.Config
       Convex.Wallet.MockWallet
       Convex.Wallet.NodeClient
+      Convex.Wallet.NodeClient.BalanceClient
       Convex.Wallet.Utxos
     hs-source-dirs: lib
     build-depends:
@@ -46,7 +47,8 @@ library
       aeson,
       transformers,
       optparse-applicative,
-      mtl
+      mtl,
+      katip
 
     -- cardano dependencies
     build-depends:

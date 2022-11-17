@@ -6,8 +6,7 @@ module Convex.Wallet.Cli.Command(
   commandParser
   ) where
 
-import           Convex.Wallet.Cli.Config (Config, ConfigMode (..),
-                                           configParser)
+import           Convex.Wallet.Cli.Config (Config, ConfigMode (..), configParser)
 import           Options.Applicative      (CommandFields, Mod, Parser, command,
                                            fullDesc, info, progDesc, subparser)
 

@@ -10,12 +10,13 @@ import           Control.Monad.IO.Class        (MonadIO (..))
 import           Control.Monad.Trans.Except    (runExceptT)
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
                                                 logInfoS, logWarnS)
-import           Convex.NodeClient.Types       (runNodeClient)
+import           Convex.NodeClient.Types       (runNodeClient, loadConnectInfo)
 import           Convex.TradingBot.Cli.Command (CliCommand (..), commandParser)
-import           Convex.TradingBot.Cli.Config  (Config (..), ConfigMode (..))
-import qualified Convex.TradingBot.Cli.Config  as Config
+import           Convex.TradingBot.Cli.Config  (BuyOrder(..))
 import qualified Convex.TradingBot.NodeClient  as NC
 import           Convex.TradingBot.Portfolio   (Portfolio, printPortfolioInfo)
+import           Convex.Wallet.Cli.Config      (Config (..), ConfigMode (..), ParseFields(..))
+import           Control.Monad.Except       (MonadError (..))
 import qualified Data.Text                     as Text
 import qualified Katip                         as K
 import           Options.Applicative           (customExecParser, disambiguate,
@@ -34,9 +35,17 @@ runMain = do
     command <- liftIO (customExecParser
                         (prefs $ disambiguate <> showHelpOnEmpty <> showHelpOnError)
                         (info (helper <*> commandParser) idm))
-    case command of
-      StartMatcher config ->
-        getConfig config >>= runBacktest initLogEnv >>= uncurry (flip printPortfolioInfo)
+    result <- runExceptT $ do
+      case command of
+        StartMatcher config ->
+          mkTyped config >>= runBacktest initLogEnv >>= uncurry (flip printPortfolioInfo)
+        Buy config order   ->
+          (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeBuyOrder le)
+    case result of
+      Left err -> do
+        logWarnS "Error in runMain"
+        logWarnS (Text.unpack $ C.renderInitialLedgerStateError err)
+      Right () -> pure ()
 
 runBacktest :: (MonadLog m, MonadIO m) => K.LogEnv -> Config 'Typed -> m (Portfolio, C.Value)
 runBacktest logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = do
@@ -58,9 +67,20 @@ runBacktest logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = do
       logInfoS "Backtesting finished"
       liftIO (STM.atomically (STM.takeTMVar tv))
 
-getConfig :: MonadIO m => Config 'Str -> m (Config 'Typed)
-getConfig c = case Config.mkTyped c of
-  Left err -> liftIO $ do
-    putStrLn (show err)
-    exitFailure
+executeBuyOrder ::  (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> BuyOrder 'Typed -> m ()
+executeBuyOrder logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} order = do
+  (info_, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket
+  let client _ env = do
+        pure (NC.orderClient info_ logEnv "order" wallet order env)
+  logInfoS "Processing BUY order"
+  result <- liftIO $ runExceptT (runNodeClient cardanoNodeConfigFile cardanoNodeSocket client)
+  case result of
+    Left err -> throwError err
+    Right () -> pure ()
+
+mkTyped :: (ParseFields c, MonadIO m, MonadLog m) => c 'Str -> m (c 'Typed)
+mkTyped c = case parseFields c of
+  Left err -> do
+    logWarnS (show err)
+    liftIO exitFailure
   Right k -> pure k

@@ -15,6 +15,7 @@ import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (ReaderT (..), lift)
 import           Control.Monad.State        (StateT (..))
 import qualified Control.Monad.State.Strict as State.Strict
+import           Control.Monad.Trans.Except (ExceptT (..))
 import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import           Data.String                (IsString (..))
 import           Data.Void                  (Void)
@@ -41,6 +42,10 @@ instance MonadLog m => MonadLog (MaybeT m) where
   logWarn' = lift . logWarn'
 
 instance MonadLog m => MonadLog (State.Strict.StateT s m) where
+  logInfo' = lift . logInfo'
+  logWarn' = lift . logWarn'
+
+instance MonadLog m => MonadLog (ExceptT e m) where
   logInfo' = lift . logInfo'
   logWarn' = lift . logWarn'
 

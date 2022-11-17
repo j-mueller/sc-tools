@@ -44,7 +44,8 @@ library
     build-depends:
       cardano-api >= 1.35.3,
       cardano-ledger-core -any,
-      plutus-ledger-api
+      plutus-ledger-api,
+      cardano-slotting
 
 test-suite convex-coin-selection-test
   import: lang

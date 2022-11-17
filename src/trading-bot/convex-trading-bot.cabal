@@ -34,6 +34,8 @@ library
       Convex.TradingBot.Cli
       Convex.TradingBot.LPPoolEvent
       Convex.TradingBot.NodeClient
+      Convex.TradingBot.NodeClient.BacktestingClient
+      Convex.TradingBot.NodeClient.OrderClient
       Convex.TradingBot.Portfolio
       Convex.TradingBot.Prices
       Convex.TradingBot.Rules
@@ -48,6 +50,7 @@ library
       convex-node-client,
       convex-wallet,
       convex-muesli-core,
+      convex-coin-selection,
       transformers,
       optparse-applicative,
       mtl,

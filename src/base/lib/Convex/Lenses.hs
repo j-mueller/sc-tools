@@ -10,15 +10,19 @@ module Convex.Lenses(
   emptyTx,
   TxIn,
   txIns,
+  txInsReference,
   txOuts,
   txMintValue,
   txFee,
   txFee',
+  txMetadata,
   txProtocolParams,
   txInsCollateral,
   txScriptValidity,
+
   -- * Prisms and Isos
   _TxMintValue,
+  _TxInsReference,
   _Value,
   _TxOut,
   _TxOutValue,
@@ -28,6 +32,7 @@ module Convex.Lenses(
   _PaymentCredentialByScript,
   _ShelleyPaymentCredentialByScript,
   _TxInsCollateral,
+  _TxMetadata,
 
   -- ** Witnesses
   _KeyWitness,
@@ -40,7 +45,11 @@ module Convex.Lenses(
   -- * Ledger API types
   slot,
   _UTxOState,
-  utxoState
+  utxoState,
+
+  -- * Addresses
+  _AddressInEra,
+  _Address
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
@@ -51,7 +60,8 @@ import           Cardano.Api                        (AddressInEra, AssetId,
                                                      TxOut, TxOutDatum,
                                                      TxOutValue, Value, ViewTx,
                                                      WitCtxMint)
-import           Cardano.Api.Shelley                (ReferenceScript, SlotNo)
+import           Cardano.Api.Shelley                (Address, ReferenceScript,
+                                                     ShelleyAddr, SlotNo)
 import qualified Cardano.Api.Shelley                as C
 import qualified Cardano.Ledger.BaseTypes           as Shelley
 import qualified Cardano.Ledger.Core                as Core
@@ -69,6 +79,7 @@ import           Control.Lens                       (Iso', Lens', Prism', iso,
 import           Control.State.Transition           (STS (State))
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
+import           Data.Word                          (Word64)
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 -}
@@ -100,6 +111,11 @@ txIns :: Lens' (C.TxBodyContent v BabbageEra) [TxIn v]
 txIns = lens get set_ where
   get = C.txIns
   set_ body txIns' = body{C.txIns=txIns'}
+
+txInsReference :: Lens' (C.TxBodyContent v BabbageEra) (C.TxInsReference v BabbageEra)
+txInsReference = lens get set_ where
+  get = C.txInsReference
+  set_ body txInsRef' = body{C.txInsReference = txInsRef'}
 
 -- Lenses for working with cardano-api transactions
 txOuts :: Lens' (C.TxBodyContent v BabbageEra) [TxOut CtxTx BabbageEra]
@@ -138,6 +154,20 @@ txInsCollateral = lens get set_ where
   get = C.txInsCollateral
   set_ body col = body{C.txInsCollateral = col}
 
+txMetadata :: Lens' (C.TxBodyContent v BabbageEra) (C.TxMetadataInEra BabbageEra)
+txMetadata = lens get set_ where
+  get = C.txMetadata
+  set_ body m = body{C.txMetadata=m}
+
+_TxMetadata :: Iso' (C.TxMetadataInEra BabbageEra) (Map Word64 C.TxMetadataValue)
+_TxMetadata = iso from to where
+  from :: C.TxMetadataInEra BabbageEra -> (Map Word64 C.TxMetadataValue)
+  from = \case
+    C.TxMetadataNone                     -> Map.empty
+    C.TxMetadataInEra _ (C.TxMetadata m) -> m
+  to m | Map.null m = C.TxMetadataNone
+       | otherwise  = C.TxMetadataInEra C.TxMetadataInBabbageEra (C.TxMetadata m)
+
 _TxInsCollateral :: Iso' (C.TxInsCollateral BabbageEra) [C.TxIn]
 _TxInsCollateral = iso from to where
   from :: C.TxInsCollateral BabbageEra -> [C.TxIn]
@@ -157,6 +187,17 @@ _TxMintValue = iso from to where
   to (vl, mp)
     | Map.null mp && vl == mempty = C.TxMintNone
     | otherwise                   = C.TxMintValue C.MultiAssetInBabbageEra vl (C.BuildTxWith mp)
+
+_TxInsReference :: Iso' (C.TxInsReference build BabbageEra) [C.TxIn]
+_TxInsReference = iso from to where
+  from :: C.TxInsReference build BabbageEra -> [C.TxIn]
+  from = \case
+    C.TxInsReferenceNone   -> []
+    C.TxInsReference _ ins -> ins
+  to = \case
+    [] -> C.TxInsReferenceNone
+    xs -> C.TxInsReference C.ReferenceTxInsScriptsInlineDatumsInBabbageEra xs
+
 
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to where
@@ -253,3 +294,16 @@ utxoState :: Lens' (LedgerState era) (UTxOState era)
 utxoState = lens get set_ where
   get = lsUTxOState
   set_ l s = l{lsUTxOState=s}
+
+_AddressInEra :: Prism' (AddressInEra BabbageEra) (Address ShelleyAddr)
+_AddressInEra = prism' from to where
+  to :: AddressInEra BabbageEra -> Maybe (Address ShelleyAddr)
+  to (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr) = Just addr
+  to _ = Nothing
+  from = C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage)
+
+_Address :: Iso' (Address ShelleyAddr) (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+_Address = iso from to where
+  from :: Address ShelleyAddr -> (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+  from (C.ShelleyAddress n p s) = (n, p, s)
+  to (n, p, s) = C.ShelleyAddress n p s

@@ -55,4 +55,6 @@ library
       cardano-ledger-babbage,
       cardano-ledger-alonzo,
       ouroboros-consensus-shelley,
-      plutus-ledger-api
+      plutus-ledger-api,
+      ouroboros-network,
+      cardano-slotting

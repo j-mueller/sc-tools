@@ -12,6 +12,7 @@ module Convex.TradingBot.Stats(
   -- * Output counts
   OutputCount(..),
   numLPPools,
+  numOrderBookOutputs,
 
   -- * Script counts
   ScriptCount(..),
@@ -24,13 +25,16 @@ import           Control.Lens                  (makeLenses, over, (&), (.~))
 import           Convex.Event                  (Event (..), NewOutputEvent (..),
                                                 OutputSpentEvent (..),
                                                 ResolvedInputs (..))
-import           Convex.TradingBot.LPPoolEvent (LPPoolEvent (..))
+import           Convex.TradingBot.LPPoolEvent (LPPoolEvent (..),
+                                                OrderbookEvent)
+import           Data.Either                   (isRight)
 import           Data.List                     (intercalate)
 import qualified Data.Map                      as Map
 
 data ScriptCount =
   ScriptCount
-    { _poolEvents           :: !Int
+    { _poolEvents      :: !Int
+    , _orderBookEvents :: !Int
     }
 
 makeLenses ''ScriptCount
@@ -39,14 +43,16 @@ instance Semigroup ScriptCount where
   l <> r =
     ScriptCount
       { _poolEvents = _poolEvents l + _poolEvents r
+      , _orderBookEvents = _orderBookEvents l + _orderBookEvents r
       }
 
 instance Monoid ScriptCount where
-  mempty = ScriptCount 0
+  mempty = ScriptCount 0 9
 
 data OutputCount =
   OutputCount
-    { _numLPPools :: !Int
+    { _numLPPools          :: !Int
+    , _numOrderBookOutputs :: !Int
     }
 
 makeLenses ''OutputCount
@@ -74,22 +80,25 @@ instance Semigroup LPStats where
 instance Monoid LPStats where
   mempty = LPStats mempty mempty mempty
 
-fromScriptType :: LPPoolEvent -> ScriptCount
+fromScriptType :: (Either LPPoolEvent OrderbookEvent) -> ScriptCount
 fromScriptType st =
   let l = case st of
-            LPPoolEvent{}     -> poolEvents
+            Left LPPoolEvent{} -> poolEvents
+            Right _            -> orderBookEvents
   in mempty & over l succ
 
-fromEvent :: Event LPPoolEvent -> LPStats
+fromEvent :: Event (Either LPPoolEvent OrderbookEvent) -> LPStats
 fromEvent = \case
   AnOutputSpentEvent OutputSpentEvent{oseTxOutput=NewOutputEvent{neEvent}} ->
     mempty & outputsSpent .~ fromScriptType neEvent
   ANewOutputEvent NewOutputEvent{neEvent} ->
     mempty & outputsCreated .~ fromScriptType neEvent
 
-fromResolvedInputs :: ResolvedInputs LPPoolEvent -> LPStats
+fromResolvedInputs :: ResolvedInputs (Either LPPoolEvent OrderbookEvent) -> LPStats
 fromResolvedInputs (ResolvedInputs mp) =
-  mempty & outputCount .~ Just (OutputCount $ Map.size mp)
+  let (lp, orderBook) = Map.partition (isRight . neEvent) mp
+  in mempty
+      & outputCount .~ Just (OutputCount (Map.size lp) (Map.size orderBook))
 
 prettyCount :: ScriptCount -> String
 prettyCount ScriptCount{_poolEvents} =
@@ -104,7 +113,7 @@ prettyStats LPStats{_outputsCreated, _outputsSpent, _outputCount} =
   let x1 = prettyCount _outputsCreated
       x2 = prettyCount _outputsCreated
       x3 = case _outputCount of
-            Just (OutputCount i) | i > 0 -> show i
+            Just (OutputCount i j) | i+j > 0 -> "LPs: " <> show i <> ", orders: " <> show j
             _                            -> ""
   in intercalate ", "
       $ fmap (\(n, s) -> unwords [n, s])

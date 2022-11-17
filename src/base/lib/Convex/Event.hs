@@ -71,7 +71,7 @@ type Extract a = C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe a
 data Event a =
   AnOutputSpentEvent !(OutputSpentEvent a)
   | ANewOutputEvent !(NewOutputEvent a)
-  deriving stock (Eq, Show, Generic)
+  deriving stock (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 {-| A transaction annotated with events extracted from it.
 -}
@@ -81,7 +81,7 @@ data TxWithEvents a =
     , twEvents :: !(NonEmpty (Event a))
     , twBlock  :: !BlockNo
     , twSlot   :: !SlotNo
-    } deriving stock (Eq, Show, Generic)
+    } deriving stock (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 splitEvent :: Event a -> Either (OutputSpentEvent a) (NewOutputEvent a)
 splitEvent = \case
@@ -92,9 +92,10 @@ data OutputSpentEvent a =
   OutputSpentEvent
       { oseTxIn       :: !TxIn
       , oseRedeemer   :: !(Data StandardBabbage)
+      , oseDatum      :: !(Data StandardBabbage)
       , oseSpendingTx :: !TxId
       , oseTxOutput   :: !(NewOutputEvent a)
-      } deriving stock (Eq, Show, Generic)
+      } deriving stock (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 data NewOutputEvent a =
   NewOutputEvent
@@ -109,7 +110,7 @@ data NewOutputEvent a =
     , neDataHash    :: !ScriptOutDataHash
     , neSigners     :: ![KeyHash 'Witness StandardCrypto]
     , neTxMetadata  :: !(Map Word64 Metadatum)
-    } deriving stock (Eq, Show, Generic)
+    } deriving stock (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 {-| The 'TxIn' of the new output
 -}
@@ -190,7 +191,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
       outputSpentEvents =
         -- there should always be a redeemer
         -- because we only look at inputs that spend script outputs
-        fmap (\(idx, oseTxIn, oseTxOutput) -> maybe (error $ "outputSpentEvents: Redeemer not found: " <> show idx) (\(oseRedeemer, _) -> OutputSpentEvent{oseTxIn, oseTxOutput, oseRedeemer, oseSpendingTx=txId}) $ Map.lookup (TxWitness.RdmrPtr Scripts.Spend idx) txReds)
+        fmap (\(idx, oseTxIn, oseTxOutput) -> maybe (error $ "outputSpentEvents: Redeemer or datum not found: " <> show idx) (\((oseRedeemer, _), oseDatum) -> OutputSpentEvent{oseTxIn, oseTxOutput, oseRedeemer, oseDatum, oseSpendingTx=txId}) $ ((,) <$> Map.lookup (TxWitness.RdmrPtr Scripts.Spend idx) txReds) <*> Map.lookup (neDataHash oseTxOutput) txDats)
         $ mapMaybe (\(idx, oseTxIn) -> fmap (idx, oseTxIn,) $ Map.lookup oseTxIn resolvedInputs)
         $ zip [0..]
         $ fmap (uncurry TxIn . first CS.fromShelleyTxId . second txIx . (\(CT.TxIn i n) -> (i, n)))
