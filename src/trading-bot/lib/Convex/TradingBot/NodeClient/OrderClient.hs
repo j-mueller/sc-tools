@@ -13,7 +13,7 @@ import           Cardano.Api                  (BlockInMode, CardanoMode, Env,
 import qualified Cardano.Api                  as C
 import           Control.Applicative          (Alternative (..))
 import           Control.Lens                 (_3, preview, set, (&))
-import           Control.Monad                (when)
+import           Control.Monad                (void, when)
 import           Control.Monad.Trans.Maybe    (runMaybeT)
 import           Convex.Class                 (runMonadBlockchainCardanoNodeT,
                                                sendTx)
@@ -29,7 +29,7 @@ import           Convex.NodeClient.Fold       (CatchingUp (..), catchingUp,
 import           Convex.NodeClient.Resuming   (resumingClient)
 import           Convex.NodeClient.Types      (PipelinedLedgerStateClient)
 import           Convex.TradingBot.Cli.Config (BuyOrder (..))
-import           Convex.Utxos                 (UtxoState, apply)
+import           Convex.Utxos                 (UtxoSet, apply)
 import qualified Convex.Utxos                 as Utxos
 import           Convex.Wallet                (Wallet)
 import qualified Convex.Wallet                as Wallet
@@ -45,13 +45,13 @@ orderClient info logEnv ns wallet order env = do
       env
       (applyBlock info logEnv ns wallet order)
 
-applyBlock :: LocalNodeConnectInfo CardanoMode -> K.LogEnv -> K.Namespace -> Wallet -> BuyOrder 'Typed -> CatchingUp -> UtxoState -> BlockInMode CardanoMode -> IO (Maybe UtxoState)
+applyBlock :: LocalNodeConnectInfo CardanoMode -> K.LogEnv -> K.Namespace -> Wallet -> BuyOrder 'Typed -> CatchingUp -> UtxoSet -> BlockInMode CardanoMode -> IO (Maybe UtxoSet)
 applyBlock info@C.LocalNodeConnectInfo{C.localNodeNetworkId} logEnv ns wallet order (catchingUp -> isCatchingUp) state block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
   let change = Utxos.extract (Wallet.shelleyPaymentCredential wallet) state block
       newState = apply state change
 
   when (not isCatchingUp) $ do
-    runMonadBlockchainCardanoNodeT info $ do
+    void $ runMonadBlockchainCardanoNodeT info $ do
       logInfoS $ "Placing order: " <> show order
       let addr = Wallet.addressInEra localNodeNetworkId wallet & set (L._AddressInEra . L._Address . _3) namiStakeRef
       let tx = BuildTx.buyOrder localNodeNetworkId (convBuyOrder addr order) emptyTx

@@ -18,7 +18,7 @@ module Convex.MockChain(
   env,
   poolState,
   transactions,
-  utxoState,
+  utxoSet,
   walletUtxo,
   -- * Transaction validation
   ExUnitsError(..),
@@ -107,7 +107,7 @@ import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.NodeParams                     (NodeParams (..))
-import           Convex.Utxos                          (UtxoState (..),
+import           Convex.Utxos                          (UtxoSet (..),
                                                         fromApiUtxo,
                                                         onlyCredential)
 import           Convex.Wallet                         (Wallet, addressInEra,
@@ -342,16 +342,16 @@ instance Monad m => MonadMockchain (MockchainT m) where
 
 {-| All transaction outputs
 -}
-utxoState :: MonadMockchain m => m UtxoState
-utxoState =
+utxoSet :: MonadMockchain m => m UtxoSet
+utxoSet =
   let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain
 -}
-walletUtxo :: MonadMockchain m => Wallet -> m UtxoState
+walletUtxo :: MonadMockchain m => Wallet -> m UtxoSet
 walletUtxo wallet = do
-  fmap (onlyCredential (paymentCredential wallet)) utxoState
+  fmap (onlyCredential (paymentCredential wallet)) utxoSet
 
 {-| Run the 'MockchainT' action with the @NodeParams@ from an initial state
 -}

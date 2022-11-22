@@ -14,7 +14,7 @@ import           Convex.MonadLog            (MonadLogKatipT (..), logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient')
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
-import           Convex.Utxos               (UtxoChange, UtxoState, apply)
+import           Convex.Utxos               (UtxoChange, UtxoSet, apply)
 import qualified Convex.Utxos               as Utxos
 import           Convex.Wallet              (Wallet)
 import qualified Convex.Wallet              as Wallet
@@ -32,7 +32,7 @@ balanceClient logEnv ns wallet env =
 
 {-| Apply a new block
 -}
-applyBlock :: K.LogEnv -> K.Namespace -> Wallet -> CatchingUp -> UtxoState -> BlockInMode CardanoMode -> IO (Maybe (UtxoChange, UtxoState))
+applyBlock :: K.LogEnv -> K.Namespace -> Wallet -> CatchingUp -> UtxoSet -> BlockInMode CardanoMode -> IO (Maybe (UtxoChange, UtxoSet))
 applyBlock logEnv ns wallet _catchingUp state block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
   let change = Utxos.extract (Wallet.shelleyPaymentCredential wallet) state block
       newState = apply state change
@@ -44,7 +44,7 @@ applyBlock logEnv ns wallet _catchingUp state block = K.runKatipContextT logEnv 
 
 {-| Roll back to an earlier state
 -}
-rollback :: K.LogEnv -> K.Namespace -> ChainPoint -> UtxoChange -> UtxoState -> IO (UtxoChange, UtxoState)
+rollback :: K.LogEnv -> K.Namespace -> ChainPoint -> UtxoChange -> UtxoSet -> IO (UtxoChange, UtxoSet)
 rollback logEnv ns _chainPoint rolledBackChange oldState = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ do
   let rolledBack = Utxos.inv rolledBackChange
       newState = apply oldState rolledBack

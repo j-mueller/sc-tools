@@ -9,8 +9,8 @@
 {-# LANGUAGE ViewPatterns       #-}
 module Convex.Utxos(
   -- * Utxo sets
-  UtxoState(..),
-  _UtxoState,
+  UtxoSet(..),
+  _UtxoSet,
   totalBalance,
   partition,
   onlyAda,
@@ -69,65 +69,73 @@ import           Prettyprinter                 (Doc, Pretty (..), fill, hang,
 
 type AddressCredential = Shelley.PaymentCredential StandardCrypto
 
-newtype UtxoState = UtxoState{ _utxos :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra) }
+{-| A set of unspent transaction outputs
+-}
+newtype UtxoSet = UtxoSet{ _utxos :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra) }
   deriving stock (Eq, Show)
   deriving newtype (Semigroup, Monoid)
 
-makePrisms ''UtxoState
+makePrisms ''UtxoSet
 
-fromApiUtxo :: UTxO BabbageEra -> UtxoState
-fromApiUtxo (UTxO x) = UtxoState x
-
-{-| Pick an unspent output from the 'UtxoState', if there is one.
+{-| Convert a @cardano-api@ 'UTxO BabbageEra' to a utxo set
 -}
-selectUtxo :: UtxoState -> Maybe (C.TxIn, C.TxOut C.CtxUTxO C.BabbageEra)
+fromApiUtxo :: UTxO BabbageEra -> UtxoSet
+fromApiUtxo (UTxO x) = UtxoSet x
+
+{-| Pick an unspent output from the 'UtxoSet', if there is one.
+-}
+selectUtxo :: UtxoSet -> Maybe (C.TxIn, C.TxOut C.CtxUTxO C.BabbageEra)
 selectUtxo =
   -- sorting by key is pretty much a random order
   listToMaybe . Map.toAscList . _utxos
 
-{-| Restrict the 'UtxoState' to outputs that only have Ada values (no native assets)
+{-| Restrict the 'UtxoSet' to outputs that only have Ada values (no native assets)
 -}
-onlyAda :: UtxoState -> UtxoState
+onlyAda :: UtxoSet -> UtxoSet
 onlyAda =
   let flt = isJust . C.valueToLovelace . view (L._TxOut . _2 . L._TxOutValue)
   in fst . partition flt
 
-{-| Partition the UtxoState according to a predicate. The first UtxoState contains all
+{-| Partition the UtxoSet according to a predicate. The first UtxoSet contains all
 utxos that satisfy the predicate, the second all utxos that fail the predicate.
 -}
-partition :: (C.TxOut C.CtxUTxO C.BabbageEra -> Bool) -> UtxoState -> (UtxoState, UtxoState)
-partition p (UtxoState s) =
-  bimap UtxoState UtxoState (Map.partition p s)
+partition :: (C.TxOut C.CtxUTxO C.BabbageEra -> Bool) -> UtxoSet -> (UtxoSet, UtxoSet)
+partition p (UtxoSet s) =
+  bimap UtxoSet UtxoSet (Map.partition p s)
 
-{-| Restrict the 'UtxoState' to outputs at the address
+{-| Restrict the 'UtxoSet' to outputs at the address
 -}
-onlyAddress :: AddressInEra BabbageEra -> UtxoState -> UtxoState
+onlyAddress :: AddressInEra BabbageEra -> UtxoSet -> UtxoSet
 onlyAddress addr =
   let flt = (==) addr . view (L._TxOut . _1)
   in fst . partition flt
 
-onlyCredential :: PaymentCredential -> UtxoState -> UtxoState
+{-| Restrict the utxo set to outputs with the given payment credential
+-}
+onlyCredential :: PaymentCredential -> UtxoSet -> UtxoSet
 onlyCredential c =
   let flt (fmap CS.fromShelleyPaymentCredential . preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2) -> k) = k == Just c
   in fst . partition flt
 
-{-| Restrict the 'UtxoState' to public key outputs
+{-| Restrict the 'UtxoSet' to public key outputs
 -}
-onlyPubKey :: UtxoState -> UtxoState
+onlyPubKey :: UtxoSet -> UtxoSet
 onlyPubKey =
   let flt = isJust . preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)
   in fst . partition flt
 
 {-| The combined 'Value' of all outputs in the set
 -}
-totalBalance :: UtxoState -> Value
+totalBalance :: UtxoSet -> Value
 totalBalance = foldMap (view (L._TxOut . _2 . L._TxOutValue)) . _utxos
 
-{-| Delete some outputs from the 'UtxoState'
+{-| Delete some outputs from the 'UtxoSet'
 -}
-removeUtxos :: Set.Set C.TxIn -> UtxoState -> UtxoState
-removeUtxos ins = over _UtxoState (flip Map.withoutKeys ins)
+removeUtxos :: Set.Set C.TxIn -> UtxoSet -> UtxoSet
+removeUtxos ins = over _UtxoSet (flip Map.withoutKeys ins)
 
+{-| A change to the UTxO set, adding and/or removing UTxOs
+-}
 data UtxoChange =
   UtxoChange
     { _outputsAdded   :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra)
@@ -147,10 +155,12 @@ instance Semigroup UtxoChange where
 instance Monoid UtxoChange where
   mempty = UtxoChange mempty mempty
 
+{-| Is this the empty 'UtxoChange'?
+-}
 null :: UtxoChange -> Bool
 null UtxoChange{_outputsAdded, _outputsRemoved} = Map.null _outputsAdded && Map.null _outputsRemoved
 
-{-| A type capturing the effect a transaction has on the total balance of each address that it touches
+{-| A type capturing the effect a 'UtxoChange' has on the total balance of each address that it touches
 -}
 newtype BalanceChanges = BalanceChanges{tbBalances :: Map PaymentCredential Value }
   deriving stock (Eq, Show)
@@ -191,11 +201,17 @@ balanceChange UtxoChange{_outputsAdded, _outputsRemoved} =
 
   in BalanceChanges (tv _outputsAdded <> fmap CS.negateValue (tv _outputsRemoved))
 
+{-| Balance change for the payment credential of a particular address. Note
+that this may include the change for addresses with the same payment
+credential and different staking credentials.
+-}
 changeForAddress :: AddressInEra C.BabbageEra -> BalanceChanges -> C.Value
 changeForAddress (fmap CS.fromShelleyPaymentCredential . preview (L._AddressInEra . L._Address . _2) -> Just cred) c =
   changeFor cred c
 changeForAddress _ _ = mempty
 
+{-| Change for a 'PaymentCredential'
+-}
 changeFor :: PaymentCredential -> BalanceChanges -> C.Value
 changeFor cred (BalanceChanges c) = Map.findWithDefault mempty cred c
 
@@ -206,11 +222,11 @@ describeChange UtxoChange{_outputsAdded, _outputsRemoved} =
   let tshow = Text.pack . show
   in tshow (Map.size _outputsAdded) <> " outputs added, " <> tshow (Map.size _outputsRemoved) <> " outputs removed"
 
-{-| Change the 'UtxoState'
+{-| Change the 'UtxoSet'
 -}
-apply :: UtxoState -> UtxoChange -> UtxoState
-apply UtxoState{_utxos} UtxoChange{_outputsAdded, _outputsRemoved} =
-  UtxoState $ (_utxos `Map.union` _outputsAdded) `Map.difference` _outputsRemoved
+apply :: UtxoSet -> UtxoChange -> UtxoSet
+apply UtxoSet{_utxos} UtxoChange{_outputsAdded, _outputsRemoved} =
+  UtxoSet $ (_utxos `Map.union` _outputsAdded) `Map.difference` _outputsRemoved
 
 {-| Invert a 'UtxoChange' value
 -}
@@ -219,16 +235,16 @@ inv (UtxoChange added removed) = UtxoChange removed added
 
 {-| Extract from a block the UTXO changes at the given address
 -}
-extract :: AddressCredential -> UtxoState -> BlockInMode CardanoMode -> UtxoChange
+extract :: AddressCredential -> UtxoSet -> BlockInMode CardanoMode -> UtxoChange
 extract cred state = \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbage state cred block
   _                                         -> mempty
 
-extractBabbage :: UtxoState -> AddressCredential -> Block BabbageEra -> UtxoChange
+extractBabbage :: UtxoSet -> AddressCredential -> Block BabbageEra -> UtxoChange
 extractBabbage state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn state cred) txns
 
-extractBabbageTxn :: UtxoState -> AddressCredential -> C.Tx BabbageEra -> UtxoChange
-extractBabbageTxn UtxoState{_utxos} cred (Tx txBody _) =
+extractBabbageTxn :: UtxoSet -> AddressCredential -> C.Tx BabbageEra -> UtxoChange
+extractBabbageTxn UtxoSet{_utxos} cred (Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
       txId = C.getTxId txBody

@@ -30,7 +30,7 @@ import qualified Cardano.Ledger.Credential as Shelley
 import           Cardano.Ledger.Crypto     (StandardCrypto)
 import           Control.Lens              (_2, preview, view)
 import qualified Convex.Lenses             as L
-import           Convex.Utxos              (UtxoState (..), onlyAda)
+import           Convex.Utxos              (UtxoSet (..), onlyAda)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
                                             withObject, (.:), (.=))
 import           Data.List                 (find)
@@ -91,13 +91,13 @@ parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAdaInputsCovering :: UtxoState -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectAdaInputsCovering utxoState target = selectAnyInputsCovering (onlyAda utxoState) target
+selectAdaInputsCovering :: UtxoSet -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSet) target
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAnyInputsCovering :: UtxoState -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectAnyInputsCovering UtxoState{_utxos} (C.Lovelace target) =
+selectAnyInputsCovering :: UtxoSet -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAnyInputsCovering UtxoSet{_utxos} (C.Lovelace target) =
   let append (C.Lovelace total_, txIns) (txIn, C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) -> C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
   find (\(C.Lovelace c, _) -> c >= target)
   $ scanl append (C.Lovelace 0, [])
@@ -106,8 +106,8 @@ selectAnyInputsCovering UtxoState{_utxos} (C.Lovelace target) =
 {-| Select inputs that cover the given amount of non-Ada
 assets.
 -}
-selectMixedInputsCovering :: UtxoState -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
-selectMixedInputsCovering UtxoState{_utxos} xs =
+selectMixedInputsCovering :: UtxoSet -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
+selectMixedInputsCovering UtxoSet{_utxos} xs =
   let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
       coversTarget (candidateVl, _txIns) =
         all (\(policyId, assetName, quantity) -> C.selectAsset candidateVl (C.AssetId policyId assetName) >= quantity) xs
