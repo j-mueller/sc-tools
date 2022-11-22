@@ -29,11 +29,11 @@ import           Convex.NodeClient.Fold       (CatchingUp (..), catchingUp,
 import           Convex.NodeClient.Resuming   (resumingClient)
 import           Convex.NodeClient.Types      (PipelinedLedgerStateClient)
 import           Convex.TradingBot.Cli.Config (BuyOrder (..))
+import           Convex.Utxos                 (UtxoState, apply)
+import qualified Convex.Utxos                 as Utxos
 import           Convex.Wallet                (Wallet)
 import qualified Convex.Wallet                as Wallet
 import           Convex.Wallet.Cli.Config     (ConfigMode (..))
-import           Convex.Wallet.Utxos          (UtxoState, apply)
-import qualified Convex.Wallet.Utxos          as Utxos
 import           Data.Proxy                   (Proxy (..))
 import qualified Katip                        as K
 

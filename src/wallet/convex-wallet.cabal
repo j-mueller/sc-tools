@@ -35,7 +35,6 @@ library
       Convex.Wallet.MockWallet
       Convex.Wallet.NodeClient
       Convex.Wallet.NodeClient.BalanceClient
-      Convex.Wallet.Utxos
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,

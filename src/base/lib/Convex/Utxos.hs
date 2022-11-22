@@ -2,11 +2,12 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TupleSections      #-}
 {-# LANGUAGE ViewPatterns       #-}
-module Convex.Wallet.Utxos(
+module Convex.Utxos(
   -- * Utxo sets
   UtxoState(..),
   _UtxoState,
@@ -63,6 +64,8 @@ import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           Prelude                       hiding (null)
+import           Prettyprinter                 (Doc, Pretty (..), fill, hang,
+                                                viaShow, vsep, (<+>))
 
 type AddressCredential = Shelley.PaymentCredential StandardCrypto
 
@@ -151,6 +154,22 @@ null UtxoChange{_outputsAdded, _outputsRemoved} = Map.null _outputsAdded && Map.
 -}
 newtype BalanceChanges = BalanceChanges{tbBalances :: Map PaymentCredential Value }
   deriving stock (Eq, Show)
+
+prettyAda :: C.Lovelace -> Doc ann
+prettyAda (C.Lovelace lvl) =
+  let ada :: Double = fromIntegral lvl / 1_000_000
+  in pretty ada
+
+prettyPolicy :: C.PolicyId -> C.AssetName -> Doc ann
+prettyPolicy p a = viaShow p <+> viaShow a
+
+instance Pretty BalanceChanges where
+  pretty (BalanceChanges mp) =
+    let k (C.AdaAssetId, C.Quantity l) = (fill 32 "Ada") <+> prettyAda (C.Lovelace l)
+        k (C.AssetId p n, C.Quantity q) = prettyPolicy p n <+> pretty q
+        f (paymentCredential, C.valueToList -> entries) =
+          hang 4 $ vsep $ viaShow paymentCredential : fmap k entries
+    in vsep (f <$> Map.toAscList mp)
 
 invBalanceChange :: BalanceChanges -> BalanceChanges
 invBalanceChange = BalanceChanges . Map.map C.negateValue . tbBalances

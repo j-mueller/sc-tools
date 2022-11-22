@@ -22,10 +22,10 @@ import           Convex.Muesli.LP.BuildTx              (LimitBuyOrder (..),
 import qualified Convex.Muesli.LP.BuildTx              as BuildTx
 import qualified Convex.Muesli.LP.Constants            as Muesli
 import           Convex.Muesli.LP.OnChain.OnChainUtils (integerToBS)
+import           Convex.Utxos                          (selectUtxo)
 import           Convex.Wallet                         (Wallet)
 import qualified Convex.Wallet                         as Wallet
 import qualified Convex.Wallet.MockWallet              as Wallet
-import           Convex.Wallet.Utxos                   (selectUtxo)
 import           Data.Maybe                            (fromMaybe)
 import           Data.Proxy                            (Proxy (..))
 import qualified Plutus.V1.Ledger.Api                  as PV1

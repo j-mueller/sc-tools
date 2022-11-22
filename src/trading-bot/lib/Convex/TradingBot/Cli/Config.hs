@@ -13,9 +13,8 @@ module Convex.TradingBot.Cli.Config(
 import           Cardano.Api              (AssetName, Lovelace, PolicyId,
                                            Quantity)
 import qualified Cardano.Api              as C
-import           Convex.Wallet.Cli.Config (ConfigField,
-                                           ConfigMode (..), ParseField (..),
-                                           ParseFields (..))
+import           Convex.Wallet.Cli.Config (ConfigField, ConfigMode (..),
+                                           ParseField (..), ParseFields (..))
 import           Options.Applicative      (Parser, auto, help, long, option,
                                            strOption)
 

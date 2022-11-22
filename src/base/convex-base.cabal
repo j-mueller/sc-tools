@@ -36,6 +36,7 @@ library
       Convex.Measures
       Convex.MonadLog
       Convex.Utils
+      Convex.Utxos
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -45,7 +46,8 @@ library
       mtl,
       katip,
       prettyprinter,
-      transformers
+      transformers,
+      text
       
     build-depends:
       cardano-api,

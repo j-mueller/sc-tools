@@ -30,7 +30,7 @@ import qualified Cardano.Ledger.Credential as Shelley
 import           Cardano.Ledger.Crypto     (StandardCrypto)
 import           Control.Lens              (_2, preview, view)
 import qualified Convex.Lenses             as L
-import           Convex.Wallet.Utxos       (UtxoState (..), onlyAda)
+import           Convex.Utxos              (UtxoState (..), onlyAda)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
                                             withObject, (.:), (.=))
 import           Data.List                 (find)

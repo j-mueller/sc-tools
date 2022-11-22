@@ -6,17 +6,18 @@ module Convex.TradingBot.Cli (runMain) where
 import qualified Cardano.Api                   as C
 import qualified Control.Concurrent.STM        as STM
 import           Control.Exception             (bracket)
+import           Control.Monad.Except          (MonadError (..))
 import           Control.Monad.IO.Class        (MonadIO (..))
 import           Control.Monad.Trans.Except    (runExceptT)
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
                                                 logInfoS, logWarnS)
-import           Convex.NodeClient.Types       (runNodeClient, loadConnectInfo)
+import           Convex.NodeClient.Types       (loadConnectInfo, runNodeClient)
 import           Convex.TradingBot.Cli.Command (CliCommand (..), commandParser)
-import           Convex.TradingBot.Cli.Config  (BuyOrder(..))
+import           Convex.TradingBot.Cli.Config  (BuyOrder (..))
 import qualified Convex.TradingBot.NodeClient  as NC
 import           Convex.TradingBot.Portfolio   (Portfolio, printPortfolioInfo)
-import           Convex.Wallet.Cli.Config      (Config (..), ConfigMode (..), ParseFields(..))
-import           Control.Monad.Except       (MonadError (..))
+import           Convex.Wallet.Cli.Config      (Config (..), ConfigMode (..),
+                                                ParseFields (..))
 import qualified Data.Text                     as Text
 import qualified Katip                         as K
 import           Options.Applicative           (customExecParser, disambiguate,

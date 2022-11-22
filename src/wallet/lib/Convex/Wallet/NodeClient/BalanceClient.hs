@@ -14,10 +14,10 @@ import           Convex.MonadLog            (MonadLogKatipT (..), logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient')
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
+import           Convex.Utxos               (UtxoChange, UtxoState, apply)
+import qualified Convex.Utxos               as Utxos
 import           Convex.Wallet              (Wallet)
 import qualified Convex.Wallet              as Wallet
-import           Convex.Wallet.Utxos        (UtxoChange, UtxoState, apply)
-import qualified Convex.Wallet.Utxos        as Utxos
 import qualified Data.Text                  as Text
 import qualified Katip                      as K
 

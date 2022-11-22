@@ -44,10 +44,10 @@ import           Convex.BuildTx        (addCollateral, setMinAdaDeposit,
                                         spendPublicKeyOutput)
 import           Convex.Class          (MonadBlockchain (..))
 import qualified Convex.Lenses         as L
+import           Convex.Utxos          (BalanceChanges (..), UtxoState (..))
+import qualified Convex.Utxos          as Utxos
 import           Convex.Wallet         (Wallet)
 import qualified Convex.Wallet         as Wallet
-import           Convex.Wallet.Utxos   (BalanceChanges (..), UtxoState (..))
-import qualified Convex.Wallet.Utxos   as Utxos
 import           Data.Bifunctor        (Bifunctor (..))
 import           Data.Function         (on)
 import qualified Data.List             as List

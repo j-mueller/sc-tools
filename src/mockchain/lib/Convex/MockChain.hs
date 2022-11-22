@@ -107,11 +107,11 @@ import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.NodeParams                     (NodeParams (..))
-import           Convex.Wallet                         (Wallet, addressInEra,
-                                                        paymentCredential)
-import           Convex.Wallet.Utxos                   (UtxoState (..),
+import           Convex.Utxos                          (UtxoState (..),
                                                         fromApiUtxo,
                                                         onlyCredential)
+import           Convex.Wallet                         (Wallet, addressInEra,
+                                                        paymentCredential)
 import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))
 import           Data.Default                          (Default (def))
