@@ -69,7 +69,7 @@ putReferenceScript wallet = do
 mintLPNFT :: Wallet -> Mockchain C.AssetName
 mintLPNFT wllt = do
   void $ Wallet.w2 `paymentTo` wllt
-  (txOutRef, _) <- walletUtxo Defaults.networkId wllt >>= maybe (fail "No utxos for wallet") pure . selectUtxo
+  (txOutRef, _) <- walletUtxo wllt >>= maybe (fail "No utxos for wallet") pure . selectUtxo
   let ref@(PV1.TxOutRef refHash refIdx) = fromCardanoTxIn txOutRef
       tokenName = C.AssetName $ PlutusTx.fromBuiltin $ PlutusTx.sha2_256 $ V2.getTxId refHash <> integerToBS refIdx
       tx = emptyTx

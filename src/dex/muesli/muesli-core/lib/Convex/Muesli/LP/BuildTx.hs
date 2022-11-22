@@ -18,7 +18,7 @@ module Convex.Muesli.LP.BuildTx(
 
 import           Cardano.Api.Shelley        (ScriptData (..))
 import qualified Cardano.Api.Shelley        as C
-import           Control.Lens               (at, over, set)
+import           Control.Lens               (at, over, set, (&), _1)
 import           Convex.BuildTx             (TxBuild, setScriptsValid)
 import qualified Convex.Lenses              as L
 import qualified Convex.Muesli.LP.Constants as Constants
@@ -30,9 +30,9 @@ import           Data.Word                  (Word64)
 {-| Place a limit buy order on Muesliswap orderbook v3 for the given amount of native tokens
 -}
 buyOrder :: C.NetworkId -> LimitBuyOrder -> TxBuild
-buyOrder _network order@LimitBuyOrder{lboLovelace} =
+buyOrder (C.toShelleyNetwork -> network) order@LimitBuyOrder{lboLovelace} =
   let val = C.TxOutValue C.MultiAssetInBabbageEra (C.lovelaceToValue lboLovelace)
-      addr = scriptAddress
+      addr = scriptAddress & set (L._AddressInEra . L._Address . _1) network
       dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (mkBuyOrderDatum order)
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
@@ -161,11 +161,7 @@ matchRedeemer :: C.ScriptData
 matchRedeemer = ScriptDataConstructor 1 [ScriptDataNumber 0]
 
 cancelRedeemer :: C.ScriptData
-cancelRedeemer = ScriptDataConstructor 0 [ScriptDataNumber 0]
-
--- TODO:
--- Cancel tx + test case
--- Txn metadata
+cancelRedeemer = ScriptDataConstructor 2 []
 
 scriptAddress :: C.AddressInEra C.BabbageEra
 scriptAddress = maybe (error "") id $ C.deserialiseAddress (C.proxyToAsType Proxy) "addr1zyq0kyrml023kwjk8zr86d5gaxrt5w8lxnah8r6m6s4jp4g3r6dxnzml343sx8jweqn4vn3fz2kj8kgu9czghx0jrsyqqktyhv"
