@@ -6,9 +6,12 @@ module Main(main) where
 import qualified Cardano.Api.Shelley            as C
 import           Control.Lens                   (mapped, over, (&))
 import           Control.Monad                  (void)
-import           Convex.BuildTx                 (assetValue, mintPlutusV1,
-                                                 payToAddress, payToPlutusV1,
+import           Convex.BuildTx                 (addReference, assetValue, spendPlutusV1Ref,
+                                                 mintPlutusV1, payToAddress,
+                                                 payToPlutusV1,
+                                                 payToPlutusV1Inline,
                                                  setMinAdaDeposit,
+                                                 setMinAdaDepositAll,
                                                  spendPlutusV1)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
@@ -37,6 +40,7 @@ tests = testGroup "unit tests"
   , testGroup "scripts"
     [ testCase "paying to a plutus script" (mockchainSucceeds payToPlutusScript)
     , testCase "spending a plutus script output" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScript))
+    , testCase "using a reference script" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds mintingPlutus)
     , testCase "making payments with tokens" (mockchainSucceeds (mintingPlutus >>= spendTokens))
     ]
@@ -67,6 +71,22 @@ payToPlutusScript = do
 spendPlutusScript :: C.TxIn -> Mockchain C.TxId
 spendPlutusScript ref = do
   let tx = emptyTx & spendPlutusV1 ref txInscript () ()
+  balanceAndSubmit Wallet.w1 tx
+
+putReferenceScript :: Wallet -> Mockchain C.TxIn
+putReferenceScript wallet = do
+  let tx = emptyTx
+            & payToPlutusV1Inline (Wallet.addressInEra Defaults.networkId wallet) txInscript (C.lovelaceToValue 1_000_000)
+            & setMinAdaDepositAll Defaults.protocolParameters
+  txId <- balanceAndSubmit wallet tx
+  pure (C.TxIn txId (C.TxIx 0))
+
+spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
+spendPlutusScriptReference txIn = do
+  refTxIn <- putReferenceScript Wallet.w1
+  let tx = emptyTx
+            & spendPlutusV1Ref txIn refTxIn (Just $ C.hashScript $ C.PlutusScript C.PlutusScriptV1 txInscript) () ()
+            -- & addReference refTxIn
   balanceAndSubmit Wallet.w1 tx
 
 mintingPlutus :: Mockchain C.TxId

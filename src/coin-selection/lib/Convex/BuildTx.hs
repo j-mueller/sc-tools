@@ -11,9 +11,12 @@ module Convex.BuildTx(
   payToPublicKey,
   payToScriptHash,
   payToPlutusV1,
+  payToPlutusV1Inline,
   payToPlutusV2,
   spendPlutusV1,
+  spendPlutusV1Ref,
   spendPlutusV2,
+  spendPlutusV2Ref,
   mintPlutusV1,
   mintPlutusV2,
   payToPlutusV2Inline,
@@ -54,6 +57,14 @@ spendPlutusV1 txIn s d r =
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
 
+spendPlutusV1Ref :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> TxBuild
+spendPlutusV1Ref txIn refTxIn sh d r =
+  let dat = C.fromPlutusData (Plutus.toData d)
+      red = C.fromPlutusData (Plutus.toData r)
+      wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
+  in over L.txIns ((txIn, wit') :) . setScriptsValid . addReference refTxIn
+
 spendPlutusV2 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> TxBuild
 spendPlutusV2 txIn s d r =
   let dat = C.fromPlutusData (Plutus.toData d)
@@ -61,6 +72,14 @@ spendPlutusV2 txIn s d r =
       wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
+
+spendPlutusV2Ref :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> TxBuild
+spendPlutusV2Ref txIn refTxIn sh d r =
+  let dat = C.fromPlutusData (Plutus.toData d)
+      red = C.fromPlutusData (Plutus.toData r)
+      wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
+  in over L.txIns ((txIn, wit') :) . setScriptsValid . addReference refTxIn
 
 mintPlutusV1 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> TxBuild
 mintPlutusV1 script redeemer assetName quantity =
@@ -120,6 +139,11 @@ payToPlutusV1 network s datum vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 s)
       dt = C.fromPlutusData (Plutus.toData datum)
   in payToScriptHash network sh dt vl
+
+payToPlutusV1Inline :: C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV1 -> C.Value -> TxBuild
+payToPlutusV1Inline addr script vl =
+  let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone (C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV1 script))
+  in over L.txOuts ((:) txo)
 
 payToPlutusV2 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.Value -> TxBuild
 payToPlutusV2 network s datum vl =
