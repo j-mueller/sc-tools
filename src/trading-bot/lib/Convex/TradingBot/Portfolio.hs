@@ -54,8 +54,9 @@ import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict (MonadState, StateT, get, put,
                                              runState, runStateT)
 import           Convex.MonadLog            (MonadLog, logInfoS)
-import           Convex.Muesli.LP.Types     (BuyOrder (..), Price, scale, unitsOf, unitPrice, valueOf,
-                                             SellOrder (..))
+import           Convex.Muesli.LP.Types     (BuyOrder (..), Price,
+                                             SellOrder (..), scale, unitPrice,
+                                             unitsOf, valueOf)
 import           Data.Foldable              (fold, traverse_)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map

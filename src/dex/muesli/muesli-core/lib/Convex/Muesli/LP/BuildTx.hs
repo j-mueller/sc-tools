@@ -26,7 +26,7 @@ module Convex.Muesli.LP.BuildTx(
 
 import           Cardano.Api.Shelley        (ScriptData (..))
 import qualified Cardano.Api.Shelley        as C
-import           Control.Lens               (_1, at, over, set, (&))
+import           Control.Lens               (_1, at, over, set)
 import           Convex.BuildTx             (TxBuild, setScriptsValid)
 import qualified Convex.Lenses              as L
 import qualified Convex.Muesli.LP.Constants as Constants
@@ -42,10 +42,10 @@ import           Data.Word                  (Word64)
 
 {-| Place a limit buy order on Muesliswap orderbook v3 for the given amount of native tokens
 -}
-buyOrder :: C.AddressInEra C.BabbageEra -> C.NetworkId -> BuyOrder -> TxBuild
-buyOrder returnAddress (C.toShelleyNetwork -> network) order =
+buyOrder :: C.AddressInEra C.BabbageEra -> Maybe C.NetworkId -> BuyOrder -> TxBuild
+buyOrder returnAddress (fmap C.toShelleyNetwork -> network) order =
   let val = C.TxOutValue C.MultiAssetInBabbageEra (C.lovelaceToValue $ muesliBuyOrderOutputLovelace order)
-      addr = scriptAddress & set (L._AddressInEra . L._Address . _1) network
+      addr = maybe scriptAddress (\n -> set (L._AddressInEra . L._Address . _1) n scriptAddress) network
       dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (mkBuyOrderDatum returnAddress order)
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
@@ -84,12 +84,12 @@ setBuyOrderMetadata returnAddress order@BuyOrder{buyCurrency, buyQuantity = C.Qu
       . set (at 1008) (Just $ C.TxMetaText "") -- Ada policy ID
       . set (at 1009) (Just $ C.TxMetaText "") -- Ada asset name
 
-sellOrder :: C.AddressInEra C.BabbageEra -> C.NetworkId -> SellOrder -> TxBuild
-sellOrder returnAddress (C.toShelleyNetwork -> network) order@SellOrder{sellCurrency, sellQuantity} =
+sellOrder :: C.AddressInEra C.BabbageEra -> Maybe C.NetworkId -> SellOrder -> TxBuild
+sellOrder returnAddress (fmap C.toShelleyNetwork -> network) order@SellOrder{sellCurrency, sellQuantity} =
   let val = C.TxOutValue C.MultiAssetInBabbageEra
               $ (C.valueFromList [(C.AssetId (fst sellCurrency) (snd sellCurrency), sellQuantity)])
-                <> C.lovelaceToValue (muesliSellOrderFee order)
-      addr = scriptAddress & set (L._AddressInEra . L._Address . _1) network
+                <> C.lovelaceToValue (muesliSellOrderFee order + muesliDeposit)
+      addr = maybe scriptAddress (\n -> set (L._AddressInEra . L._Address . _1) n scriptAddress) network
       dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (mkSellOrderDatum returnAddress order)
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
@@ -171,7 +171,7 @@ decodeAddress networkId = \case
     ] -> Just (C.shelleyAddressInEra (C.makeShelleyAddress networkId (C.PaymentCredentialByKey payment) C.NoStakeAddress))
   _ -> Nothing
 
-{-| FIXME
+{-| 
 -}
 mkSellOrderDatum :: C.AddressInEra C.BabbageEra -> SellOrder -> C.ScriptData
 mkSellOrderDatum returnAddress order@SellOrder{sellCurrency=(policyId, assetName), sellQuantity, sellPrice} =
@@ -244,3 +244,4 @@ cancelRedeemer = ScriptDataConstructor 2 []
 
 scriptAddress :: C.AddressInEra C.BabbageEra
 scriptAddress = maybe (error "") id $ C.deserialiseAddress (C.proxyToAsType Proxy) "addr1zyq0kyrml023kwjk8zr86d5gaxrt5w8lxnah8r6m6s4jp4g3r6dxnzml343sx8jweqn4vn3fz2kj8kgu9czghx0jrsyqqktyhv"
+--                                                   https://cardanoscan.io/address/addr1zyq0kyrml023kwjk8zr86d5gaxrt5w8lxnah8r6m6s4jp4g3r6dxnzml343sx8jweqn4vn3fz2kj8kgu9czghx0jrsyqqktyhv

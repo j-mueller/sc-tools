@@ -90,7 +90,7 @@ placeOrder wllt = do
           , buyPrice    = unitPrice 1 (20_000_000)
           }
       addr = Wallet.addressInEra Defaults.networkId wllt
-      tx = emptyTx & BuildTx.buyOrder addr Defaults.networkId order-- "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa" "MILK" (C.Quantity 8) (C.Lovelace 100_000_000)
+      tx = emptyTx & BuildTx.buyOrder addr (Just Defaults.networkId) order
   txId <- balanceAndSubmit wllt tx
   pure (C.TxIn txId (C.TxIx 0), order, addr)
 

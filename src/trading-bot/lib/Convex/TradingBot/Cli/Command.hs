@@ -6,7 +6,7 @@ module Convex.TradingBot.Cli.Command(
   commandParser
   ) where
 
-import           Convex.TradingBot.Cli.Config (BuyOrder, buyOrderParser)
+import           Convex.TradingBot.Cli.Config (Order, orderParser)
 import           Convex.Wallet.Cli.Config     (Config, ConfigMode (..),
                                                configParser)
 import           Options.Applicative          (CommandFields, Mod, Parser,
@@ -14,7 +14,8 @@ import           Options.Applicative          (CommandFields, Mod, Parser,
                                                progDesc, subparser)
 data CliCommand =
   StartMatcher (Config 'Str)
-  | Buy (Config 'Str) (BuyOrder 'Str)
+  | Buy (Config 'Str) (Order 'Str)
+  | Sell (Config 'Str) (Order 'Str)
 
 commandParser :: Parser CliCommand
 commandParser =
@@ -22,6 +23,7 @@ commandParser =
     mconcat
       [ startMatcher
       , buy
+      , sell
       ]
 
 startMatcher :: Mod CommandFields CliCommand
@@ -30,4 +32,8 @@ startMatcher = command "start-matcher" $
 
 buy :: Mod CommandFields CliCommand
 buy = command "buy" $
-  info (Buy <$> configParser <*> buyOrderParser) (fullDesc <> progDesc "Buy assets on MuesliSwap")
+  info (Buy <$> configParser <*> orderParser) (fullDesc <> progDesc "Buy assets on MuesliSwap")
+
+sell :: Mod CommandFields CliCommand
+sell = command "sell" $
+  info (Sell <$> configParser <*> orderParser) (fullDesc <> progDesc "Sell assets on MuesliSwap")

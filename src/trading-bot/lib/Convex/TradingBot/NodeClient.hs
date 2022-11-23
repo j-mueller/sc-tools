@@ -6,8 +6,10 @@
 {-# LANGUAGE TypeApplications   #-}
 module Convex.TradingBot.NodeClient(
   backtestingClient,
-  orderClient
+  buyOrderClient,
+  sellOrderClient
   ) where
 
 import           Convex.TradingBot.NodeClient.BacktestingClient (backtestingClient)
-import           Convex.TradingBot.NodeClient.OrderClient       (orderClient)
+import           Convex.TradingBot.NodeClient.OrderClient       (buyOrderClient,
+                                                                 sellOrderClient)

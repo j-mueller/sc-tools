@@ -32,8 +32,7 @@ import qualified Convex.Lenses                 as L
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
                                                 logInfoS)
 import           Convex.Muesli.LP.BuildTx      (buyOrderFromScriptData)
-import           Convex.Muesli.LP.Types        (BuyOrder (..),
-                                                valueOf)
+import           Convex.Muesli.LP.Types        (BuyOrder (..), valueOf)
 import           Convex.NodeClient.Fold        (CatchingUp (..), catchingUp,
                                                 foldClient)
 import           Convex.NodeClient.Resuming    (resumingClient)

@@ -13,7 +13,7 @@ import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
                                                 logInfoS, logWarnS)
 import           Convex.NodeClient.Types       (loadConnectInfo, runNodeClient)
 import           Convex.TradingBot.Cli.Command (CliCommand (..), commandParser)
-import           Convex.TradingBot.Cli.Config  (BuyOrder (..))
+import           Convex.TradingBot.Cli.Config  (Order (..))
 import qualified Convex.TradingBot.NodeClient  as NC
 import           Convex.TradingBot.Portfolio   (Portfolio, printPortfolioInfo)
 import           Convex.Wallet.Cli.Config      (Config (..), ConfigMode (..),
@@ -42,6 +42,8 @@ runMain = do
           mkTyped config >>= runBacktest initLogEnv >>= uncurry (flip printPortfolioInfo)
         Buy config order   ->
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeBuyOrder le)
+        Sell config order   ->
+          (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeSellOrder le)
     case result of
       Left err -> do
         logWarnS "Error in runMain"
@@ -68,12 +70,23 @@ runBacktest logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = do
       logInfoS "Backtesting finished"
       liftIO (STM.atomically (STM.takeTMVar tv))
 
-executeBuyOrder ::  (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> BuyOrder 'Typed -> m ()
+executeBuyOrder ::  (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> Order 'Typed -> m ()
 executeBuyOrder logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} order = do
   (info_, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket
   let client _ env = do
-        pure (NC.orderClient info_ logEnv "order" wallet order env)
+        pure (NC.buyOrderClient info_ logEnv "order" wallet order env)
   logInfoS "Processing BUY order"
+  result <- liftIO $ runExceptT (runNodeClient cardanoNodeConfigFile cardanoNodeSocket client)
+  case result of
+    Left err -> throwError err
+    Right () -> pure ()
+
+executeSellOrder ::  (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> Order 'Typed -> m ()
+executeSellOrder logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} order = do
+  (info_, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket
+  let client _ env = do
+        pure (NC.sellOrderClient info_ logEnv "order" wallet order env)
+  logInfoS "Processing SELL order"
   result <- liftIO $ runExceptT (runNodeClient cardanoNodeConfigFile cardanoNodeSocket client)
   case result of
     Left err -> throwError err

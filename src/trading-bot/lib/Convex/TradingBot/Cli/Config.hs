@@ -6,8 +6,8 @@
 {-|
 -}
 module Convex.TradingBot.Cli.Config(
-  BuyOrder(..),
-  buyOrderParser
+  Order(..),
+  orderParser
 ) where
 
 import           Cardano.Api              (AssetName, Lovelace, PolicyId,
@@ -18,30 +18,30 @@ import           Convex.Wallet.Cli.Config (ConfigField, ConfigMode (..),
 import           Options.Applicative      (Parser, auto, help, long, option,
                                            strOption)
 
-data BuyOrder (m :: ConfigMode) =
-  BuyOrder
+data Order (m :: ConfigMode) =
+  Order
     { policyId  :: ConfigField m PolicyId
     , assetName :: ConfigField m AssetName
     , quantity  :: Quantity
     , lovelace  :: Lovelace
     }
 
-deriving stock instance Eq (BuyOrder 'Str)
-deriving stock instance Ord (BuyOrder 'Str)
-deriving stock instance Show (BuyOrder 'Str)
-deriving stock instance Show (BuyOrder 'Typed)
+deriving stock instance Eq (Order 'Str)
+deriving stock instance Ord (Order 'Str)
+deriving stock instance Show (Order 'Str)
+deriving stock instance Show (Order 'Typed)
 
-buyOrderParser :: Parser (BuyOrder 'Str)
-buyOrderParser =
-  BuyOrder
+orderParser :: Parser (Order 'Str)
+orderParser =
+  Order
     <$> strOption (long "policy-id" <> help "Policy ID (hex) of the native currency")
     <*> strOption (long "asset-name" <> help "Asset name (hex) of the native currency")
     <*> fmap C.Quantity (option auto (long "quantity" <> help "Amount of units of the native currency"))
     <*> fmap C.Lovelace (option auto (long "lovelace" <> help "Price in lovelace"))
 
-instance ParseFields BuyOrder where
-  parseFields BuyOrder{policyId, assetName, quantity, lovelace} =
-    BuyOrder
+instance ParseFields Order where
+  parseFields Order{policyId, assetName, quantity, lovelace} =
+    Order
       <$> parseField policyId
       <*> parseField assetName
       <*> pure quantity
