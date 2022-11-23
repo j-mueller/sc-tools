@@ -1,7 +1,8 @@
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TypeApplications   #-}
 {-| Types for muesli LP pools
 -}
 module Convex.Muesli.LP.Types(
@@ -11,7 +12,16 @@ module Convex.Muesli.LP.Types(
   adaPair,
   prettyPair,
   pairFromValue,
-  pairFromOutput
+  pairFromOutput,
+
+  -- * Orders
+  BuyOrder(..),
+  SellOrder(..),
+  Price(..),
+  scale,
+  valueOf,
+  unitPrice,
+  unitsOf
   ) where
 
 import           Cardano.Api                    (AssetId (..), AssetName,
@@ -22,6 +32,7 @@ import qualified Cardano.Crypto.Hash.Class      as CCHC
 import qualified Cardano.Ledger.Hashes          as CLH
 import           Convex.Muesli.LP.OnChain.Types (PoolDatum (..))
 import           Data.ByteString                (ByteString)
+import           Data.Ratio                     ((%))
 import qualified Plutus.V2.Ledger.Api           as V2
 import           PlutusTx.IsData.Class          (fromData)
 
@@ -87,3 +98,34 @@ fromPlutusAssetId (V2.CurrencySymbol s) (V2.TokenName nm')
       polId <- C.PolicyId . C.fromShelleyScriptHash . CLH.ScriptHash <$> maybe (Left HashFromBytesFailed) Right (CCHC.hashFromBytes $ V2.fromBuiltin s)
       let nm = C.AssetName $ V2.fromBuiltin nm'
       pure (C.AssetId polId nm)
+
+data BuyOrder = BuyOrder{ buyCurrency :: (PolicyId, AssetName), buyQuantity :: Quantity, buyPrice :: Price }
+  deriving (Eq, Ord, Show)
+
+data SellOrder = SellOrder{ sellCurrency :: (PolicyId, AssetName), sellQuantity :: Quantity, sellPrice :: Price }
+  deriving (Eq, Ord, Show)
+
+-- | Price of one unit of an asset in Lovelace
+newtype Price = Price Rational
+  deriving stock (Eq, Ord, Show)
+  deriving newtype Num
+
+-- | Multiply the price by a scalar value
+scale :: Rational -> Price -> Price
+scale n (Price p) = Price (n * p)
+
+-- | Value of a quantity priced in Ada
+valueOf :: Quantity -> Price -> Lovelace
+valueOf (Quantity q) (Price p) =
+  Lovelace $ round $ fromIntegral q * p
+
+{-| Price of one unit of the native token in Ada
+-}
+unitPrice :: Quantity -> Lovelace -> Price
+unitPrice (Quantity q) (Lovelace l) = Price (l % q)
+
+-- | Largest 'Quantity' whose Ada value is smaller than or
+--   equal to the given amount
+unitsOf :: Lovelace -> Price -> Quantity
+unitsOf (Lovelace l) (Price p) =
+  Quantity $ floor $ fromIntegral l / p

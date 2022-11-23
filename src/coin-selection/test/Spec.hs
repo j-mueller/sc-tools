@@ -6,13 +6,14 @@ module Main(main) where
 import qualified Cardano.Api.Shelley            as C
 import           Control.Lens                   (mapped, over, (&))
 import           Control.Monad                  (void)
-import           Convex.BuildTx                 (addReference, assetValue, spendPlutusV1Ref,
+import           Convex.BuildTx                 (addReference, assetValue,
                                                  mintPlutusV1, payToAddress,
                                                  payToPlutusV1,
                                                  payToPlutusV1Inline,
                                                  setMinAdaDeposit,
                                                  setMinAdaDepositAll,
-                                                 spendPlutusV1)
+                                                 spendPlutusV1,
+                                                 spendPlutusV1Ref)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
 import           Convex.Lenses                  (emptyTx)

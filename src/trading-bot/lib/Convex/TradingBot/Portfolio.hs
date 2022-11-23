@@ -5,13 +5,6 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TypeApplications   #-}
 module Convex.TradingBot.Portfolio(
-  -- * Prices
-  Price(..),
-  scale,
-  unitPrice,
-  unitsOf,
-  valueOf,
-
   -- * Positions
   Position(..),
   lastPrice,
@@ -25,9 +18,7 @@ module Convex.TradingBot.Portfolio(
   emptyPortfolio,
   distribution,
   tradeCount,
-  BuyOrder(..),
   buyOrder,
-  SellOrder(..),
   updatePrice,
 
   -- * Config
@@ -63,6 +54,8 @@ import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict (MonadState, StateT, get, put,
                                              runState, runStateT)
 import           Convex.MonadLog            (MonadLog, logInfoS)
+import           Convex.Muesli.LP.Types     (BuyOrder (..), Price, scale, unitsOf, unitPrice, valueOf,
+                                             SellOrder (..))
 import           Data.Foldable              (fold, traverse_)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
@@ -87,37 +80,6 @@ defaultPortfolioConfig =
     , pfDefaultLimit    = 1.35
     , pfMinPositionSize = Lovelace 10_000_000
     }
-
-data BuyOrder = BuyOrder{ buyCurrency :: (PolicyId, AssetName), buyQuantity :: Quantity, buyPrice :: Price }
-  deriving (Eq, Ord, Show)
-
-data SellOrder = SellOrder{ sellCurrency :: (PolicyId, AssetName), sellQuantity :: Quantity, sellPrice :: Price }
-  deriving (Eq, Ord, Show)
-
--- | Price of one unit of an asset in Lovelace
-newtype Price = Price Rational
-  deriving stock (Eq, Ord, Show)
-  deriving newtype Num
-
--- | Multiply the price by a scalar value
-scale :: Rational -> Price -> Price
-scale n (Price p) = Price (n * p)
-
--- | Value of a quantity priced in Ada
-valueOf :: Quantity -> Price -> Lovelace
-valueOf (Quantity q) (Price p) =
-  Lovelace $ round $ fromIntegral q * p
-
-{-| Price of one unit of the native token in Ada
--}
-unitPrice :: Quantity -> Lovelace -> Price
-unitPrice (Quantity q) (Lovelace l) = Price (l % q)
-
--- | Largest 'Quantity' whose Ada value is smaller than or
---   equal to the given amount
-unitsOf :: Lovelace -> Price -> Quantity
-unitsOf (Lovelace l) (Price p) =
-  Quantity $ floor $ fromIntegral l / p
 
 {-| Position in our portfolio. Note that this does not include the
 size of the position (this information is obtained from the wallet

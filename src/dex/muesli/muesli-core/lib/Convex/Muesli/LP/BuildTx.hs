@@ -1,15 +1,23 @@
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE ViewPatterns       #-}
 module Convex.Muesli.LP.BuildTx(
-  LimitBuyOrder(..),
+  -- * Buy orders
   buyOrder,
-  cancelOrder,
+  cancelBuyOrder,
   mkBuyOrderDatum,
   buyOrderFromScriptData,
+
+  -- * Sell orders
+  sellOrder,
+  mkSellOrderDatum,
+  -- sellOrderFromScriptData,
+
+  -- * Etc.
   encodeAddress,
   decodeAddress,
   matchRedeemer,
@@ -18,53 +26,95 @@ module Convex.Muesli.LP.BuildTx(
 
 import           Cardano.Api.Shelley        (ScriptData (..))
 import qualified Cardano.Api.Shelley        as C
-import           Control.Lens               (at, over, set, (&), _1)
+import           Control.Lens               (_1, at, over, set, (&))
 import           Convex.BuildTx             (TxBuild, setScriptsValid)
 import qualified Convex.Lenses              as L
 import qualified Convex.Muesli.LP.Constants as Constants
+import           Convex.Muesli.LP.Types     (BuyOrder (..), SellOrder (..),
+                                             unitPrice, valueOf)
 import           Data.Map                   (Map)
 import           Data.Proxy                 (Proxy (..))
 import qualified Data.Text                  as Text
 import           Data.Word                  (Word64)
 
+-- TODO:
+-- consider frontend fee (for orders >= 100 Ada): 1 Ada + 5% of Ada amount
+
 {-| Place a limit buy order on Muesliswap orderbook v3 for the given amount of native tokens
 -}
-buyOrder :: C.NetworkId -> LimitBuyOrder -> TxBuild
-buyOrder (C.toShelleyNetwork -> network) order@LimitBuyOrder{lboLovelace} =
-  let val = C.TxOutValue C.MultiAssetInBabbageEra (C.lovelaceToValue lboLovelace)
+buyOrder :: C.AddressInEra C.BabbageEra -> C.NetworkId -> BuyOrder -> TxBuild
+buyOrder returnAddress (C.toShelleyNetwork -> network) order =
+  let val = C.TxOutValue C.MultiAssetInBabbageEra (C.lovelaceToValue $ muesliBuyOrderOutputLovelace order)
       addr = scriptAddress & set (L._AddressInEra . L._Address . _1) network
-      dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (mkBuyOrderDatum order)
+      dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (mkBuyOrderDatum returnAddress order)
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
-      . over (L.txMetadata . L._TxMetadata) (setBuyOrderMetadata order)
+      . over (L.txMetadata . L._TxMetadata) (setBuyOrderMetadata returnAddress order)
 
-setBuyOrderMetadata :: LimitBuyOrder -> Map Word64 C.TxMetadataValue -> Map Word64 C.TxMetadataValue
-setBuyOrderMetadata LimitBuyOrder{lboReturnAddress, lboPolicy, lboAssetName, lboQuantity = C.Quantity q, lboLovelace = C.Lovelace l} =
-  set (at 674) (Just $ C.TxMetaMap [(C.TxMetaText "msg", C.TxMetaList [C.TxMetaText "MuesliSwap Place Order"])])
-  . set (at 1000) (Just $ C.TxMetaBytes $ C.serialiseToRawBytes lboReturnAddress)
-  . set (at 1002) (Just $ C.TxMetaText $ C.serialiseToRawBytesHexText lboPolicy)
-  . set (at 1003) (Just $ C.TxMetaText $ C.serialiseToRawBytesHexText lboAssetName)
-  . set (at 1004) (Just $ C.TxMetaText $ Text.pack $ show q) -- not sure why this is a text and not a number
-  . set (at 1005) (Just $ C.TxMetaNumber l)
-  . set (at 1007) (Just $ C.TxMetaNumber 1) -- ?? allow partial match?
-  . set (at 1008) (Just $ C.TxMetaText "") -- Ada policy ID
-  . set (at 1009) (Just $ C.TxMetaText "") -- Ada asset name
+muesliBuyOrderOutputLovelace :: BuyOrder -> C.Lovelace
+muesliBuyOrderOutputLovelace order@BuyOrder{buyPrice, buyQuantity} =
+  let lovelace      = valueOf buyQuantity buyPrice
+  in lovelace + muesliDeposit + muesliBuyOrderFee order
 
-cancelOrder :: C.TxIn -> LimitBuyOrder -> TxBuild
-cancelOrder txIn (mkBuyOrderDatum -> dat) =
+muesliDeposit :: C.Lovelace
+muesliDeposit = C.Lovelace 1_700_000
+
+muesliBuyOrderFee :: BuyOrder -> C.Lovelace
+muesliBuyOrderFee _ =
+  let matchmakerFee = C.Lovelace   950_000
+      frontendFee   = C.Lovelace         0 -- FIXME
+  in matchmakerFee + frontendFee
+
+muesliSellOrderFee :: SellOrder -> C.Lovelace
+muesliSellOrderFee _ =
+  let matchmakerFee = C.Lovelace   950_000
+      frontendFee   = C.Lovelace         0 -- FIXME
+  in matchmakerFee + frontendFee
+
+setBuyOrderMetadata :: C.AddressInEra C.BabbageEra -> BuyOrder -> Map Word64 C.TxMetadataValue -> Map Word64 C.TxMetadataValue
+setBuyOrderMetadata returnAddress order@BuyOrder{buyCurrency, buyQuantity = C.Quantity q} =
+  let C.Lovelace l = muesliBuyOrderOutputLovelace order
+  in set (at 674) (Just $ C.TxMetaMap [(C.TxMetaText "msg", C.TxMetaList [C.TxMetaText "MuesliSwap Place Order"])])
+      . set (at 1000) (Just $ C.TxMetaBytes $ C.serialiseToRawBytes returnAddress)
+      . set (at 1002) (Just $ C.TxMetaText $ C.serialiseToRawBytesHexText $ fst buyCurrency)
+      . set (at 1003) (Just $ C.TxMetaText $ C.serialiseToRawBytesHexText $ snd buyCurrency)
+      . set (at 1004) (Just $ C.TxMetaText $ Text.pack $ show q) -- not sure why this is a text and not a number
+      . set (at 1005) (Just $ C.TxMetaNumber l)
+      . set (at 1007) (Just $ C.TxMetaNumber 1) -- ?? allow partial match?
+      . set (at 1008) (Just $ C.TxMetaText "") -- Ada policy ID
+      . set (at 1009) (Just $ C.TxMetaText "") -- Ada asset name
+
+sellOrder :: C.AddressInEra C.BabbageEra -> C.NetworkId -> SellOrder -> TxBuild
+sellOrder returnAddress (C.toShelleyNetwork -> network) order@SellOrder{sellCurrency, sellQuantity} =
+  let val = C.TxOutValue C.MultiAssetInBabbageEra
+              $ (C.valueFromList [(C.AssetId (fst sellCurrency) (snd sellCurrency), sellQuantity)])
+                <> C.lovelaceToValue (muesliSellOrderFee order)
+      addr = scriptAddress & set (L._AddressInEra . L._Address . _1) network
+      dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (mkSellOrderDatum returnAddress order)
+      txo = C.TxOut addr val dat C.ReferenceScriptNone
+  in over L.txOuts ((:) txo)
+      . over (L.txMetadata . L._TxMetadata) (setSellOrderMetadata returnAddress order)
+
+setSellOrderMetadata :: C.AddressInEra C.BabbageEra -> SellOrder -> Map Word64 C.TxMetadataValue -> Map Word64 C.TxMetadataValue
+setSellOrderMetadata returnAddress order@SellOrder{sellCurrency=(policyId, assetName), sellQuantity, sellPrice} =
+  let C.Lovelace outputLovelace = muesliSellOrderFee order + muesliDeposit
+      C.Lovelace price          = valueOf sellQuantity sellPrice
+  in set (at 674) (Just $ C.TxMetaMap [(C.TxMetaText "msg", C.TxMetaList [C.TxMetaText "MuesliSwap Place Order"])])
+      . set (at 1000) (Just $ C.TxMetaBytes $ C.serialiseToRawBytes returnAddress)
+      . set (at 1002) (Just $ C.TxMetaText "") -- Ada policy ID
+      . set (at 1003) (Just $ C.TxMetaText "") -- Ada asset name
+      . set (at 1004) (Just $ C.TxMetaNumber price)
+      . set (at 1005) (Just $ C.TxMetaNumber outputLovelace)
+      . set (at 1007) (Just $ C.TxMetaNumber 1) -- ?? allow partial match?
+      . set (at 1008) (Just $ C.TxMetaText $ C.serialiseToRawBytesHexText policyId)
+      . set (at 1009) (Just $ C.TxMetaText $ C.serialiseToRawBytesHexText assetName)
+
+cancelBuyOrder :: C.AddressInEra C.BabbageEra -> C.TxIn -> BuyOrder -> TxBuild
+cancelBuyOrder returnAddress txIn (mkBuyOrderDatum returnAddress -> dat) =
   let red = cancelRedeemer
       wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript Constants.orderBookV3) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
-
-data LimitBuyOrder =
-  LimitBuyOrder
-    { lboReturnAddress :: C.AddressInEra C.BabbageEra
-    , lboPolicy        :: C.PolicyId
-    , lboAssetName     :: C.AssetName
-    , lboQuantity      :: C.Quantity
-    , lboLovelace      :: C.Lovelace
-    }
 
 -- script hash
 -- 00fb107bfbd51b3a5638867d3688e986ba38ff34fb738f5bd42b20d5
@@ -121,16 +171,37 @@ decodeAddress networkId = \case
     ] -> Just (C.shelleyAddressInEra (C.makeShelleyAddress networkId (C.PaymentCredentialByKey payment) C.NoStakeAddress))
   _ -> Nothing
 
-
-{-| Datum for a limit order
+{-| FIXME
 -}
-mkBuyOrderDatum :: LimitBuyOrder -> C.ScriptData
-mkBuyOrderDatum LimitBuyOrder{lboReturnAddress, lboPolicy, lboAssetName, lboQuantity = C.Quantity q, lboLovelace = C.Lovelace l} =
-  let policyBS = C.serialiseToRawBytes lboPolicy
-      assetBS = C.serialiseToRawBytes lboAssetName
+mkSellOrderDatum :: C.AddressInEra C.BabbageEra -> SellOrder -> C.ScriptData
+mkSellOrderDatum returnAddress order@SellOrder{sellCurrency=(policyId, assetName), sellQuantity, sellPrice} =
+  let policyBS = C.serialiseToRawBytes policyId
+      assetBS  = C.serialiseToRawBytes assetName
+      C.Lovelace fees  = muesliSellOrderFee order + muesliDeposit
+      C.Lovelace price = valueOf sellQuantity sellPrice - (muesliSellOrderFee order)
   in ScriptDataConstructor 0
       [ ScriptDataConstructor 0
-        [ encodeAddress lboReturnAddress
+        [ encodeAddress returnAddress
+        , ScriptDataBytes "" -- Ada Policy ID
+        , ScriptDataBytes "" -- Ada Asset ID
+        , ScriptDataBytes policyBS
+        , ScriptDataBytes assetBS
+        , ScriptDataNumber price
+        , ScriptDataConstructor 1 [] -- ?? Allow partial matches?
+        , ScriptDataNumber fees
+        ]
+      ]
+
+{-| Datum for a limit BUY order
+-}
+mkBuyOrderDatum :: C.AddressInEra C.BabbageEra -> BuyOrder -> C.ScriptData
+mkBuyOrderDatum returnAddress order@BuyOrder{buyCurrency=(policyId, assetName), buyQuantity = C.Quantity q} =
+  let policyBS = C.serialiseToRawBytes policyId
+      assetBS = C.serialiseToRawBytes assetName
+      C.Lovelace l = muesliDeposit + muesliBuyOrderFee order
+  in ScriptDataConstructor 0
+      [ ScriptDataConstructor 0
+        [ encodeAddress returnAddress
         , ScriptDataBytes policyBS
         , ScriptDataBytes assetBS
         , ScriptDataBytes "" -- Ada Policy ID
@@ -141,20 +212,28 @@ mkBuyOrderDatum LimitBuyOrder{lboReturnAddress, lboPolicy, lboAssetName, lboQuan
         ]
       ]
 
-buyOrderFromScriptData :: C.NetworkId -> C.ScriptData -> Maybe LimitBuyOrder
-buyOrderFromScriptData network = \case
+buyOrderFromScriptData ::
+  -- | Network ID
+  C.NetworkId ->
+  -- | Total lovelace locked in the buy order output
+  C.Lovelace ->
+  -- | Output datum
+  C.ScriptData ->
+  Maybe BuyOrder
+buyOrderFromScriptData network totalLovelace = \case
   ScriptDataConstructor 0
       [ ScriptDataConstructor 0
-        [ (decodeAddress network -> Just lboReturnAddress)
-        , ScriptDataBytes (C.deserialiseFromRawBytes (C.proxyToAsType Proxy) -> Just lboPolicy)
-        , ScriptDataBytes (C.deserialiseFromRawBytes (C.proxyToAsType Proxy) -> Just lboAssetName)
+        [ (decodeAddress network -> Just{})
+        , ScriptDataBytes (C.deserialiseFromRawBytes (C.proxyToAsType Proxy) -> Just policyId)
+        , ScriptDataBytes (C.deserialiseFromRawBytes (C.proxyToAsType Proxy) -> Just assetName)
         , ScriptDataBytes "" -- Ada Policy ID
         , ScriptDataBytes "" -- Ada Asset ID
-        , ScriptDataNumber (C.Quantity -> lboQuantity)
+        , ScriptDataNumber (C.Quantity -> buyQuantity)
         , ScriptDataConstructor 1 [] -- ?? Allow partial matches?
-        , ScriptDataNumber (C.Lovelace -> lboLovelace)
+        , ScriptDataNumber (C.Lovelace -> feeAndDeposit)
         ]
-      ] -> Just LimitBuyOrder{lboReturnAddress, lboPolicy, lboQuantity, lboLovelace, lboAssetName}
+      ] ->
+        Just BuyOrder{buyCurrency=(policyId, assetName), buyQuantity, buyPrice = unitPrice buyQuantity (totalLovelace - feeAndDeposit) }
   _ -> Nothing
 
 matchRedeemer :: C.ScriptData

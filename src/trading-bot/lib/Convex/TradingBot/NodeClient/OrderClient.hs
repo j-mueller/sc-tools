@@ -22,8 +22,8 @@ import qualified Convex.Constants             as Constants
 import           Convex.Lenses                (emptyTx)
 import qualified Convex.Lenses                as L
 import           Convex.MonadLog              (MonadLogKatipT (..), logInfoS)
-import           Convex.Muesli.LP.BuildTx     (LimitBuyOrder (..))
 import qualified Convex.Muesli.LP.BuildTx     as BuildTx
+import qualified Convex.Muesli.LP.Types       as T
 import           Convex.NodeClient.Fold       (CatchingUp (..), catchingUp,
                                                foldClient)
 import           Convex.NodeClient.Resuming   (resumingClient)
@@ -54,7 +54,7 @@ applyBlock info@C.LocalNodeConnectInfo{C.localNodeNetworkId} logEnv ns wallet or
     void $ runMonadBlockchainCardanoNodeT info $ do
       logInfoS $ "Placing order: " <> show order
       let addr = Wallet.addressInEra localNodeNetworkId wallet & set (L._AddressInEra . L._Address . _3) namiStakeRef
-      let tx = BuildTx.buyOrder localNodeNetworkId (convBuyOrder addr order) emptyTx
+      let tx = BuildTx.buyOrder addr localNodeNetworkId (convBuyOrder order) emptyTx
       (tx_, change_) <- balanceForWallet wallet state tx
       logInfoS (show tx_)
       logInfoS (show change_)
@@ -63,14 +63,13 @@ applyBlock info@C.LocalNodeConnectInfo{C.localNodeNetworkId} logEnv ns wallet or
 
   pure newState
 
-convBuyOrder :: C.AddressInEra C.BabbageEra -> BuyOrder 'Typed -> LimitBuyOrder
-convBuyOrder returnAddress BuyOrder{policyId, assetName, quantity, lovelace} =
-  LimitBuyOrder
-    returnAddress
-    policyId
-    assetName
-    quantity
-    lovelace
+convBuyOrder :: BuyOrder 'Typed -> T.BuyOrder
+convBuyOrder BuyOrder{policyId, assetName, quantity, lovelace} =
+  T.BuyOrder
+    { T.buyCurrency = (policyId, assetName)
+    , T.buyQuantity = quantity
+    , T.buyPrice = T.unitPrice quantity lovelace
+    }
 
 namiAddress :: C.AddressInEra C.BabbageEra
 namiAddress = maybe (error "") id $ C.deserialiseAddress (C.proxyToAsType Proxy) "addr1qx4jckkq2gqey7pnzayptkfuxh93lrp79kqwl5zvuejgquurc9hqawk27ans9d45ss8pnukglu6mxpmnslvtznev6j0qd0dc2n"

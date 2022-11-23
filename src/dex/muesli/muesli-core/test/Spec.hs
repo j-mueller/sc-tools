@@ -17,11 +17,13 @@ import           Convex.MockChain.CoinSelection        (balanceAndSubmit,
                                                         paymentTo)
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.MockChain.Utils                (mockchainSucceeds)
-import           Convex.Muesli.LP.BuildTx              (LimitBuyOrder (..),
-                                                        mkBuyOrderDatum)
+import           Convex.Muesli.LP.BuildTx              (mkBuyOrderDatum)
 import qualified Convex.Muesli.LP.BuildTx              as BuildTx
 import qualified Convex.Muesli.LP.Constants            as Muesli
 import           Convex.Muesli.LP.OnChain.OnChainUtils (integerToBS)
+import           Convex.Muesli.LP.Types                (BuyOrder (..),
+                                                        SellOrder (..),
+                                                        unitPrice)
 import           Convex.Utxos                          (selectUtxo)
 import           Convex.Wallet                         (Wallet)
 import qualified Convex.Wallet                         as Wallet
@@ -48,10 +50,11 @@ tests = testGroup "unit tests"
   , testGroup "Orderbook v3"
     [ testCase "Place a limit buy order" (mockchainSucceeds $ placeOrder Wallet.w1)
     , testCase "Produce an output with reference script" (mockchainSucceeds $ putReferenceScript Wallet.w1)
-    , testCase "Cancel a limit buy order" (mockchainSucceeds $ placeOrder Wallet.w1 >>= uncurry (cancelOrder Wallet.w1))
+    , testCase "Cancel a limit buy order" (mockchainSucceeds $ placeOrder Wallet.w1 >>= (\(txIn, buyOrder, returnAddress) -> cancelBuyOrder Wallet.w1 txIn returnAddress buyOrder))
     ]
   , testGroup "Serialisation"
-    [ testCase "Order datum" orderDatumTest
+    [ testCase "Buy order datum" buyOrderDatumTest
+    , testCase "Sell order datum" sellOrderDatumTest
     , testCase "Orderbook v3 script hash" orderbookScriptHashTest
     ]
   ]
@@ -78,23 +81,22 @@ mintLPNFT wllt = do
   _ <- balanceAndSubmit wllt tx
   pure tokenName
 
-placeOrder :: Wallet -> Mockchain (C.TxIn, LimitBuyOrder)
+placeOrder :: Wallet -> Mockchain (C.TxIn, BuyOrder, C.AddressInEra C.BabbageEra)
 placeOrder wllt = do
   let order =
-        LimitBuyOrder
-          { lboReturnAddress = Wallet.addressInEra Defaults.networkId wllt
-          , lboPolicy = "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa"
-          , lboAssetName = "MILK"
-          , lboQuantity = 8
-          , lboLovelace = 100_000_000
+        BuyOrder
+          { buyCurrency = ("8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa", "MILK")
+          , buyQuantity = 8
+          , buyPrice    = unitPrice 1 (20_000_000)
           }
-      tx = emptyTx & BuildTx.buyOrder Defaults.networkId order-- "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa" "MILK" (C.Quantity 8) (C.Lovelace 100_000_000)
+      addr = Wallet.addressInEra Defaults.networkId wllt
+      tx = emptyTx & BuildTx.buyOrder addr Defaults.networkId order-- "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa" "MILK" (C.Quantity 8) (C.Lovelace 100_000_000)
   txId <- balanceAndSubmit wllt tx
-  pure (C.TxIn txId (C.TxIx 0), order)
+  pure (C.TxIn txId (C.TxIx 0), order, addr)
 
-cancelOrder :: Wallet -> C.TxIn -> LimitBuyOrder -> Mockchain C.TxId
-cancelOrder wllt txIn order = do
-  let tx = emptyTx & BuildTx.cancelOrder txIn order
+cancelBuyOrder :: Wallet -> C.TxIn -> C.AddressInEra C.BabbageEra -> BuyOrder -> Mockchain C.TxId
+cancelBuyOrder wllt txIn returnAddress order = do
+  let tx = emptyTx & BuildTx.cancelBuyOrder returnAddress txIn order
   balanceAndSubmit wllt tx
 
 -- TODO: Move somewhere else!
@@ -105,18 +107,22 @@ fromCardanoTxIn (C.TxIn txId (C.TxIx txIx)) = PV1.TxOutRef (fromCardanoTxId txId
 fromCardanoTxId :: C.TxId -> PV1.TxId
 fromCardanoTxId txId = PV1.TxId $ PlutusTx.toBuiltin $ C.serialiseToRawBytes txId
 
-orderDatumTest :: Assertion
-orderDatumTest = do
-  assertEqual "Datum from tx and constructed datum" limitOrderDatum milkBuyOrder
-  assertEqual "Datum from tx and reconstructed datum" limitOrderDatum order8Milk
+buyOrderDatumTest :: Assertion
+buyOrderDatumTest = do
+  assertEqual "Datum from tx and reconstructed datum" limitBuyOrderDatum order8Milk
+  assertEqual "Datum from tx and constructed datum" limitBuyOrderDatum milkBuyOrder
+
+sellOrderDatumTest :: Assertion
+sellOrderDatumTest = do
+  assertEqual "Datum from tx and constructed datum" sell5Milk milkSellOrder
 
 {-| A tx out datum for a limit buy order of 8 milk,
 taken from https://cardanoscan.io/transaction/8e7bd1d7eb2e1924e622826eeaafad61db55a0aa2a4ebfa332b29f5f2b75888b
 The datum was revealed in the spending transaction
 https://cardanoscan.io/transaction/58259eec76e100dbaf48776b8815282323d6111cbc3d720fbf709f5ee525021b
 -}
-limitOrderDatum :: C.ScriptData
-limitOrderDatum =
+limitBuyOrderDatum :: C.ScriptData
+limitBuyOrderDatum =
   either
     (error . show)
     id
@@ -131,20 +137,22 @@ namiAddress = maybe (error "") id $ C.deserialiseAddress (C.proxyToAsType Proxy)
 milkBuyOrder :: C.ScriptData
 milkBuyOrder =
   let order =
-        LimitBuyOrder
-          { lboReturnAddress = namiAddress
-          , lboPolicy = "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa"
-          , lboAssetName = "MILK"
-          , lboQuantity = 8
-          , lboLovelace = 2650000
+        BuyOrder
+          { buyCurrency = ("8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa", "MILK")
+          , buyQuantity = 8
+          , buyPrice = unitPrice 1 (2_500_000)
           }
-  in mkBuyOrderDatum order
-  -- mkBuyOrderDatum
-    -- namiAddress
-    -- "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa" -- MILK Policy ID
-    -- "MILK"
-    -- (C.Quantity 8)
-    -- (C.Lovelace 2650000)
+  in mkBuyOrderDatum namiAddress order
+
+milkSellOrder :: C.ScriptData
+milkSellOrder =
+  let order =
+        SellOrder
+          { sellCurrency = ("8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa", "MILK")
+          , sellQuantity = 5
+          , sellPrice = unitPrice 5 (11_547_670)
+          }
+  in BuildTx.mkSellOrderDatum namiAddress order
 
 {-| The same as 'limitOrderDatum', but more readable
 -}
@@ -169,9 +177,34 @@ order8Milk =
         , ScriptDataBytes "" -- Ada Asset ID
         , ScriptDataNumber 8
         , ScriptDataConstructor 1 [] -- ?? Allow partial matches?
-        , ScriptDataNumber 2650000
+        , ScriptDataNumber 2_650_000
         ]
       ]
+
+-- hash: 81feaa61b8eceed856c9af01bd96b65c8d4698cc012caa9d03c3ce3ea620e8a7
+sell5Milk :: C.ScriptData
+sell5Milk =
+  ScriptDataConstructor 0
+    [ ScriptDataConstructor 0
+      [ ScriptDataConstructor 0
+        [ ScriptDataConstructor 0
+          [ ScriptDataBytes "\171,Z\192R\SOH\146x3\ETBH\NAK\217<5\203\US\140>-\128\239\208L\230d\128s"]
+        , ScriptDataConstructor 0
+          [ ScriptDataConstructor 0
+            [ ScriptDataConstructor 0
+              [ ScriptDataBytes "\131\193n\SO\186\202\247g\STX\182\180\132\SO\EM\242\200\255\&5\179\as\135\216\177O,\212\158"]
+            ]
+          ]
+        ]
+      , ScriptDataBytes ""
+      , ScriptDataBytes ""
+      , ScriptDataBytes "\138\FS\250\226\DC3h\184\190\187\190\217\128\SI\236\&0N\149\204\227\154*W\220\&5\226\227\235\170"
+      , ScriptDataBytes "MILK"
+      , ScriptDataNumber 10597670
+      , ScriptDataConstructor 1 []
+      , ScriptDataNumber 2650000
+      ]
+    ]
 
 orderbookScriptHashTest :: Assertion
 orderbookScriptHashTest = do

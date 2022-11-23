@@ -4,7 +4,6 @@
 {-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE ViewPatterns       #-}
 module Convex.TradingBot.NodeClient.BacktestingClient(
   backtestingClient
 ) where
@@ -17,22 +16,24 @@ import           Cardano.Api.Shelley           (AssetName, Block (..),
                                                 Quantity (..), SlotNo, Value)
 import qualified Cardano.Api.Shelley           as C
 import qualified Control.Concurrent.STM        as STM
-import           Control.Lens                  (Lens', anon, at, makeLenses,
-                                                use, (%=), (&), (.=), (.~),
-                                                (^.))
+import           Control.Lens                  (Lens', _2, anon, at, makeLenses,
+                                                use, view, (%=), (&), (.=),
+                                                (.~), (^.))
 import           Control.Monad                 (guard, unless, when)
 import           Control.Monad.IO.Class        (MonadIO (..))
 import           Control.Monad.State.Strict    (MonadState, execStateT)
 import           Control.Monad.Trans.Maybe     (runMaybeT)
 import qualified Convex.Constants              as Constants
-import           Convex.Event                  (Event (..),
+import           Convex.Event                  (Event (..), NewOutputEvent (..),
                                                 OutputSpentEvent (..),
                                                 ResolvedInputs (..),
                                                 TxWithEvents (..), extract)
+import qualified Convex.Lenses                 as L
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
                                                 logInfoS)
-import           Convex.Muesli.LP.BuildTx      (LimitBuyOrder (..),
-                                                buyOrderFromScriptData)
+import           Convex.Muesli.LP.BuildTx      (buyOrderFromScriptData)
+import           Convex.Muesli.LP.Types        (BuyOrder (..),
+                                                valueOf)
 import           Convex.NodeClient.Fold        (CatchingUp (..), catchingUp,
                                                 foldClient)
 import           Convex.NodeClient.Resuming    (resumingClient)
@@ -74,7 +75,7 @@ initialState = ClientState mempty mempty mempty mempty (emptyPortfolio, C.lovela
 
 backtestingClient :: STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
 backtestingClient resultVar logEnv ns networkId env =
-  resumingClient [Constants.recent] $ \_ ->
+  resumingClient [Constants.lessRecent] $ \_ ->
     foldClient
       initialState
       env
@@ -94,7 +95,6 @@ applyBlock resultVar le initialNamespace networkId c oldState block = K.runKatip
                   & lpStats        .~ totalStats
   flip execStateT newState $ do
     updatePrices c currentBlockNo currentSlot
-      -- (Map.unionWith (<>) (getPrices newResolvedInputs) (
       (Map.unionsWith (<>) (getOrderbookPrices networkId <$> newEvents))
     unless (catchingUp c) $ do
       p <- use portfolio
@@ -139,9 +139,13 @@ getOrderbookPrices :: NetworkId -> TxWithEvents (Either LPPoolEvent OrderbookEve
 getOrderbookPrices networkId es =
   case snd $ partitionEithers $ fmap sequence $ toList $ twEvents es of
     [AnOutputSpentEvent a, AnOutputSpentEvent b] ->
-      let f (buyOrderFromScriptData networkId . C.fromAlonzoData . oseDatum -> Just LimitBuyOrder{lboPolicy, lboAssetName, lboQuantity, lboLovelace}) =
-              Just ((lboPolicy, lboAssetName), (lboLovelace, lboQuantity))
-          f _ = Nothing
+      let f OutputSpentEvent{oseDatum, oseTxOutput=NewOutputEvent{neOutput}} =
+            let vl = C.selectLovelace $ view (L._TxOut . _2 . L._TxOutValue) $ C.fromShelleyTxOut C.ShelleyBasedEraBabbage neOutput
+                dt = C.fromAlonzoData oseDatum
+            in case buyOrderFromScriptData networkId vl dt of
+                Just BuyOrder{buyCurrency, buyQuantity, buyPrice} ->
+                  Just (buyCurrency, (valueOf buyQuantity buyPrice, buyQuantity))
+                _ -> Nothing -- FIXME: sellOrderFromScriptData
       in Map.fromListWith (<>) $ mapMaybe f [a, b]
     _ -> mempty
 

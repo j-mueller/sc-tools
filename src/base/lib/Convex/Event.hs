@@ -13,6 +13,7 @@ module Convex.Event(
     OutputSpentEvent(..),
     Event(..),
     ScriptOutDataHash,
+    ScriptOut,
     txIn,
     splitEvent,
     -- * Extraction
