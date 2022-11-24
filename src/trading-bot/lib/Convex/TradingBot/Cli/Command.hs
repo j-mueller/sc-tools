@@ -17,7 +17,7 @@ data CliCommand =
   StartMatcher (Config 'Str)
   | Buy (Config 'Str) (Order 'Str)
   | Sell (Config 'Str) (Order 'Str)
-  | Optimise (Config 'Str)
+  | Optimise FilePath
   | ExportPrices (Config 'Str) FilePath
 
 commandParser :: Parser CliCommand
@@ -45,7 +45,7 @@ sell = command "sell" $
 
 optimise :: Mod CommandFields CliCommand
 optimise = command "optimise" $
-  info (Optimise <$> configParser) (fullDesc <> progDesc "Use the annealing algorithm to optimise a set of trading rules")
+  info (Optimise <$> strOption (long "prices" <> help "CSV file for the prices")) (fullDesc <> progDesc "Use the annealing algorithm to optimise a set of trading rules")
 
 exportPrices :: Mod CommandFields CliCommand
 exportPrices = command "export-prices" $

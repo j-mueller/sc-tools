@@ -15,7 +15,7 @@ import           Convex.MonadLog                           (MonadLog,
 import           Convex.NodeClient.Types                   (loadConnectInfo,
                                                             runNodeClient)
 import           Convex.TradingBot.Annealing               (runAnnealing,
-                                                            runBacktest)
+                                                            runBacktestNode)
 import           Convex.TradingBot.Cli.Command             (CliCommand (..),
                                                             commandParser)
 import           Convex.TradingBot.Cli.Config              (Order (..))
@@ -53,13 +53,12 @@ runMain = do
     result <- runExceptT $ do
       case command of
         StartMatcher config ->
-          mkTyped config >>= runBacktest Rules.movingAverage initLogEnv >>= uncurry (flip printPortfolioInfo)
+          mkTyped config >>= runBacktestNode Rules.movingAverage initLogEnv >>= uncurry (flip printPortfolioInfo)
         Buy config order   ->
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeBuyOrder le)
         Sell config order   ->
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeSellOrder le)
-        Optimise config ->
-          mkTyped config >>= runAnnealing le
+        Optimise fp -> runAnnealing le fp
         ExportPrices config outFile ->
           mkTyped config >>= runExport le outFile
     case result of

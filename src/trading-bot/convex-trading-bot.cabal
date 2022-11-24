@@ -65,7 +65,10 @@ library
       annealing,
       primitive,
       deepseq,
-      csv
+      csv,
+      streaming-cassava,
+      streaming-with,
+      cassava
 
     -- cardano dependencies
     build-depends:

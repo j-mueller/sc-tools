@@ -6,11 +6,11 @@
 -}
 module Convex.TradingBot.NodeClient.PricesClient(
   pricesClient,
-  PriceEventRow
+  PriceEventRow(..)
 ) where
 
 import qualified Cardano.Api                   as C
-import           Cardano.Api.Shelley           (AssetName, BlockInMode,
+import           Cardano.Api.Shelley           (AssetName, BlockInMode, BlockNo,
                                                 CardanoMode, Env, Lovelace,
                                                 NetworkId, PolicyId, Quantity,
                                                 SlotNo, TxId)
@@ -35,13 +35,15 @@ import           Convex.NodeClient.Resuming    (resumingClient)
 import           Convex.NodeClient.Types       (PipelinedLedgerStateClient)
 import           Convex.TradingBot.LPPoolEvent (OrderbookEvent (..))
 import qualified Convex.TradingBot.LPPoolEvent as LPPoolEvent
-import           Data.CSV.Export               (CSVRow (..), defaultCSVConfig,
-                                                writeCSVLine)
+import           Data.Csv                      (FromField (..), (.:))
+import           Data.CSV.Export               (CSVRow (..), csvQuotationMark,
+                                                defaultCSVConfig, writeCSVLine)
 import           Data.Foldable                 (traverse_)
+import           Data.Proxy                    (Proxy (..))
 import qualified Data.Text                     as Text
-import qualified Data.Text.Encoding            as Text
 import           GHC.IO.Handle                 (Handle)
 import qualified Katip                         as K
+import           Streaming.Cassava             (FromNamedRecord (..))
 
 
 data ClientState =
@@ -67,8 +69,9 @@ applyBlock handle networkId logEnv initialNamespace c oldState block = K.runKati
   let (newEvents, newResolvedInputs) = extract (\e -> maybe Nothing (either (const Nothing) Just) . LPPoolEvent.extract e) (oldState ^. resolvedInputs) block
       newState = oldState & resolvedInputs .~ newResolvedInputs
 
-  flip traverse_ newEvents $ \TxWithEvents{twEvents, twTx} -> do
+  flip traverse_ newEvents $ \TxWithEvents{twEvents, twTx, twBlock} -> do
     let i = C.getTxId (C.getTxBody twTx)
+        config = defaultCSVConfig{csvQuotationMark=Nothing}
     flip traverse_ twEvents $ \case
       ANewOutputEvent{} -> pure ()
       AnOutputSpentEvent OutputSpentEvent{oseDatum, oseTxOutput = NewOutputEvent{neSlot, neOutput}} -> do
@@ -77,8 +80,8 @@ applyBlock handle networkId logEnv initialNamespace c oldState block = K.runKati
         case buyOrderFromScriptData networkId vl dt of
           Nothing -> pure ()
           Just BuyOrder{buyCurrency, buyQuantity, buyPrice} -> do
-            let row = PriceEventRow i neSlot (fst buyCurrency) (snd buyCurrency) buyQuantity (valueOf buyQuantity buyPrice)
-            liftIO (writeCSVLine handle defaultCSVConfig row)
+            let row = PriceEventRow i neSlot twBlock (fst buyCurrency) (snd buyCurrency) buyQuantity (valueOf buyQuantity buyPrice)
+            liftIO (writeCSVLine handle config row)
 
   guard (catchingUp c)
   pure newState
@@ -87,6 +90,7 @@ data PriceEventRow =
   PriceEventRow
     { peTx        :: TxId
     , peSlot      :: SlotNo
+    , peBlockNo   :: BlockNo
     , pePolicyId  :: PolicyId
     , peAssetName :: AssetName
     , peQuantity  :: Quantity
@@ -94,13 +98,31 @@ data PriceEventRow =
     }
 
 instance CSVRow PriceEventRow where
-  headers _ = ["tx", "slot", "policy", "asset", "quantity", "lovelace"]
-  toRow PriceEventRow{peTx, peSlot=C.SlotNo slot, pePolicyId, peAssetName, peQuantity=C.Quantity q, peLovelace=C.Lovelace l} =
-    let C.AssetName assetName = peAssetName
-    in  [ C.serialiseToRawBytesHexText peTx
-        , Text.pack (show slot)
-        , C.serialiseToRawBytesHexText pePolicyId
-        , either (const $ C.serialiseToRawBytesHexText peAssetName) id (Text.decodeUtf8' assetName)
-        , Text.pack (show q)
-        , Text.pack (show l)
-        ]
+  headers _ = ["tx", "slot", "block", "policy", "asset", "quantity", "lovelace"]
+  toRow PriceEventRow{peTx, peSlot=C.SlotNo slot, peBlockNo=C.BlockNo n, pePolicyId, peAssetName, peQuantity=C.Quantity q, peLovelace=C.Lovelace l} =
+    [ C.serialiseToRawBytesHexText peTx
+    , Text.pack (show slot)
+    , Text.pack (show n)
+    , C.serialiseToRawBytesHexText pePolicyId
+    , C.serialiseToRawBytesHexText peAssetName
+    , Text.pack (show q)
+    , Text.pack (show l)
+    ]
+
+instance FromNamedRecord PriceEventRow where
+  parseNamedRecord m =
+    PriceEventRow
+      <$> fmap unFromHex (m .: "tx")
+      <*> fmap C.SlotNo (m .: "slot")
+      <*> fmap C.BlockNo (m .: "block")
+      <*> fmap unFromHex (m .: "policy")
+      <*> fmap unFromHex (m .: "asset")
+      <*> fmap C.Quantity (m .: "quantity")
+      <*> fmap C.Lovelace (m .: "lovelace")
+
+newtype FromHex a = FromHex{ unFromHex :: a }
+
+instance C.SerialiseAsRawBytes a => FromField (FromHex a) where
+  parseField bs = case C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy) bs of
+    Right a  -> pure (FromHex a)
+    Left err -> fail $ "parseField failed: " <> show err

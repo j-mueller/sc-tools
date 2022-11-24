@@ -1,9 +1,11 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE NamedFieldPuns       #-}
+{-# LANGUAGE NumericUnderscores   #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Convex.TradingBot.Portfolio(
   -- * Positions
   Position(..),
@@ -54,6 +56,7 @@ import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict (MonadState, StateT, get, put,
                                              runState, runStateT)
+import           Control.Monad.Trans.Class  (MonadTrans (..))
 import           Convex.MonadLog            (MonadLog, logInfoS)
 import           Convex.Muesli.LP.Types     (BuyOrder (..), Price,
                                              SellOrder (..), scale, unitPrice,
@@ -273,6 +276,13 @@ class Monad m => MonadTrade m where
 
 newtype SimulatedPortfolioT m a = SimulatedPortfolioT{ unSimulatedPortfolioT :: ReaderT PortfolioConfig (StateT (Portfolio, Value) m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
+
+instance MonadTrans SimulatedPortfolioT where
+  lift = SimulatedPortfolioT . lift . lift
+
+instance MonadState s m => MonadState s (SimulatedPortfolioT m) where
+  get = lift get
+  put s = lift (put s)
 
 runSimulatedPortfolioT :: PortfolioConfig -> (Portfolio, Value) -> SimulatedPortfolioT m a -> m (a, (Portfolio, Value))
 runSimulatedPortfolioT config portfolio SimulatedPortfolioT{unSimulatedPortfolioT} =
