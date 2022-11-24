@@ -21,8 +21,7 @@ data LPPoolEvent =
     , lpeNativeTokenAmount :: !Quantity
     }
 
-data OrderbookEvent =
-  OrderbookEvent
+data OrderbookEvent = OrderbookEvent
 
 extract :: C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe (Either LPPoolEvent OrderbookEvent)
 extract out sh = case Muesli.getPoolScript out sh of

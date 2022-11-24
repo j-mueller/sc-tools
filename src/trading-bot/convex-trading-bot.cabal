@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.TradingBot
+      Convex.TradingBot.Annealing
       Convex.TradingBot.Cli.Command
       Convex.TradingBot.Cli.Config
       Convex.TradingBot.Cli
@@ -36,6 +37,7 @@ library
       Convex.TradingBot.NodeClient
       Convex.TradingBot.NodeClient.BacktestingClient
       Convex.TradingBot.NodeClient.OrderClient
+      Convex.TradingBot.NodeClient.PricesClient
       Convex.TradingBot.Portfolio
       Convex.TradingBot.Prices
       Convex.TradingBot.Rules
@@ -57,7 +59,13 @@ library
       fingertree,
       strict-containers,
       katip,
-      stm
+      stm,
+      streaming,
+      mwc-probability,
+      annealing,
+      primitive,
+      deepseq,
+      csv
 
     -- cardano dependencies
     build-depends:

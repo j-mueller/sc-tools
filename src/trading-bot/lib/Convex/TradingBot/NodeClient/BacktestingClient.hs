@@ -46,8 +46,7 @@ import           Convex.TradingBot.Portfolio   (Portfolio,
 import qualified Convex.TradingBot.Portfolio   as Portfolio
 import           Convex.TradingBot.Prices      (LPPrices)
 import qualified Convex.TradingBot.Prices      as Prices
-import           Convex.TradingBot.Rules       (Signal (..))
-import qualified Convex.TradingBot.Rules       as Rules
+import           Convex.TradingBot.Rules       (Rule, Signal (..))
 import           Convex.TradingBot.Stats       (LPStats)
 import qualified Convex.TradingBot.Stats       as Stats
 import           Data.Either                   (partitionEithers)
@@ -72,16 +71,16 @@ makeLenses ''ClientState
 initialState :: ClientState
 initialState = ClientState mempty mempty mempty mempty (emptyPortfolio, C.lovelaceToValue $ Lovelace 3_000_000_000)
 
-backtestingClient :: STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
-backtestingClient resultVar logEnv ns networkId env =
+backtestingClient :: Rule -> STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> Env -> PipelinedLedgerStateClient
+backtestingClient rule resultVar logEnv ns networkId env =
   resumingClient [Constants.lessRecent] $ \_ ->
     foldClient
       initialState
       env
-      (applyBlock resultVar logEnv ns networkId)
+      (applyBlock rule resultVar logEnv ns networkId)
 
-applyBlock :: STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
-applyBlock resultVar le initialNamespace networkId c oldState block = K.runKatipContextT le () initialNamespace $ runMonadLogKatipT $ runMaybeT $ do
+applyBlock :: Rule -> STM.TMVar (Portfolio, Value) -> K.LogEnv -> K.Namespace -> NetworkId -> CatchingUp -> ClientState -> BlockInMode CardanoMode -> IO (Maybe ClientState)
+applyBlock rule resultVar le initialNamespace networkId c oldState block = K.runKatipContextT le () initialNamespace $ runMonadLogKatipT $ runMaybeT $ do
   let (newEvents, newResolvedInputs) = extract LPPoolEvent.extract (oldState ^. resolvedInputs) block
       BlockInMode (Block blockHeader _) _ = block
       BlockHeader currentSlot _ currentBlockNo = blockHeader
@@ -93,7 +92,7 @@ applyBlock resultVar le initialNamespace networkId c oldState block = K.runKatip
                   & resolvedInputs .~ newResolvedInputs
                   & lpStats        .~ totalStats
   flip execStateT newState $ do
-    updatePrices c currentBlockNo currentSlot
+    updatePrices rule c currentBlockNo currentSlot
       (Map.unionsWith (<>) (getOrderbookPrices networkId <$> newEvents))
     unless (catchingUp c) $ do
       p <- use portfolio
@@ -106,8 +105,8 @@ logUnless w m = unless w (logInfoS m)
 pricesFor :: (PolicyId, AssetName) -> Lens' ClientState LPPrices
 pricesFor k = lpPrices . at k . anon Prices.empty Prices.null
 
-updatePrices :: (MonadLog m, MonadState ClientState m) => CatchingUp -> BlockNo -> SlotNo -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> m ()
-updatePrices c blck slt newPrices = do
+updatePrices :: (MonadLog m, MonadState ClientState m) => Rule -> CatchingUp -> BlockNo -> SlotNo -> Map (PolicyId, AssetName) (Lovelace, Quantity) -> m ()
+updatePrices rule c blck slt newPrices = do
   oldPrices <- use lastPrices
   flip traverse_ (Map.toList newPrices) $ \(k, newPrice) -> do
     let oldPrice = Map.findWithDefault (0, 0) k oldPrices
@@ -121,7 +120,7 @@ updatePrices c blck slt newPrices = do
       portf' <- Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
         let pricePoint = (fst k, snd k, snd newPrice, fst newPrice)
         Portfolio.update pricePoint
-        case Rules.movingAverage newPrices' of
+        case rule newPrices' of
           Buy  -> Portfolio.buy 1.0 pricePoint
           Sell -> Portfolio.sell 1.0 pricePoint
           _    -> pure ()

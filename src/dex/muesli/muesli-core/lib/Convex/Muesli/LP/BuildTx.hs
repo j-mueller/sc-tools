@@ -171,7 +171,7 @@ decodeAddress networkId = \case
     ] -> Just (C.shelleyAddressInEra (C.makeShelleyAddress networkId (C.PaymentCredentialByKey payment) C.NoStakeAddress))
   _ -> Nothing
 
-{-| 
+{-|
 -}
 mkSellOrderDatum :: C.AddressInEra C.BabbageEra -> SellOrder -> C.ScriptData
 mkSellOrderDatum returnAddress order@SellOrder{sellCurrency=(policyId, assetName), sellQuantity, sellPrice} =

@@ -20,6 +20,7 @@ module Convex.TradingBot.Portfolio(
   tradeCount,
   buyOrder,
   updatePrice,
+  aum,
 
   -- * Config
   PortfolioConfig(..),
