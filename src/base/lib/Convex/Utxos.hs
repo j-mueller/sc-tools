@@ -23,6 +23,7 @@ module Convex.Utxos(
 
   -- * Changes to utxo sets
   UtxoChange(..),
+  PrettyUtxoChange(..),
   outputsAdded,
   outputsRemoved,
   null,
@@ -66,6 +67,7 @@ import qualified Data.Text                     as Text
 import           Prelude                       hiding (null)
 import           Prettyprinter                 (Doc, Pretty (..), fill, hang,
                                                 viaShow, vsep, (<+>))
+import qualified Prettyprinter
 
 type AddressCredential = Shelley.PaymentCredential StandardCrypto
 
@@ -175,11 +177,15 @@ prettyPolicy p a = viaShow p <+> viaShow a
 
 instance Pretty BalanceChanges where
   pretty (BalanceChanges mp) =
-    let k (C.AdaAssetId, C.Quantity l) = (fill 32 "Ada") <+> prettyAda (C.Lovelace l)
-        k (C.AssetId p n, C.Quantity q) = prettyPolicy p n <+> pretty q
-        f (paymentCredential, C.valueToList -> entries) =
-          hang 4 $ vsep $ viaShow paymentCredential : fmap k entries
+    let f (paymentCredential, vl) =
+          hang 4 $ vsep [viaShow paymentCredential, prettyValue vl]
     in vsep (f <$> Map.toAscList mp)
+
+prettyValue :: C.Value -> Doc ann
+prettyValue vl =
+  let k (C.AdaAssetId, C.Quantity l) = (fill 32 "Ada") <+> prettyAda (C.Lovelace l)
+      k (C.AssetId p n, C.Quantity q) = prettyPolicy p n <+> pretty q
+  in vsep (k <$> C.valueToList vl)
 
 invBalanceChange :: BalanceChanges -> BalanceChanges
 invBalanceChange = BalanceChanges . Map.map C.negateValue . tbBalances
@@ -221,6 +227,18 @@ describeChange :: UtxoChange -> Text
 describeChange UtxoChange{_outputsAdded, _outputsRemoved} =
   let tshow = Text.pack . show
   in tshow (Map.size _outputsAdded) <> " outputs added, " <> tshow (Map.size _outputsRemoved) <> " outputs removed"
+
+newtype PrettyUtxoChange = PrettyUtxoChange UtxoChange
+
+instance Pretty PrettyUtxoChange where
+  pretty (PrettyUtxoChange UtxoChange{_outputsAdded, _outputsRemoved}) =
+    let b = foldMap (view (L._TxOut . _2 . L._TxOutValue))
+        bPlus = b _outputsAdded
+        bMinus = C.negateValue (b _outputsRemoved)
+    in hang 4 $ vsep
+        [ Prettyprinter.hsep [pretty (Map.size _outputsAdded), "outputs added", pretty (Map.size _outputsRemoved), "outputs removed"]
+        , prettyValue (bPlus <> bMinus)
+        ]
 
 {-| Change the 'UtxoSet'
 -}

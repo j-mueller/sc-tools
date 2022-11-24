@@ -10,11 +10,13 @@ import           Cardano.Api                (BlockInMode, CardanoMode,
 import           Control.Monad              (when)
 import           Control.Monad.Trans.Maybe  (runMaybeT)
 import qualified Convex.Constants           as Constants
-import           Convex.MonadLog            (MonadLogKatipT (..), logInfoS)
+import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
+                                             logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient')
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
-import           Convex.Utxos               (UtxoChange, UtxoSet, apply)
+import           Convex.Utxos               (PrettyUtxoChange (..), UtxoChange,
+                                             UtxoSet, apply)
 import qualified Convex.Utxos               as Utxos
 import           Convex.Wallet              (Wallet)
 import qualified Convex.Wallet              as Wallet
@@ -38,7 +40,7 @@ applyBlock logEnv ns wallet _catchingUp state block = K.runKatipContextT logEnv 
       newState = apply state change
 
   when (not $ Utxos.null change) $ do
-    logInfoS $ "UTXO set changed: " <> Text.unpack (Utxos.describeChange change)
+    logInfo $ PrettyUtxoChange change
     logInfoS $ "New balance: " <> show (Utxos.totalBalance newState)
   pure (change, newState)
 

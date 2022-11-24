@@ -6,7 +6,7 @@ module Main(main) where
 import qualified Cardano.Api.Shelley            as C
 import           Control.Lens                   (mapped, over, (&))
 import           Control.Monad                  (void)
-import           Convex.BuildTx                 (addReference, assetValue,
+import           Convex.BuildTx                 (assetValue,
                                                  mintPlutusV1, payToAddress,
                                                  payToPlutusV1,
                                                  payToPlutusV1Inline,
@@ -86,8 +86,7 @@ spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = emptyTx
-            & spendPlutusV1Ref txIn refTxIn (Just $ C.hashScript $ C.PlutusScript C.PlutusScriptV1 txInscript) () ()
-            -- & addReference refTxIn
+            & spendPlutusV1Ref txIn refTxIn Nothing () () --(Just $ C.hashScript $ C.PlutusScript C.PlutusScriptV1 txInscript)
   balanceAndSubmit Wallet.w1 tx
 
 mintingPlutus :: Mockchain C.TxId
