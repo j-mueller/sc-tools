@@ -19,6 +19,7 @@ module Convex.Lenses(
   txProtocolParams,
   txInsCollateral,
   txScriptValidity,
+  txAuxScripts,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -33,6 +34,7 @@ module Convex.Lenses(
   _ShelleyPaymentCredentialByScript,
   _TxInsCollateral,
   _TxMetadata,
+  _TxAuxScripts,
 
   -- ** Witnesses
   _KeyWitness,
@@ -158,6 +160,20 @@ txMetadata :: Lens' (C.TxBodyContent v BabbageEra) (C.TxMetadataInEra BabbageEra
 txMetadata = lens get set_ where
   get = C.txMetadata
   set_ body m = body{C.txMetadata=m}
+
+txAuxScripts :: Lens' (C.TxBodyContent v BabbageEra) (C.TxAuxScripts BabbageEra)
+txAuxScripts = lens get set_ where
+  get = C.txAuxScripts
+  set_ body s = body{C.txAuxScripts=s}
+
+_TxAuxScripts :: Iso' (C.TxAuxScripts BabbageEra) [C.ScriptInEra BabbageEra]
+_TxAuxScripts = iso from to where
+  from :: C.TxAuxScripts BabbageEra -> [C.ScriptInEra BabbageEra]
+  from = \case
+    C.TxAuxScriptsNone -> []
+    C.TxAuxScripts _ s -> s
+  to s | null s = C.TxAuxScriptsNone
+       | otherwise = C.TxAuxScripts C.AuxScriptsInBabbageEra s
 
 _TxMetadata :: Iso' (C.TxMetadataInEra BabbageEra) (Map Word64 C.TxMetadataValue)
 _TxMetadata = iso from to where

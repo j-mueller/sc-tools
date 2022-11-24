@@ -308,7 +308,7 @@ balanceForWallet wallet walletUtxo txb = do
   let walletAddress = Wallet.addressInEra n wallet
       txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just params)
   -- TODO: Better error handling (better than 'fail')
-  otherInputs <- lookupTxIns (spentTxIns txb)
+  otherInputs <- lookupTxIns (requiredTxIns txb)
   let combinedTxIns =
         let UtxoSet w = walletUtxo
             UTxO o = otherInputs
@@ -334,7 +334,7 @@ addOwnInput body (Utxos.onlyAda . Utxos.removeUtxos (spentTxIns body) -> UtxoSet
       spendPublicKeyOutput (fst $ head $ Map.toList _utxos) body
 
 setCollateral :: TxBodyContent BuildTx ERA -> UtxoSet -> TxBodyContent BuildTx ERA
-setCollateral body (Utxos.onlyAda . Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos}) =
+setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
   if not (runsScripts body)
     then body -- no script witnesses in inputs.
     else
@@ -448,6 +448,12 @@ spentTxIns :: C.TxBodyContent v C.BabbageEra -> Set C.TxIn
 spentTxIns (view L.txIns -> inputs) =
   -- TODO: Include collateral etc. fields
   Set.fromList (fst <$> inputs)
+
+requiredTxIns :: C.TxBodyContent v C.BabbageEra -> Set C.TxIn
+requiredTxIns body =
+  Set.fromList (fst <$> view L.txIns body)
+  <> Set.fromList (view (L.txInsReference . L._TxInsReference) body)
+  <> Set.fromList (view (L.txInsCollateral . L._TxInsCollateral) body)
 
 lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
 lookupTxIns allTxIns = do

@@ -22,6 +22,7 @@ module Convex.BuildTx(
   payToPlutusV2Inline,
   addReference,
   addCollateral,
+  addAuxScript,
   assetValue,
   setScriptsValid,
   -- * Minimum Ada deposit
@@ -112,6 +113,9 @@ addCollateral i = over (L.txInsCollateral . L._TxInsCollateral) ((:) i)
 
 addReference :: C.TxIn -> TxBuild
 addReference i = over (L.txInsReference . L._TxInsReference) ((:) i)
+
+addAuxScript :: C.ScriptInEra C.BabbageEra -> TxBuild
+addAuxScript s = over (L.txAuxScripts . L._TxAuxScripts) ((:) s)
 
 payToAddressTxOut :: C.AddressInEra C.BabbageEra -> C.Value -> C.TxOut C.CtxTx C.BabbageEra
 payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone C.ReferenceScriptNone
