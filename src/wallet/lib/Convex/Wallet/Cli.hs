@@ -16,12 +16,15 @@ import           Control.Monad.Trans.Except (runExceptT)
 import           Convex.MonadLog            (MonadLog, MonadLogKatipT (..),
                                              logInfo, logInfoS, logWarnS)
 import           Convex.NodeClient.Types    (loadConnectInfo, runNodeClient)
+import           Convex.Utxos               (PrettyBalance (..))
 import qualified Convex.Wallet              as Wallet
 import           Convex.Wallet.Cli.Command  (CliCommand (..), commandParser)
 import           Convex.Wallet.Cli.Config   (Config (..), ConfigMode (..),
                                              ParseFields (..))
 import qualified Convex.Wallet.Cli.Config   as Config
 import qualified Convex.Wallet.NodeClient   as NC
+import qualified Convex.Wallet.WalletState  as WalletState
+import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text                  as Text
 import qualified Katip                      as K
 import           Options.Applicative        (customExecParser, disambiguate,
@@ -29,6 +32,7 @@ import           Options.Applicative        (customExecParser, disambiguate,
                                              showHelpOnEmpty, showHelpOnError)
 import           System.Exit                (exitFailure)
 import           System.IO                  (stdout)
+
 
 runMain :: IO ()
 runMain = do
@@ -73,10 +77,13 @@ showAddress Config{wallet, cardanoNodeConfigFile, cardanoNodeSocket} = do
   pure info_
 
 runWallet :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> m ()
-runWallet logEnv c@Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} = do
+runWallet logEnv c@Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet, walletFile} = do
   void (showAddress c)
+  initialState <- fromMaybe WalletState.initialWalletState <$> liftIO (WalletState.readFromFile walletFile)
+  logInfoS $ "Resuming from " <> show (WalletState.chainPoint initialState)
+  logInfo (PrettyBalance $ WalletState.utxoSet initialState)
   let client _ env = do
-        pure (NC.balanceClient logEnv "wallet" wallet env)
+        pure (NC.balanceClient logEnv "wallet" walletFile initialState wallet env)
   result <- liftIO $ runExceptT (runNodeClient cardanoNodeConfigFile cardanoNodeSocket client)
   case result of
     Left err -> throwError err

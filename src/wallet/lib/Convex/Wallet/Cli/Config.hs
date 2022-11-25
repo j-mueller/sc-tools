@@ -38,6 +38,7 @@ data Config (m :: ConfigMode) =
     { cardanoNodeConfigFile :: FilePath
     , cardanoNodeSocket     :: FilePath
     , wallet                :: ConfigField m Wallet
+    , walletFile            :: FilePath
     }
 
 deriving stock instance Eq (Config 'Str)
@@ -63,9 +64,10 @@ class ParseFields c where
   parseFields :: c 'Str -> Either ConfigError (c 'Typed)
 
 instance ParseFields Config where
-  parseFields Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} =
+  parseFields Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet, walletFile} =
     Config cardanoNodeConfigFile cardanoNodeSocket
       <$> parseField wallet
+      <*> pure walletFile
 
 configParser :: Parser (Config 'Str)
 configParser =
@@ -73,6 +75,7 @@ configParser =
     <$> strOption (long "node-config" <> help "Cardano node config JSON file")
     <*> strOption (long "node-socket" <> help "Cardano node socket")
     <*> strOption (long "wallet-key" <> help "Serialised private key of the wallet")
+    <*> strOption (long "wallet-file" <> help "JSON file with the wallet state. This will be created if it doesn't exist")
 
 data ConfigError =
   ParseKeyError C.Bech32DecodeError

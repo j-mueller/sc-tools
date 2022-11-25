@@ -58,17 +58,17 @@ import qualified Cardano.Ledger.TxIn           as CT
 import           Control.Lens                  (_1, _2, makeLenses, makePrisms,
                                                 over, preview, view)
 import qualified Convex.Lenses                 as L
+import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
 import qualified Data.Set                      as Set
-import           Data.String                   (fromString)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           Prelude                       hiding (null)
-import           Prettyprinter                 (Doc, Pretty (..), hang, viaShow,
-                                                vsep, (<+>))
+import           Prettyprinter                 (Doc, Pretty (..), hang, parens,
+                                                viaShow, vsep, (<+>))
 import qualified Prettyprinter
 
 type AddressCredential = Shelley.PaymentCredential StandardCrypto
@@ -77,7 +77,7 @@ type AddressCredential = Shelley.PaymentCredential StandardCrypto
 -}
 newtype UtxoSet = UtxoSet{ _utxos :: Map C.TxIn (C.TxOut C.CtxUTxO C.BabbageEra) }
   deriving stock (Eq, Show)
-  deriving newtype (Semigroup, Monoid)
+  deriving newtype (Semigroup, Monoid, ToJSON, FromJSON)
 
 makePrisms ''UtxoSet
 
@@ -176,10 +176,10 @@ prettyAda (C.Lovelace lvl) =
 
 prettyPolicy :: C.PolicyId -> C.AssetName -> Doc ann
 prettyPolicy p a =
-  let ps = show p
-      x = take 5 ps
-      md = drop 53 ps
-  in fromString x <> "..." <> fromString md <+> viaShow a
+  let ps = C.serialiseToRawBytesHexText p
+      x = Text.take 4 ps
+      md = Text.drop 52 ps
+  in pretty x <> "..." <> pretty md <+> viaShow a
 
 instance Pretty BalanceChanges where
   pretty (BalanceChanges mp) =
@@ -253,7 +253,7 @@ instance Pretty PrettyBalance where
   pretty (PrettyBalance bal) =
     let nOutputs = Map.size (_utxos bal)
     in hang 4 $ vsep
-        $ (pretty nOutputs <+> "outputs")
+        $ ("Balance" <+> parens (pretty nOutputs <+> "outputs") <> ":")
         : prettyValue (totalBalance bal)
 
 {-| Change the 'UtxoSet'

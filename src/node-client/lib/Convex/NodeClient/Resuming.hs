@@ -33,11 +33,9 @@ resumingClient syncPoints f = PipelinedLedgerStateClient $ CSP.ChainSyncClientPi
       initialise = CSP.SendMsgFindIntersect syncPoints $
         CSP.ClientPipelinedStIntersect {
           CSP.recvMsgIntersectFound    = \chainPoint srvTip -> do
-            putStrLn ("Resuming from " <> show chainPoint)
             let CSP.ChainSyncClientPipelined{CSP.runChainSyncClientPipelined} = getPipelinedLedgerStateClient (f $ ResumingFromChainPoint chainPoint srvTip)
             runChainSyncClientPipelined,
           CSP.recvMsgIntersectNotFound = \srvTip   -> do
-            putStrLn "No intersect found. Resuming from genesis."
             let CSP.ChainSyncClientPipelined{CSP.runChainSyncClientPipelined} = getPipelinedLedgerStateClient (f $ ResumingFromOrigin srvTip)
             runChainSyncClientPipelined
         }
