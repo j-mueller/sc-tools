@@ -10,6 +10,7 @@
 module Convex.Utxos(
   -- * Utxo sets
   UtxoSet(..),
+  PrettyBalance(..),
   _UtxoSet,
   totalBalance,
   partition,
@@ -62,11 +63,12 @@ import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
 import qualified Data.Set                      as Set
+import           Data.String                   (fromString)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           Prelude                       hiding (null)
-import           Prettyprinter                 (Doc, Pretty (..), fill, hang,
-                                                viaShow, vsep, (<+>))
+import           Prettyprinter                 (Doc, Pretty (..), hang, viaShow,
+                                                vsep, (<+>))
 import qualified Prettyprinter
 
 type AddressCredential = Shelley.PaymentCredential StandardCrypto
@@ -173,19 +175,23 @@ prettyAda (C.Lovelace lvl) =
   in pretty ada
 
 prettyPolicy :: C.PolicyId -> C.AssetName -> Doc ann
-prettyPolicy p a = viaShow p <+> viaShow a
+prettyPolicy p a =
+  let ps = show p
+      x = take 5 ps
+      md = drop 53 ps
+  in fromString x <> "..." <> fromString md <+> viaShow a
 
 instance Pretty BalanceChanges where
   pretty (BalanceChanges mp) =
     let f (paymentCredential, vl) =
-          hang 4 $ vsep [viaShow paymentCredential, prettyValue vl]
+          hang 4 $ vsep $ viaShow paymentCredential : prettyValue vl
     in vsep (f <$> Map.toAscList mp)
 
-prettyValue :: C.Value -> Doc ann
+prettyValue :: C.Value -> [Doc ann]
 prettyValue vl =
-  let k (C.AdaAssetId, C.Quantity l) = (fill 32 "Ada") <+> prettyAda (C.Lovelace l)
+  let k (C.AdaAssetId, C.Quantity l)  = "Ada" <+> prettyAda (C.Lovelace l)
       k (C.AssetId p n, C.Quantity q) = prettyPolicy p n <+> pretty q
-  in vsep (k <$> C.valueToList vl)
+  in k <$> C.valueToList vl
 
 invBalanceChange :: BalanceChanges -> BalanceChanges
 invBalanceChange = BalanceChanges . Map.map C.negateValue . tbBalances
@@ -235,10 +241,20 @@ instance Pretty PrettyUtxoChange where
     let b = foldMap (view (L._TxOut . _2 . L._TxOutValue))
         bPlus = b _outputsAdded
         bMinus = C.negateValue (b _outputsRemoved)
+    in Prettyprinter.hsep $
+        [ pretty (Map.size _outputsAdded)
+        , "outputs added"
+        , pretty (Map.size _outputsRemoved), "outputs removed."]
+        ++ (prettyValue (bPlus <> bMinus))
+
+newtype PrettyBalance = PrettyBalance UtxoSet
+
+instance Pretty PrettyBalance where
+  pretty (PrettyBalance bal) =
+    let nOutputs = Map.size (_utxos bal)
     in hang 4 $ vsep
-        [ Prettyprinter.hsep [pretty (Map.size _outputsAdded), "outputs added", pretty (Map.size _outputsRemoved), "outputs removed"]
-        , prettyValue (bPlus <> bMinus)
-        ]
+        $ (pretty nOutputs <+> "outputs")
+        : prettyValue (totalBalance bal)
 
 {-| Change the 'UtxoSet'
 -}

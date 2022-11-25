@@ -15,7 +15,8 @@ import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
 import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient')
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
-import           Convex.Utxos               (PrettyUtxoChange (..), UtxoChange,
+import           Convex.Utxos               (PrettyBalance (..),
+                                             PrettyUtxoChange (..), UtxoChange,
                                              UtxoSet, apply)
 import qualified Convex.Utxos               as Utxos
 import           Convex.Wallet              (Wallet)
@@ -41,7 +42,7 @@ applyBlock logEnv ns wallet _catchingUp state block = K.runKatipContextT logEnv 
 
   when (not $ Utxos.null change) $ do
     logInfo $ PrettyUtxoChange change
-    logInfoS $ "New balance: " <> show (Utxos.totalBalance newState)
+    logInfo $ PrettyBalance newState
   pure (change, newState)
 
 {-| Roll back to an earlier state
