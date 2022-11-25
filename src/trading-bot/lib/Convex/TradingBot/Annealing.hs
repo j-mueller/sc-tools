@@ -45,7 +45,8 @@ import qualified Convex.TradingBot.Portfolio               as Portfolio
 import           Convex.TradingBot.Prices                  (LPPrices)
 import qualified Convex.TradingBot.Prices                  as Prices
 import           Convex.TradingBot.Rules                   (MomentumRule (..),
-                                                            Rule)
+                                                            Rule,
+                                                            defaultMomentum)
 import qualified Convex.TradingBot.Rules                   as Rules
 import           Convex.Wallet.Cli.Config                  (Config (..),
                                                             ConfigMode (..))
@@ -96,7 +97,7 @@ runBacktestNode rule logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = d
       liftIO (STM.atomically (STM.takeTMVar tv))
 
 initialValue :: MomentumRule
-initialValue = MomentumRule 1.05 0.95
+initialValue = defaultMomentum
 
 runBacktest :: FilePath -> MomentumRule -> (ExceptT CsvParseException IO) (Portfolio, C.Value)
 runBacktest fp rule =
@@ -111,9 +112,9 @@ pricesFor k = priceHistory . at k . anon Prices.empty Prices.null
 evalPriceEvents :: Monad m => MomentumRule -> Stream (Of PriceEventRow) m () -> m (Portfolio, C.Value)
 evalPriceEvents (Rules.mkRule -> rule) stream = do
   let portf = (Portfolio.emptyPortfolio, C.lovelaceToValue 3_000_000_000)
-      init :: Prices
-      init = Prices mempty mempty
-  flip evalStateT init $ Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
+      init_ :: Prices
+      init_ = Prices mempty mempty
+  flip evalStateT init_ $ Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
     flip S.mapM_ (Streaming.hoist (lift . lift) stream) $ \PriceEventRow{peBlockNo, peSlot, pePolicyId, peAssetName, peQuantity, peLovelace} -> do
       let k = (pePolicyId, peAssetName)
           newPrice = (peLovelace, peQuantity)
@@ -131,44 +132,59 @@ evalPriceEvents (Rules.mkRule -> rule) stream = do
           Rules.Sell -> Portfolio.sell 1.0 pricePoint
           _          -> pure ()
 
-{-|
+{-| Evaluate the rule against the price events in the CSV file
 -}
-testRule :: FilePath -> K.LogEnv -> MomentumRule -> IO Double
-testRule csvFile logEnv rule = K.runKatipContextT logEnv () "test-rule" $ runMonadLogKatipT $ do
-  (portfolio, vl) <- liftIO $ runExceptT (runBacktest csvFile rule) >>= either (error . show) pure
+evaluateRule :: FilePath -> K.LogEnv -> MomentumRule -> IO (Portfolio, C.Value)
+evaluateRule csvFile logEnv rule = K.runKatipContextT logEnv () "test-rule" $ runMonadLogKatipT $ do
+  liftIO $ runExceptT (runBacktest csvFile rule) >>= either (error . show) pure
+
+fitness :: (Portfolio, C.Value) -> Double
+fitness (portfolio, vl) =
   let C.Lovelace totalVal = Portfolio.aum vl portfolio
-  if (totalVal /= 0)
-    then pure (1 / fromIntegral totalVal)
-    else pure 1
+  in if (totalVal /= 0)
+      then (1 / fromIntegral totalVal)
+      else 1
 
 {-| Randomly change the values of the rule
 -}
 search :: Gen (PrimState IO) -> MomentumRule -> IO MomentumRule
-search gen MomentumRule{rdBuy, rdSell} = do
-  let diff = rdBuy - rdSell
-  buy' <- max 0.1 <$> P.sample (P.normal rdBuy diff) gen
-  sell' <- max 0.1 <$> P.sample (P.normal rdSell diff) gen
-  pure $ MomentumRule (max buy' sell') (min buy' sell')
+search gen MomentumRule{rdBuy, rdSell, rdLookbackBig, rdLookbackSmall} = do
+  let sv = 0.01
+  buy' <- max 0.1 <$> P.sample (P.normal rdBuy sv) gen
+  sell' <- max 0.1 <$> P.sample (P.normal rdSell sv) gen
+  pure
+    $ MomentumRule
+        { rdBuy  = max buy' sell'
+        , rdSell = min buy' sell'
+        , rdLookbackBig
+        , rdLookbackSmall
+        }
 
-optimiseRules :: MonadIO m => FilePath -> K.LogEnv -> m (Stream (Of (AnnealingState (AssessedCandidate MomentumRule))) IO ())
+optimiseRules :: MonadIO m => FilePath -> K.LogEnv -> m (Stream (Of (AnnealingState (AssessedCandidate MomentumRule (Portfolio, C.Value)))) IO ())
 optimiseRules fp logEnv = do
   gen <- liftIO P.createSystemRandom
-  let temp i = 1 + (1 / fromIntegral i)
-  initial <- liftIO (testRule fp logEnv initialValue)
+  let temp i = 1 + (50 / fromIntegral i)
+  initial <- liftIO (evaluateRule fp logEnv initialValue)
   return $
     annealing
       gen
       temp
-      (testRule fp logEnv)
-      (AssessedCandidate initialValue initial)
+      (evaluateRule fp logEnv)
+      fitness
+      (AssessedCandidate initialValue initial (fitness initial))
       (search gen)
 
 runAnnealing :: (MonadIO m, MonadLog m) => K.LogEnv -> FilePath -> m ()
 runAnnealing logEnv filePath = do
   logInfoS "Starting annealing"
   stream <- optimiseRules filePath logEnv
-  result <- liftIO (S.last_ (S.take 1000 stream))
+  result <- liftIO (S.last_ (S.take 500 stream))
   flip traverse_ result $ \AnnealingState{asBestCandidate, asCurrentCandidate} -> do
-    let p AssessedCandidate{acFitness, acCandidate} = show acCandidate <> " (" <> show (1 / acFitness) <> ")"
-    logInfoS $ "Best result:    " <> p asBestCandidate
-    logInfoS $ "Current result: " <> p asCurrentCandidate
+    let p AssessedCandidate{acCandidate, acResult=(pf, v)} = do
+          logInfoS (show acCandidate)
+          Portfolio.printPortfolioInfo v pf
+    logInfoS $ "Best result:"
+    p asBestCandidate
+
+    logInfoS $ "Current result:"
+    p asCurrentCandidate

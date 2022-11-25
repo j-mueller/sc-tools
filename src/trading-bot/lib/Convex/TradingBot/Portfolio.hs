@@ -75,6 +75,7 @@ data PortfolioConfig =
     , pfDefaultStopLoss :: !Rational -- ^ Default stop loss on positions (as a fraction of the initial price. Default: 0.75)
     , pfDefaultLimit    :: !Rational -- ^ Default limit (Take profit) on positions as a multipe of the initial price. Default: 1.25
     , pfMinPositionSize :: !Lovelace -- ^ Minimum position size in Ada
+    , pfFee             :: !Lovelace -- ^ Fee for each trade (txn fee, matchmaker fee, etc.)
     }
 
 defaultPortfolioConfig :: PortfolioConfig
@@ -84,6 +85,7 @@ defaultPortfolioConfig =
     , pfDefaultStopLoss = 0.85
     , pfDefaultLimit    = 1.35
     , pfMinPositionSize = Lovelace 10_000_000
+    , pfFee             = Lovelace  2_500_000
     }
 
 {-| Position in our portfolio. Note that this does not include the
@@ -259,12 +261,12 @@ printPortfolioInfo vl p@Portfolio{_positions, _tradeCount}= do
 * the configuration in 'PortfolioConfig'
 -}
 availableFunds :: PortfolioConfig -> Value -> Portfolio -> PolicyId -> AssetName -> Lovelace
-availableFunds PortfolioConfig{pfMaxPositionSize} vl portfolio p a =
+availableFunds PortfolioConfig{pfMaxPositionSize, pfFee} vl portfolio p a =
   let Lovelace totalLvl = aum vl portfolio
       Lovelace alloc    = allocatedTo vl portfolio p a
-      Lovelace cash     = C.selectLovelace vl
+      Lovelace cash     = C.selectLovelace vl - pfFee
       maxAvailable = pfMaxPositionSize * fromIntegral totalLvl
-      remaining    = min cash (floor (max 0 (maxAvailable - fromIntegral alloc)))
+      remaining    = min (max 0 cash) (floor (max 0 (maxAvailable - fromIntegral alloc)))
   in  Lovelace remaining
 
 type Confidence = Double
@@ -297,31 +299,38 @@ instance Monad m => MonadTrade (SimulatedPortfolioT m) where
     c <- ask
     let (sellOrder', p') = updatePrice c v p pricePoint
     put (p', v)
-    traverse_ applySellOrder sellOrder'
+    traverse_ (applySellOrder c) sellOrder'
 
   sell _confidence pricePoint = SimulatedPortfolioT $ do
     (p, v) <- get
-    applySellOrder (sellOrder v p pricePoint)
+    c <- ask
+    applySellOrder c (sellOrder v p pricePoint)
 
   buy _confidence (p, a, _, _) = SimulatedPortfolioT $ do
     (portfolio, v) <- get
     c <- ask
     let order = buyOrder c v portfolio p a
-    traverse_ applyBuyOrder order
+    traverse_ (applyBuyOrder c) order
 
 
-applySellOrder :: MonadState (Portfolio, Value) m => SellOrder -> m ()
-applySellOrder SellOrder{sellCurrency, sellQuantity, sellPrice} = do
+applySellOrder :: MonadState (Portfolio, Value) m => PortfolioConfig -> SellOrder -> m ()
+applySellOrder PortfolioConfig{pfFee} SellOrder{sellCurrency, sellQuantity, sellPrice} = do
   oldV <- use _2
-  let newV = oldV <> C.lovelaceToValue (valueOf sellQuantity sellPrice) <> C.negateValue (C.valueFromList [(uncurry C.AssetId sellCurrency, sellQuantity)])
+  let newV = oldV
+              <> C.lovelaceToValue (valueOf sellQuantity sellPrice)
+              <> C.negateValue (C.valueFromList [(uncurry C.AssetId sellCurrency, sellQuantity)])
+              <> C.negateValue (C.lovelaceToValue pfFee)
   when (all (\q -> q > 0) $ fmap snd $ C.valueToList newV) $ do
     _2 .= newV
     _1 . tradeCount += 1
 
-applyBuyOrder :: MonadState (Portfolio, Value) m => BuyOrder -> m ()
-applyBuyOrder BuyOrder{buyCurrency, buyQuantity, buyPrice} = do
+applyBuyOrder :: MonadState (Portfolio, Value) m => PortfolioConfig -> BuyOrder -> m ()
+applyBuyOrder PortfolioConfig{pfFee} BuyOrder{buyCurrency, buyQuantity, buyPrice} = do
   oldV <- use _2
-  let newV = oldV <> C.negateValue (C.lovelaceToValue (valueOf buyQuantity buyPrice)) <> (C.valueFromList [(uncurry C.AssetId buyCurrency, buyQuantity)])
+  let newV = oldV
+              <> C.negateValue (C.lovelaceToValue (valueOf buyQuantity buyPrice))
+              <> (C.valueFromList [(uncurry C.AssetId buyCurrency, buyQuantity)])
+              <> C.negateValue (C.lovelaceToValue pfFee)
   when (all (\q -> q > 0) $ fmap snd $ C.valueToList newV) $ do
     _2 .= newV
     _1 . tradeCount += 1

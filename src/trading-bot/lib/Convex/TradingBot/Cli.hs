@@ -53,7 +53,7 @@ runMain = do
     result <- runExceptT $ do
       case command of
         StartMatcher config ->
-          mkTyped config >>= runBacktestNode Rules.movingAverage initLogEnv >>= uncurry (flip printPortfolioInfo)
+          mkTyped config >>= runBacktestNode (Rules.mkRule Rules.defaultMomentum) initLogEnv >>= uncurry (flip printPortfolioInfo)
         Buy config order   ->
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeBuyOrder le)
         Sell config order   ->
