@@ -14,7 +14,7 @@ import           Convex.MonadLog                           (MonadLog,
                                                             logInfoS, logWarnS)
 import           Convex.NodeClient.Types                   (loadConnectInfo,
                                                             runNodeClient)
-import           Convex.TradingBot.Annealing               (runAnnealing,
+import           Convex.TradingBot.Annealing               (runAnnealing',
                                                             runBacktestNode)
 import           Convex.TradingBot.Cli.Command             (CliCommand (..),
                                                             commandParser)
@@ -58,7 +58,7 @@ runMain = do
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeBuyOrder le)
         Sell config order   ->
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeSellOrder le)
-        Optimise fp -> runAnnealing le fp
+        Optimise fp -> runAnnealing' le fp
         ExportPrices config outFile ->
           mkTyped config >>= runExport le outFile
     case result of

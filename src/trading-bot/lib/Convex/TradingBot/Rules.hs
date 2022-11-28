@@ -4,12 +4,16 @@
 module Convex.TradingBot.Rules(
   Signal(..),
   Rule,
-  MomentumRule(..),
+  TwoMovingAveragesRule(..),
   defaultMomentum,
-  mkRule
+  mkRule,
+  MovingAveragesRule(..),
+  mkMovingAveragesRule,
+  defaultMARule
 ) where
 
 import           Control.DeepSeq          (NFData)
+import           Control.Monad            (guard)
 import           Convex.Measures          (getMean)
 import           Convex.TradingBot.Prices (LPPrices, splitLastNSlots, stats)
 import qualified Convex.TradingBot.Prices as Prices
@@ -21,11 +25,11 @@ data Signal = Buy | Sell | Hold
 
 type Rule = LPPrices -> Signal
 
-defaultMomentum :: MomentumRule
-defaultMomentum = MomentumRule 1.15 0.8 (60 * 60 * 24 * 7) (60 * 60 * 24)
+defaultMomentum :: TwoMovingAveragesRule
+defaultMomentum = TwoMovingAveragesRule 1.15 0.8 (60 * 60 * 24 * 7) (60 * 60 * 24)
 
-data MomentumRule =
-  MomentumRule
+data TwoMovingAveragesRule =
+  TwoMovingAveragesRule
     { rdBuy           :: !Double -- ^ Threshold for buy signal
     , rdSell          :: !Double -- ^ Threshold for sell signal
     , rdLookbackBig   :: !Int -- ^ Size of the "large" lookback window in seconds
@@ -34,8 +38,8 @@ data MomentumRule =
     deriving stock (Eq, Generic, Show)
     deriving anyclass NFData
 
-mkRule :: MomentumRule -> Rule
-mkRule MomentumRule{rdBuy, rdSell, rdLookbackBig, rdLookbackSmall} prices = fromMaybe Hold $ do
+mkRule :: TwoMovingAveragesRule -> Rule
+mkRule TwoMovingAveragesRule{rdBuy, rdSell, rdLookbackBig, rdLookbackSmall} prices = fromMaybe Hold $ do
   pmWeek <- Prices.price (stats $ fst $ splitLastNSlots rdLookbackBig prices) >>= getMean . Prices.pmPrice
   pmDay <- Prices.price (stats $ fst $ splitLastNSlots rdLookbackSmall prices) >>= getMean . Prices.pmPrice
   if (pmWeek > pmDay * rdBuy)
@@ -43,3 +47,31 @@ mkRule MomentumRule{rdBuy, rdSell, rdLookbackBig, rdLookbackSmall} prices = from
     else if pmWeek < pmDay * rdSell
       then pure Sell
       else pure Hold
+
+data MovingAveragesRule =
+  MovingAveragesRule
+    { maPeriod    :: !Int -- ^ Size of the lookback window in seconds
+    , maThreshold :: !Double
+    }
+    deriving stock (Eq, Generic, Show)
+    deriving anyclass NFData
+
+defaultMARule :: MovingAveragesRule
+defaultMARule = MovingAveragesRule (60 * 60 * 24 * 7) 0.01
+
+mkMovingAveragesRule :: MovingAveragesRule -> Rule
+mkMovingAveragesRule MovingAveragesRule{maPeriod, maThreshold} prices = fromMaybe Hold $ do
+  let getValue x = Prices.price (stats $ fst $ splitLastNSlots maPeriod x) >>= getMean . Prices.pmPrice
+  current  <- getValue prices
+  previous <- getValue (snd $ splitLastNSlots 1 prices)
+  guard (previous /= 0)
+  let r = current / previous
+  if r > maThreshold
+    then pure Buy
+    else
+      if r < negate maThreshold
+      then pure Sell
+  else pure Hold
+
+
+
