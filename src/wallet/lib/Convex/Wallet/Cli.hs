@@ -69,11 +69,8 @@ mkTyped c = case Config.parseFields c of
 
 showAddress :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => Config 'Typed -> m (C.LocalNodeConnectInfo C.CardanoMode)
 showAddress Config{wallet, cardanoNodeConfigFile, cardanoNodeSocket} = do
-  logInfoS "Wallet key:"
-  logInfo (Wallet.privateKey wallet)
   (info_@C.LocalNodeConnectInfo{C.localNodeNetworkId}, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket
-  logInfoS "Wallet address: "
-  logInfo (C.serialiseToBech32 $ Wallet.address localNodeNetworkId wallet)
+  logInfo $ "Wallet address: " <> C.serialiseToBech32 (Wallet.address localNodeNetworkId wallet)
   pure info_
 
 runWallet :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> m ()
