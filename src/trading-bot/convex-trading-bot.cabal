@@ -38,6 +38,7 @@ library
       Convex.TradingBot.NodeClient.BacktestingClient
       Convex.TradingBot.NodeClient.OrderClient
       Convex.TradingBot.NodeClient.PricesClient
+      Convex.TradingBot.NodeClient.TradingClient
       Convex.TradingBot.Portfolio
       Convex.TradingBot.Prices
       Convex.TradingBot.Rules

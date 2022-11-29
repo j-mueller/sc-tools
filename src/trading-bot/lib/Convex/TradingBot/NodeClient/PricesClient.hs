@@ -45,7 +45,6 @@ import           GHC.IO.Handle                 (Handle)
 import qualified Katip                         as K
 import           Streaming.Cassava             (FromNamedRecord (..))
 
-
 data ClientState =
   ClientState
     { _resolvedInputs :: !(ResolvedInputs OrderbookEvent)

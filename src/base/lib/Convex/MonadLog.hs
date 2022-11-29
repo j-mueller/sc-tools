@@ -8,9 +8,12 @@ module Convex.MonadLog(
   logWarn,
   logWarnS,
   MonadLogIgnoreT(..),
-  MonadLogKatipT(..)
+  MonadLogKatipT(..),
+  -- * Etc.
+  logUnless
 ) where
 
+import           Control.Monad              (unless)
 import           Control.Monad.Catch        (MonadCatch, MonadMask, MonadThrow)
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (ReaderT (..), lift)
@@ -80,3 +83,5 @@ instance KatipContext m => MonadLog (MonadLogKatipT m) where
         let mkStr = Katip.logStr . Render.renderLazy . layoutPretty defaultLayoutOptions
         in MonadLogKatipT (Katip.logFM WarningS (mkStr s))
 
+logUnless :: MonadLog m => Bool -> String -> m ()
+logUnless w m = unless w (logInfoS m)

@@ -14,7 +14,7 @@ import           Options.Applicative          (CommandFields, Mod, Parser,
                                                long, progDesc, strOption,
                                                subparser)
 data CliCommand =
-  StartMatcher (Config 'Str)
+  StartTrading (Config 'Str)
   | Buy (Config 'Str) (Order 'Str)
   | Sell (Config 'Str) (Order 'Str)
   | Optimise FilePath
@@ -24,16 +24,16 @@ commandParser :: Parser CliCommand
 commandParser =
   subparser $
     mconcat
-      [ startMatcher
+      [ startTrading
       , buy
       , sell
       , optimise
       , exportPrices
       ]
 
-startMatcher :: Mod CommandFields CliCommand
-startMatcher = command "start-matcher" $
-  info (StartMatcher <$> configParser) (fullDesc <> progDesc "Start the muesli matcher")
+startTrading :: Mod CommandFields CliCommand
+startTrading = command "start-trading" $
+  info (StartTrading <$> configParser) (fullDesc <> progDesc "Start the trading bot")
 
 buy :: Mod CommandFields CliCommand
 buy = command "buy" $

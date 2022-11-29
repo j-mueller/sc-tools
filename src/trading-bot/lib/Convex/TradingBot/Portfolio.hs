@@ -42,7 +42,8 @@ module Convex.TradingBot.Portfolio(
   LoggingPortfolioT(..),
 
   -- * Etc.
-  availableFunds
+  availableFunds,
+  formatAda
 ) where
 
 import           Cardano.Api                (AssetId (..), AssetName,

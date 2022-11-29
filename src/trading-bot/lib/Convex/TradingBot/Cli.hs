@@ -14,14 +14,12 @@ import           Convex.MonadLog                           (MonadLog,
                                                             logInfoS, logWarnS)
 import           Convex.NodeClient.Types                   (loadConnectInfo,
                                                             runNodeClient)
-import           Convex.TradingBot.Annealing               (runAnnealing,
-                                                            runBacktestNode)
+import           Convex.TradingBot.Annealing               (runAnnealing)
 import           Convex.TradingBot.Cli.Command             (CliCommand (..),
                                                             commandParser)
 import           Convex.TradingBot.Cli.Config              (Order (..))
 import qualified Convex.TradingBot.NodeClient              as NC
 import           Convex.TradingBot.NodeClient.PricesClient (PriceEventRow)
-import           Convex.TradingBot.Portfolio               (printPortfolioInfo)
 import qualified Convex.TradingBot.Rules                   as Rules
 import           Convex.Wallet.Cli.Config                  (Config (..),
                                                             ConfigMode (..),
@@ -52,8 +50,8 @@ runMain = do
                         (info (helper <*> commandParser) idm))
     result <- runExceptT $ do
       case command of
-        StartMatcher config ->
-          mkTyped config >>= runBacktestNode (Rules.signal Rules.twoMovingAverages) initLogEnv >>= uncurry (flip printPortfolioInfo)
+        StartTrading config ->
+          mkTyped config >>= startTrading le
         Buy config order   ->
           (,) <$> mkTyped config <*> mkTyped order >>= uncurry (executeBuyOrder le)
         Sell config order   ->
@@ -67,7 +65,18 @@ runMain = do
         logWarnS (Text.unpack $ C.renderInitialLedgerStateError err)
       Right () -> pure ()
 
-executeBuyOrder ::  (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> Order 'Typed -> m ()
+startTrading :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> m ()
+startTrading logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} = do
+  (info_, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket
+  let client _ env = do
+        pure (NC.tradingClient (Rules.signal Rules.twoMovingAverages) logEnv "trading" wallet (C.localNodeNetworkId info_) env)
+  logInfoS "Starting the trading bot"
+  result <- liftIO $ runExceptT (runNodeClient cardanoNodeConfigFile cardanoNodeSocket client)
+  case result of
+    Left err -> throwError err
+    Right () -> pure ()
+
+executeBuyOrder :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Config 'Typed -> Order 'Typed -> m ()
 executeBuyOrder logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket, wallet} order = do
   (info_, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket
   let client _ env = do

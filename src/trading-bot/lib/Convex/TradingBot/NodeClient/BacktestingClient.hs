@@ -5,7 +5,8 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TypeApplications   #-}
 module Convex.TradingBot.NodeClient.BacktestingClient(
-  backtestingClient
+  backtestingClient,
+  getOrderbookPrices
 ) where
 
 import           Cardano.Api.Shelley           (AssetName, Block (..),
@@ -30,7 +31,7 @@ import           Convex.Event                  (Event (..), NewOutputEvent (..),
                                                 TxWithEvents (..), extract)
 import qualified Convex.Lenses                 as L
 import           Convex.MonadLog               (MonadLog, MonadLogKatipT (..),
-                                                logInfoS)
+                                                logUnless)
 import           Convex.Muesli.LP.BuildTx      (buyOrderFromScriptData)
 import           Convex.Muesli.LP.Types        (BuyOrder (..), valueOf)
 import           Convex.NodeClient.Fold        (CatchingUp (..), catchingUp,
@@ -98,9 +99,6 @@ applyBlock rule resultVar le initialNamespace networkId c oldState block = K.run
       p <- use portfolio
       liftIO (STM.atomically $ STM.putTMVar resultVar p)
       guard False
-
-logUnless :: MonadLog m => Bool -> String -> m ()
-logUnless w m = unless w (logInfoS m)
 
 pricesFor :: (PolicyId, AssetName) -> Lens' ClientState LPPrices
 pricesFor k = lpPrices . at k . anon Prices.empty Prices.null
