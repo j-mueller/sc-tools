@@ -1,19 +1,20 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE ViewPatterns       #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE NumericUnderscores  #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE ViewPatterns        #-}
 {-| Using simulated annealing to find a good set of trading rules
 -}
 module Convex.TradingBot.Annealing(
   runBacktestNode,
   optimiseRules,
-  runAnnealing,
-  runAnnealing'
+  runAnnealing
 ) where
 
 import           Annealing                                 (AnnealingState (..),
@@ -29,7 +30,6 @@ import           Control.Lens                              (Lens', anon, at,
                                                             (%=))
 import           Control.Monad                             (when)
 import           Control.Monad.IO.Class                    (MonadIO (..))
-import           Control.Monad.Primitive                   (PrimState)
 import           Control.Monad.State.Strict                (evalStateT)
 import           Control.Monad.Trans.Class                 (lift)
 import           Control.Monad.Trans.Except                (ExceptT (..),
@@ -45,10 +45,8 @@ import           Convex.TradingBot.Portfolio               (Portfolio,
 import qualified Convex.TradingBot.Portfolio               as Portfolio
 import           Convex.TradingBot.Prices                  (LPPrices)
 import qualified Convex.TradingBot.Prices                  as Prices
-import           Convex.TradingBot.Rules                   (MovingAveragesRule (..),
-                                                            Rule,
-                                                            TwoMovingAveragesRule (..),
-                                                            defaultMomentum)
+import           Convex.TradingBot.Rules                   (Rule,
+                                                            SearchableRule (..))
 import qualified Convex.TradingBot.Rules                   as Rules
 import           Convex.Wallet.Cli.Config                  (Config (..),
                                                             ConfigMode (..))
@@ -68,7 +66,6 @@ import           Streaming.With                            (withBinaryFileConten
 import           System.Exit                               (exitFailure)
 import           System.IO                                 (stdout)
 import qualified System.Random.MWC.Probability             as P
-import           System.Random.MWC.Probability             (Gen)
 
 data Prices =
   Prices
@@ -98,51 +95,18 @@ runBacktestNode rule logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = d
       logInfoS "Backtesting finished"
       liftIO (STM.atomically (STM.takeTMVar tv))
 
-initialValue :: TwoMovingAveragesRule
-initialValue = defaultMomentum
-
-runBacktest :: FilePath -> TwoMovingAveragesRule -> (ExceptT CsvParseException IO) (Portfolio, C.Value)
+runBacktest :: SearchableRule r => FilePath -> r -> (ExceptT CsvParseException IO) (Portfolio, C.Value)
 runBacktest fp rule =
   let options = defaultDecodeOptions
   in withBinaryFileContents fp
       $ evalPriceEvents rule
       . decodeByNameWith options
 
-runBacktest' :: FilePath -> MovingAveragesRule -> (ExceptT CsvParseException IO) (Portfolio, C.Value)
-runBacktest' fp rule =
-  let options = defaultDecodeOptions
-  in withBinaryFileContents fp
-      $ evalPriceEvents' rule
-      . decodeByNameWith options
-
 pricesFor :: (PolicyId, AssetName) -> Lens' Prices LPPrices
 pricesFor k = priceHistory . at k . anon Prices.empty Prices.null
 
-evalPriceEvents' :: Monad m => MovingAveragesRule -> Stream (Of PriceEventRow) m () -> m (Portfolio, C.Value)
-evalPriceEvents' (Rules.mkMovingAveragesRule -> rule) stream = do
-  let portf = (Portfolio.emptyPortfolio, C.lovelaceToValue 3_000_000_000)
-      init_ :: Prices
-      init_ = Prices mempty mempty
-  flip evalStateT init_ $ Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
-    flip S.mapM_ (Streaming.hoist (lift . lift) stream) $ \PriceEventRow{peBlockNo, peSlot, pePolicyId, peAssetName, peQuantity, peLovelace} -> do
-      let k = (pePolicyId, peAssetName)
-          newPrice = (peLovelace, peQuantity)
-      oldPrices <- use lastPrices
-      let oldPrice = Map.findWithDefault (0, 0) k oldPrices
-          pAt = Prices.pricesAt peBlockNo peSlot oldPrice newPrice
-          p = fromMaybe mempty $ Prices.price $ Prices._stats pAt
-      when (Prices.pmVolume p > 0) $ do
-        pricesFor k %= Prices.prepend pAt
-        newPrices' <- use (pricesFor k)
-        let pricePoint = (pePolicyId, peAssetName, peQuantity, peLovelace)
-        Portfolio.update pricePoint
-        case rule newPrices' of
-          Rules.Buy  -> Portfolio.buy 1.0 pricePoint
-          Rules.Sell -> Portfolio.sell 1.0 pricePoint
-          _          -> pure ()
-
-evalPriceEvents :: Monad m => TwoMovingAveragesRule -> Stream (Of PriceEventRow) m () -> m (Portfolio, C.Value)
-evalPriceEvents (Rules.mkRule -> rule) stream = do
+evalPriceEvents :: (SearchableRule r, Monad m) => r -> Stream (Of PriceEventRow) m () -> m (Portfolio, C.Value)
+evalPriceEvents (signal -> rule) stream = do
   let portf = (Portfolio.emptyPortfolio, C.lovelaceToValue 3_000_000_000)
       init_ :: Prices
       init_ = Prices mempty mempty
@@ -166,13 +130,9 @@ evalPriceEvents (Rules.mkRule -> rule) stream = do
 
 {-| Evaluate the rule against the price events in the CSV file
 -}
-evaluateRule :: FilePath -> K.LogEnv -> TwoMovingAveragesRule -> IO (Portfolio, C.Value)
+evaluateRule :: SearchableRule r => FilePath -> K.LogEnv -> r -> IO (Portfolio, C.Value)
 evaluateRule csvFile logEnv rule = K.runKatipContextT logEnv () "test-rule" $ runMonadLogKatipT $ do
   liftIO $ runExceptT (runBacktest csvFile rule) >>= either (error . show) pure
-
-evaluateRule' :: FilePath -> K.LogEnv -> MovingAveragesRule -> IO (Portfolio, C.Value)
-evaluateRule' csvFile logEnv rule = K.runKatipContextT logEnv () "test-rule" $ runMonadLogKatipT $ do
-  liftIO $ runExceptT (runBacktest' csvFile rule) >>= either (error . show) pure
 
 fitness :: (Portfolio, C.Value) -> Double
 fitness (portfolio, vl) =
@@ -181,83 +141,35 @@ fitness (portfolio, vl) =
       then (1 / fromIntegral totalVal)
       else 1
 
-{-| Randomly change the values of the rule
--}
-search :: Gen (PrimState IO) -> TwoMovingAveragesRule -> IO TwoMovingAveragesRule
-search gen TwoMovingAveragesRule{rdBuy, rdSell, rdLookbackBig, rdLookbackSmall} = do
-  let sv = 0.01
-  buy' <- max 0.1 <$> P.sample (P.normal rdBuy sv) gen
-  sell' <- max 0.1 <$> P.sample (P.normal rdSell sv) gen
-  pure
-    $ TwoMovingAveragesRule
-        { rdBuy  = max buy' sell'
-        , rdSell = min buy' sell'
-        , rdLookbackBig
-        , rdLookbackSmall
-        }
-
-search' :: Gen (PrimState IO) -> MovingAveragesRule -> IO MovingAveragesRule
-search' gen MovingAveragesRule{maPeriod, maThreshold} = do
-  period' <- max (60 * 60) . round <$> P.sample (P.normal (fromIntegral maPeriod) 5000) gen
-  threshold' <- abs <$> P.sample (P.normal maThreshold 0.1) gen
-  pure
-    $ MovingAveragesRule
-        { maPeriod = period'
-        , maThreshold = threshold'
-        }
-
-optimiseRules' :: MonadIO m => FilePath -> K.LogEnv -> m (Stream (Of (AnnealingState (AssessedCandidate MovingAveragesRule (Portfolio, C.Value)))) IO ())
-optimiseRules' fp logEnv = do
+optimiseRules :: forall r m. (SearchableRule r, MonadIO m) => r -> FilePath -> K.LogEnv -> m (Stream (Of (AnnealingState (AssessedCandidate r (Portfolio, C.Value)))) IO (), AssessedCandidate r (Portfolio, C.Value))
+optimiseRules i fp logEnv = do
   gen <- liftIO P.createSystemRandom
-  let temp i = 1 + (50 / fromIntegral i)
-  initial <- liftIO (evaluateRule' fp logEnv Rules.defaultMARule)
-  return $
-    annealing
-      gen
-      temp
-      (evaluateRule' fp logEnv)
-      fitness
-      (AssessedCandidate Rules.defaultMARule initial (fitness initial))
-      (search' gen)
-
-optimiseRules :: MonadIO m => FilePath -> K.LogEnv -> m (Stream (Of (AnnealingState (AssessedCandidate TwoMovingAveragesRule (Portfolio, C.Value)))) IO ())
-optimiseRules fp logEnv = do
-  gen <- liftIO P.createSystemRandom
-  let temp i = 1 + (50 / fromIntegral i)
-  initial <- liftIO (evaluateRule fp logEnv initialValue)
-  return $
-    annealing
-      gen
-      temp
-      (evaluateRule fp logEnv)
-      fitness
-      (AssessedCandidate initialValue initial (fitness initial))
-      (search gen)
+  initial <- liftIO (evaluateRule fp logEnv i)
+  let temp j = 1 + (50 / fromIntegral j)
+      cand = AssessedCandidate i initial (fitness initial)
+      stream =
+        annealing
+          gen
+          temp
+          (evaluateRule fp logEnv)
+          fitness
+          cand
+          (neighbours gen)
+  return (stream, cand)
 
 runAnnealing :: (MonadIO m, MonadLog m) => K.LogEnv -> FilePath -> m ()
 runAnnealing logEnv filePath = do
   logInfoS "Starting annealing"
-  stream <- optimiseRules filePath logEnv
-  result <- liftIO (S.last_ (S.take 500 stream))
+  let r = Rules.movingAverages
+  (stream, initial) <- optimiseRules r filePath logEnv
+  result <- liftIO (S.last_ (S.take 0_100 stream))
   flip traverse_ result $ \AnnealingState{asBestCandidate, asCurrentCandidate} -> do
     let p AssessedCandidate{acCandidate, acResult=(pf, v)} = do
           logInfoS (show acCandidate)
           Portfolio.printPortfolioInfo v pf
-    logInfoS $ "Best result:"
-    p asBestCandidate
+    logInfoS "Initial value:"
+    p initial
 
-    logInfoS $ "Current result:"
-    p asCurrentCandidate
-
-runAnnealing' :: (MonadIO m, MonadLog m) => K.LogEnv -> FilePath -> m ()
-runAnnealing' logEnv filePath = do
-  logInfoS "Starting annealing"
-  stream <- optimiseRules' filePath logEnv
-  result <- liftIO (S.last_ (S.take 400 stream))
-  flip traverse_ result $ \AnnealingState{asBestCandidate, asCurrentCandidate} -> do
-    let p AssessedCandidate{acCandidate, acResult=(pf, v)} = do
-          logInfoS (show acCandidate)
-          Portfolio.printPortfolioInfo v pf
     logInfoS $ "Best result:"
     p asBestCandidate
 
