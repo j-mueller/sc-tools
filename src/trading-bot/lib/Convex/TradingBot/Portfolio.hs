@@ -38,8 +38,10 @@ module Convex.TradingBot.Portfolio(
 
   -- ** Real portfolios
 
+  -- ** Logging
+  LoggingPortfolioT(..),
+
   -- * Etc.
-  closePositionMsg,
   availableFunds
 ) where
 
@@ -51,7 +53,7 @@ import           Control.Lens               (Lens', _1, _2, _Just, at,
                                              makeLenses, makeLensesFor, over,
                                              set, use, view, (&), (+=), (.=),
                                              (.~))
-import           Control.Monad              (guard, when)
+import           Control.Monad              (guard, join, when)
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
 import           Control.Monad.State.Strict (MonadState, StateT, get, put,
@@ -65,7 +67,6 @@ import           Data.Foldable              (fold, traverse_)
 import           Data.Map.Strict            (Map)
 import qualified Data.Map.Strict            as Map
 import           Data.Maybe                 (fromMaybe, isJust, isNothing)
-import           Data.Ratio                 ((%))
 
 type PricePoint = (PolicyId, AssetName, Quantity, Lovelace)
 
@@ -77,6 +78,7 @@ data PortfolioConfig =
     , pfMinPositionSize :: !Lovelace -- ^ Minimum position size in Ada
     , pfFee             :: !Lovelace -- ^ Fee for each trade (txn fee, matchmaker fee, etc.)
     }
+    deriving Show
 
 defaultPortfolioConfig :: PortfolioConfig
 defaultPortfolioConfig =
@@ -156,11 +158,10 @@ buyOrder PortfolioConfig{pfMaxPositionSize, pfMinPositionSize} vl portfolio p a 
 
 -- TODO: don't need PricePoint in sellOrder
 
-sellOrder :: Value -> Portfolio -> PricePoint -> SellOrder
-sellOrder vl _portfolio (p, a, q, l) =
+sellOrder :: Value -> PricePoint -> SellOrder
+sellOrder vl (p, a, q, l) =
   let currentSize = C.selectAsset vl (AssetId p a)
       price = unitPrice q l
-      -- pos = view (position p a) portfolio
   in SellOrder{sellCurrency = (p, a), sellQuantity = currentSize, sellPrice = price }
 
 -- | Update the portfolio with the price point
@@ -239,16 +240,6 @@ position p a = positions . at (p, a)
 formatAda :: Lovelace -> String
 formatAda (Lovelace v) = show (round @Double @Integer (fromIntegral v / (1_000_000 :: Double)))
 
-closePositionMsg :: AssetName -> Lovelace -> Lovelace -> String
-closePositionMsg pAssetName (Lovelace marketPrice) (Lovelace purchasePrice) =
-  let percChange = 100 * (marketPrice - purchasePrice) % purchasePrice
-      mvAda = formatAda (Lovelace marketPrice)
-  in "SELL "
-      <> show pAssetName
-      <> " for "
-      <> mvAda
-      <> " Ada (" <> show (round @Rational @Integer percChange) <> "%)"
-
 printPortfolioInfo :: (MonadLog m) => Value -> Portfolio -> m ()
 printPortfolioInfo vl p@Portfolio{_positions, _tradeCount}= do
   let lvl = aum vl p
@@ -272,9 +263,9 @@ availableFunds PortfolioConfig{pfMaxPositionSize, pfFee} vl portfolio p a =
 type Confidence = Double
 
 class Monad m => MonadTrade m where
-  update :: PricePoint -> m () -- ^ Update the positions with new pricing data
-  buy    :: Confidence -> PricePoint -> m ()
-  sell   :: Confidence -> PricePoint -> m ()
+  update :: PricePoint -> m (Maybe SellOrder) -- ^ Update the positions with new pricing data
+  buy    :: Confidence -> PricePoint -> m (Maybe BuyOrder)
+  sell   :: Confidence -> PricePoint -> m (Maybe SellOrder)
 
 newtype SimulatedPortfolioT m a = SimulatedPortfolioT{ unSimulatedPortfolioT :: ReaderT PortfolioConfig (StateT (Portfolio, Value) m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
@@ -293,44 +284,92 @@ runSimulatedPortfolioT config portfolio SimulatedPortfolioT{unSimulatedPortfolio
 execSimulatedPortfolioT :: Functor m => PortfolioConfig -> (Portfolio, Value) -> SimulatedPortfolioT m a -> m (Portfolio, Value)
 execSimulatedPortfolioT config portfolio = fmap snd <$> runSimulatedPortfolioT config portfolio
 
-instance Monad m => MonadTrade (SimulatedPortfolioT m) where
+instance (Monad m) => MonadTrade (SimulatedPortfolioT m) where
   update pricePoint = SimulatedPortfolioT $ do
     (p, v) <- get
     c <- ask
     let (sellOrder', p') = updatePrice c v p pricePoint
     put (p', v)
-    traverse_ (applySellOrder c) sellOrder'
+    join <$> traverse (applySellOrder c) sellOrder'
 
   sell _confidence pricePoint = SimulatedPortfolioT $ do
-    (p, v) <- get
+    (_, v) <- get
     c <- ask
-    applySellOrder c (sellOrder v p pricePoint)
+    applySellOrder c (sellOrder v pricePoint)
 
   buy _confidence (p, a, _, _) = SimulatedPortfolioT $ do
     (portfolio, v) <- get
     c <- ask
     let order = buyOrder c v portfolio p a
-    traverse_ (applyBuyOrder c) order
+    join <$> traverse (applyBuyOrder c) order
 
-
-applySellOrder :: MonadState (Portfolio, Value) m => PortfolioConfig -> SellOrder -> m ()
-applySellOrder PortfolioConfig{pfFee} SellOrder{sellCurrency, sellQuantity, sellPrice} = do
+applySellOrder :: (MonadState (Portfolio, Value) m) => PortfolioConfig -> SellOrder -> m (Maybe SellOrder)
+applySellOrder PortfolioConfig{pfFee} o@SellOrder{sellCurrency, sellQuantity, sellPrice} = do
   oldV <- use _2
-  let newV = oldV
-              <> C.lovelaceToValue (valueOf sellQuantity sellPrice)
+  let lvl = valueOf sellQuantity sellPrice
+      newV = oldV
+              <> C.lovelaceToValue lvl
               <> C.negateValue (C.valueFromList [(uncurry C.AssetId sellCurrency, sellQuantity)])
               <> C.negateValue (C.lovelaceToValue pfFee)
-  when (all (\q -> q > 0) $ fmap snd $ C.valueToList newV) $ do
-    _2 .= newV
-    _1 . tradeCount += 1
+      allPos = all (\q -> q > 0) $ fmap snd $ C.valueToList newV
+  if allPos && lvl > pfFee
+    then do
+      _2 .= newV
+      _1 . tradeCount += 1
+      pure (Just o)
+    else pure Nothing
 
-applyBuyOrder :: MonadState (Portfolio, Value) m => PortfolioConfig -> BuyOrder -> m ()
-applyBuyOrder PortfolioConfig{pfFee} BuyOrder{buyCurrency, buyQuantity, buyPrice} = do
+applyBuyOrder :: (MonadState (Portfolio, Value) m) => PortfolioConfig -> BuyOrder -> m (Maybe BuyOrder)
+applyBuyOrder PortfolioConfig{pfFee} o@BuyOrder{buyCurrency, buyQuantity, buyPrice} = do
   oldV <- use _2
-  let newV = oldV
-              <> C.negateValue (C.lovelaceToValue (valueOf buyQuantity buyPrice))
+  let lvl = valueOf buyQuantity buyPrice
+      newV = oldV
+              <> C.negateValue (C.lovelaceToValue lvl)
               <> (C.valueFromList [(uncurry C.AssetId buyCurrency, buyQuantity)])
               <> C.negateValue (C.lovelaceToValue pfFee)
-  when (all (\q -> q > 0) $ fmap snd $ C.valueToList newV) $ do
-    _2 .= newV
-    _1 . tradeCount += 1
+      allPos = all (\q -> q > 0) $ fmap snd $ C.valueToList newV
+  if allPos && lvl > pfFee
+    then do
+      _2 .= newV
+      _1 . tradeCount += 1
+      pure (Just o)
+    else pure Nothing
+
+newtype LoggingPortfolioT m a = LoggingPortfolioT{ runLoggingPortfolioT :: m a }
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
+
+instance MonadTrans LoggingPortfolioT where
+  lift = LoggingPortfolioT
+
+instance MonadState s m => MonadState s (LoggingPortfolioT m) where
+  get = lift get
+  put s = lift (put s)
+
+instance (MonadLog m, MonadTrade m) => MonadTrade (LoggingPortfolioT m) where
+  update pricePoint = LoggingPortfolioT $ do
+    so <- update pricePoint
+    traverse_ logSellOrder so
+    pure so
+  sell confidence pricePoint = LoggingPortfolioT $ do
+    so <- sell confidence pricePoint
+    traverse_ logSellOrder so
+    pure so
+  buy confidence pricePoint = LoggingPortfolioT $ do
+    bo <- buy confidence pricePoint
+    traverse_ logBuyOrder bo
+    pure bo
+
+logSellOrder :: MonadLog m => SellOrder -> m ()
+logSellOrder SellOrder{sellCurrency, sellQuantity, sellPrice} =
+  logOrder "SELL" (snd sellCurrency) sellQuantity sellPrice
+
+logBuyOrder :: MonadLog m => BuyOrder -> m ()
+logBuyOrder BuyOrder{buyCurrency, buyQuantity, buyPrice} =
+  logOrder "BUY " (snd buyCurrency) buyQuantity buyPrice
+
+logOrder :: MonadLog m => String -> AssetName -> Quantity -> Price -> m ()
+logOrder nm assetName quantity price = do
+  let ada = valueOf quantity price
+      Quantity q = quantity
+  when (ada >= 1_000_000) $
+    logInfoS $ nm <> " " <> show q <> " " <> show assetName <> " for " <> formatAda ada <> " Ada"

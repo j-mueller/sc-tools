@@ -28,20 +28,23 @@ import           Control.Exception                         (bracket)
 import           Control.Lens                              (Lens', anon, at,
                                                             makeLenses, use,
                                                             (%=))
-import           Control.Monad                             (when)
+import           Control.Monad                             (void, when)
 import           Control.Monad.IO.Class                    (MonadIO (..))
+import           Control.Monad.Primitive                   (PrimMonad,
+                                                            PrimState)
 import           Control.Monad.State.Strict                (evalStateT)
 import           Control.Monad.Trans.Class                 (lift)
 import           Control.Monad.Trans.Except                (ExceptT (..),
                                                             runExceptT)
 import           Convex.MonadLog                           (MonadLog,
+                                                            MonadLogIgnoreT (..),
                                                             MonadLogKatipT (..),
                                                             logInfoS, logWarnS)
 import           Convex.NodeClient.Types                   (runNodeClient)
 import qualified Convex.TradingBot.NodeClient              as NC
 import           Convex.TradingBot.NodeClient.PricesClient (PriceEventRow (..))
 import           Convex.TradingBot.Portfolio               (Portfolio,
-                                                            defaultPortfolioConfig)
+                                                            PortfolioConfig (..))
 import qualified Convex.TradingBot.Portfolio               as Portfolio
 import           Convex.TradingBot.Prices                  (LPPrices)
 import qualified Convex.TradingBot.Prices                  as Prices
@@ -62,10 +65,12 @@ import           Streaming.Cassava                         (CsvParseException,
                                                             decodeByNameWith,
                                                             defaultDecodeOptions)
 import qualified Streaming.Prelude                         as S
-import           Streaming.With                            (withBinaryFileContents)
+import           Streaming.With                            (MonadMask,
+                                                            withBinaryFileContents)
 import           System.Exit                               (exitFailure)
 import           System.IO                                 (stdout)
 import qualified System.Random.MWC.Probability             as P
+import           System.Random.MWC.Probability             (Gen)
 
 data Prices =
   Prices
@@ -95,23 +100,23 @@ runBacktestNode rule logEnv Config{cardanoNodeConfigFile, cardanoNodeSocket} = d
       logInfoS "Backtesting finished"
       liftIO (STM.atomically (STM.takeTMVar tv))
 
-runBacktest :: SearchableRule r => Lovelace -> FilePath -> r -> (ExceptT CsvParseException IO) (Portfolio, C.Value)
-runBacktest initialAda fp rule =
+runBacktest :: (MonadIO m, MonadMask m, MonadLog m, SearchableRule r) => PortfolioConfig -> Lovelace -> FilePath -> r -> (ExceptT CsvParseException m) (Portfolio, C.Value)
+runBacktest config initialAda fp rule =
   let options = defaultDecodeOptions
   in withBinaryFileContents fp
-      $ evalPriceEvents initialAda rule
+      $ evalPriceEvents config initialAda rule
       . decodeByNameWith options
 
 pricesFor :: (PolicyId, AssetName) -> Lens' Prices LPPrices
 pricesFor k = priceHistory . at k . anon Prices.empty Prices.null
 
-evalPriceEvents :: (SearchableRule r, Monad m) => Lovelace -> r -> Stream (Of PriceEventRow) m () -> m (Portfolio, C.Value)
-evalPriceEvents initialAda (signal -> rule) stream = do
+evalPriceEvents :: (SearchableRule r, Monad m, MonadLog m) => PortfolioConfig -> Lovelace -> r -> Stream (Of PriceEventRow) m () -> m (Portfolio, C.Value)
+evalPriceEvents config initialAda (signal -> rule) stream = do
   let portf = (Portfolio.emptyPortfolio, C.lovelaceToValue initialAda)
       init_ :: Prices
       init_ = Prices mempty mempty
-  flip evalStateT init_ $ Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
-    flip S.mapM_ (Streaming.hoist (lift . lift) stream) $ \PriceEventRow{peBlockNo, peSlot, pePolicyId, peAssetName, peQuantity, peLovelace} -> do
+  flip evalStateT init_ $ Portfolio.execSimulatedPortfolioT config portf $ Portfolio.runLoggingPortfolioT $ do
+    flip S.mapM_ (Streaming.hoist (lift . lift . lift) stream) $ \PriceEventRow{peBlockNo, peSlot, pePolicyId, peAssetName, peQuantity, peLovelace} -> do
       let k = (pePolicyId, peAssetName)
           newPrice = (peLovelace, peQuantity)
       oldPrices <- use lastPrices
@@ -122,17 +127,23 @@ evalPriceEvents initialAda (signal -> rule) stream = do
         pricesFor k %= Prices.prepend pAt
         newPrices' <- use (pricesFor k)
         let pricePoint = (pePolicyId, peAssetName, peQuantity, peLovelace)
-        Portfolio.update pricePoint
+        void (Portfolio.update pricePoint)
         case rule newPrices' of
-          Rules.Buy  -> Portfolio.buy 1.0 pricePoint
-          Rules.Sell -> Portfolio.sell 1.0 pricePoint
+          Rules.Buy  -> void (Portfolio.buy 1.0 pricePoint)
+          Rules.Sell -> void (Portfolio.sell 1.0 pricePoint)
           _          -> pure ()
 
 {-| Evaluate the rule against the price events in the CSV file
 -}
-evaluateRule :: SearchableRule r => Lovelace -> FilePath -> K.LogEnv -> r -> IO (Portfolio, C.Value)
-evaluateRule initialAda csvFile logEnv rule = K.runKatipContextT logEnv () "test-rule" $ runMonadLogKatipT $ do
-  liftIO $ runExceptT (runBacktest initialAda csvFile rule) >>= either (error . show) pure
+evaluateRuleL :: SearchableRule r => Lovelace -> FilePath -> K.LogEnv -> r -> PortfolioConfig -> IO (Portfolio, C.Value)
+evaluateRuleL initialAda csvFile logEnv rule config = K.runKatipContextT logEnv () "test-rule" $ runMonadLogKatipT $ do
+  runExceptT (runBacktest config initialAda csvFile rule) >>= either (error . show) pure
+
+{-| Evaluate the rule against the price events in the CSV file
+-}
+evaluateRuleNL :: SearchableRule r => Lovelace -> FilePath -> r -> PortfolioConfig -> IO (Portfolio, C.Value)
+evaluateRuleNL initialAda csvFile rule config = runMonadLogIgnoreT $ do
+  runExceptT (runBacktest config initialAda csvFile rule) >>= either (error . show) pure
 
 fitness :: (Portfolio, C.Value) -> Double
 fitness (portfolio, vl) =
@@ -141,31 +152,41 @@ fitness (portfolio, vl) =
       then (1 / fromIntegral totalVal)
       else 1
 
-optimiseRules :: forall r m. (SearchableRule r, MonadIO m) => r -> FilePath -> K.LogEnv -> m (Stream (Of (AnnealingState (AssessedCandidate r (Portfolio, C.Value)))) IO (), AssessedCandidate r (Portfolio, C.Value), Lovelace)
+optimiseRules :: forall r m.
+  (SearchableRule r, MonadIO m) =>
+  r ->
+  FilePath ->
+  K.LogEnv ->
+  m ( Stream (Of (AnnealingState (AssessedCandidate (r, PortfolioConfig) (Portfolio, C.Value)))) IO ()
+    , AssessedCandidate (r, PortfolioConfig) (Portfolio, C.Value)
+    , Lovelace
+    )
 optimiseRules i fp logEnv = do
   gen <- liftIO P.createSystemRandom
   let initialAda = 3_000_000_000
-  initial <- liftIO (evaluateRule initialAda fp logEnv i)
+      config = Portfolio.defaultPortfolioConfig
+  initial <- liftIO (evaluateRuleL initialAda fp logEnv i config)
   let temp j = 1 + (1 / fromIntegral j)
-      cand = AssessedCandidate i initial (fitness initial)
+      cand = AssessedCandidate (i, config) initial (fitness initial)
       stream =
         annealing
           gen
           temp
-          (evaluateRule initialAda fp logEnv)
+          (uncurry (evaluateRuleNL initialAda fp))
           fitness
           cand
-          (neighbours gen)
+          (\(r, cfg) -> (,) <$> neighbours gen r <*> searchPortfolioConfig gen cfg)
   return (stream, cand, initialAda)
 
 runAnnealing :: (MonadIO m, MonadLog m) => K.LogEnv -> FilePath -> m ()
 runAnnealing logEnv filePath = do
   logInfoS "Starting annealing"
   let r = Rules.twoMovingAverages
+  -- let r = Rules.movingAverages
   (stream, initialRule, C.Lovelace initialAda) <- optimiseRules r filePath logEnv
-  result <- liftIO (S.last_ (S.take 0_500 stream))
+  result <- liftIO (S.last_ (S.take 2_000 stream))
   flip traverse_ result $ \AnnealingState{asBestCandidate, asCurrentCandidate} -> do
-    let p AssessedCandidate{acCandidate, acResult=(pf, v)} = do
+    let p (AssessedCandidate{acCandidate, acResult=(pf, v)}) = do
           logInfoS (show acCandidate)
           let C.Lovelace currentVal = Portfolio.aum v pf
               diff = currentVal - initialAda
@@ -180,3 +201,10 @@ runAnnealing logEnv filePath = do
 
     logInfoS $ "Current result:"
     p asCurrentCandidate
+
+searchPortfolioConfig :: (PrimMonad m) => Gen (PrimState m) -> PortfolioConfig -> m PortfolioConfig
+searchPortfolioConfig gen cfg = do
+  let sv = 0.05
+  stopLoss <- max 0.1 . (\i -> toRational (1000 * i) / 1000) <$> P.sample (P.normal (fromRational $ pfDefaultStopLoss cfg) sv) gen
+  defLimit <- max 0.1 . (\i -> toRational (1000 * i) / 1000) <$> P.sample (P.normal (fromRational $ pfDefaultLimit cfg) sv) gen
+  pure cfg{pfDefaultStopLoss = stopLoss, pfDefaultLimit = defLimit}

@@ -19,7 +19,7 @@ import qualified Control.Concurrent.STM        as STM
 import           Control.Lens                  (Lens', _2, anon, at, makeLenses,
                                                 use, view, (%=), (&), (.=),
                                                 (.~), (^.))
-import           Control.Monad                 (guard, unless, when)
+import           Control.Monad                 (guard, unless, void, when)
 import           Control.Monad.IO.Class        (MonadIO (..))
 import           Control.Monad.State.Strict    (MonadState, execStateT)
 import           Control.Monad.Trans.Maybe     (runMaybeT)
@@ -119,19 +119,13 @@ updatePrices rule c blck slt newPrices = do
       portf <- use portfolio
       portf' <- Portfolio.execSimulatedPortfolioT defaultPortfolioConfig portf $ do
         let pricePoint = (fst k, snd k, snd newPrice, fst newPrice)
-        Portfolio.update pricePoint
+        void (Portfolio.update pricePoint)
         case rule newPrices' of
-          Buy  -> Portfolio.buy 1.0 pricePoint
-          Sell -> Portfolio.sell 1.0 pricePoint
+          Buy  -> void (Portfolio.buy 1.0 pricePoint)
+          Sell -> void (Portfolio.sell 1.0 pricePoint)
           _    -> pure ()
       portfolio .= portf'
   lastPrices .= oldPrices <> newPrices
-
--- getPrices :: ResolvedInputs (Either LPPoolEvent OrderbookEvent) -> Map (PolicyId, AssetName) (Lovelace, Quantity)
--- getPrices (ResolvedInputs inputs) =
---   let f (_, neEvent -> Left LPPoolEvent{lpePolicyId, lpeAssetName, lpeLovelace, lpeNativeTokenAmount}) = Just ((lpePolicyId, lpeAssetName), (lpeLovelace, lpeNativeTokenAmount))
---       f _ = Nothing
---   in Map.fromList $ mapMaybe f $ Map.toList inputs
 
 getOrderbookPrices :: NetworkId -> TxWithEvents (Either LPPoolEvent OrderbookEvent) -> Map (PolicyId, AssetName) (Lovelace, Quantity)
 getOrderbookPrices networkId es =
@@ -149,6 +143,5 @@ getOrderbookPrices networkId es =
 
 -- TODO:
 -- backtesting for multiple sets of rules
--- annealing lib.
 -- execution
 -- Add other LP dexes

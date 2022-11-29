@@ -47,7 +47,8 @@ library
       katip,
       prettyprinter,
       transformers,
-      text
+      text,
+      exceptions
       
     build-depends:
       cardano-api,
