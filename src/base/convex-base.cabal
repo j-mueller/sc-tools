@@ -60,4 +60,7 @@ library
       ouroboros-consensus-shelley,
       plutus-ledger-api,
       ouroboros-network,
-      cardano-slotting
+      cardano-slotting,
+      plutus-tx,
+      serialise,
+      bytestring
