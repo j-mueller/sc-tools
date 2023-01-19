@@ -34,8 +34,8 @@ import           Cardano.Api                                          (BlockInMo
                                                                        envSecurityParam)
 import qualified Cardano.Api                                          as CAPI
 import qualified Cardano.Chain.Genesis
-import           Cardano.Crypto                                       (ProtocolMagicId (unProtocolMagicId),
-                                                                       RequiresNetworkMagic (..))
+import           Cardano.Crypto                                       (RequiresNetworkMagic (..),
+                                                                       getProtocolMagic)
 import           Cardano.Slotting.Slot                                (WithOrigin (At, Origin))
 import           Control.Monad.Except                                 (MonadError,
                                                                        throwError)
@@ -72,14 +72,12 @@ loadConnectInfo nodeConfigFilePath socketPath = do
         $ envLedgerConfig env
 
       networkMagic
-        = NetworkMagic
-        $ unProtocolMagicId
-        $ Cardano.Chain.Genesis.gdProtocolMagicId
-        $ Cardano.Chain.Genesis.configGenesisData byronConfig
+        = getProtocolMagic
+        $ Cardano.Chain.Genesis.configProtocolMagic byronConfig
 
       networkId = case Cardano.Chain.Genesis.configReqNetMagic byronConfig of
         RequiresNoMagic -> Mainnet
-        RequiresMagic   -> Testnet networkMagic
+        RequiresMagic   -> Testnet (NetworkMagic networkMagic)
 
       cardanoModeParams = CardanoModeParams . EpochSlots $ 10 * envSecurityParam env
 
