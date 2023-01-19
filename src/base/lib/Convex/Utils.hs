@@ -16,29 +16,23 @@ module Convex.Utils(
   txFromCbor,
   unsafeTxFromCbor,
   -- * Etc.
-  extractTx,
-  compiledCodeToScript
+  extractTx
 ) where
 
-import           Cardano.Api              (BabbageEra, Block (..),
-                                           BlockInMode (..), CardanoMode,
-                                           NetworkId, PlutusScript,
-                                           PlutusScriptV1, PlutusScriptV2, Tx)
-import qualified Cardano.Api.Shelley      as C
-import           Codec.Serialise          (serialise)
-import           Control.Monad            (void, when)
-import           Control.Monad.IO.Class   (MonadIO (..))
-import           Data.Aeson               (Result (..), fromJSON, object, (.=))
-import           Data.Bifunctor           (Bifunctor (..))
-import           Data.ByteString.Lazy     (toStrict)
-import           Data.ByteString.Short    (toShort)
-import           Data.Foldable            (traverse_)
-import           Data.Function            ((&))
-import           Data.Proxy               (Proxy (..))
-import           Data.Set                 (Set)
-import qualified Data.Set                 as Set
-import           Plutus.V1.Ledger.Scripts (fromCompiledCode)
-import           PlutusTx.Code            (CompiledCode)
+import           Cardano.Api            (BabbageEra, Block (..),
+                                         BlockInMode (..), CardanoMode,
+                                         NetworkId, PlutusScript,
+                                         PlutusScriptV1, PlutusScriptV2, Tx)
+import qualified Cardano.Api.Shelley    as C
+import           Control.Monad          (void, when)
+import           Control.Monad.IO.Class (MonadIO (..))
+import           Data.Aeson             (Result (..), fromJSON, object, (.=))
+import           Data.Bifunctor         (Bifunctor (..))
+import           Data.Foldable          (traverse_)
+import           Data.Function          ((&))
+import           Data.Proxy             (Proxy (..))
+import           Data.Set               (Set)
+import qualified Data.Set               as Set
 
 scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
@@ -67,11 +61,6 @@ txFromCbor cbor = do
   let vl = object ["type" .= s "Tx BabbageEra", "description" .= s "", "cborHex" .= cbor]
   textEnvelope <- fromJSON vl & (\case { Error err -> Left (show err); Success e -> Right e })
   C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(Tx BabbageEra)) textEnvelope & first show
-
-{-| Get the 'PlutusScript' of a 'CompiledCode'
--}
-compiledCodeToScript :: CompiledCode a -> PlutusScript lang
-compiledCodeToScript = C.PlutusScriptSerialised . toShort . toStrict . serialise . fromCompiledCode
 
 unsafeScriptFromCbor :: String -> PlutusScript PlutusScriptV2
 unsafeScriptFromCbor = either error id . scriptFromCbor

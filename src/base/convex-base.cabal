@@ -35,6 +35,7 @@ library
       Convex.Lenses
       Convex.Measures
       Convex.MonadLog
+      Convex.Scripts
       Convex.Utils
       Convex.Utxos
     hs-source-dirs: lib
@@ -57,6 +58,7 @@ library
       cardano-ledger-core,
       cardano-ledger-babbage,
       cardano-ledger-alonzo,
+      cardano-ledger-shelley-ma,
       ouroboros-consensus-shelley,
       plutus-ledger-api,
       ouroboros-network,

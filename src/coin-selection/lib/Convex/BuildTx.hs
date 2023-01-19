@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds          #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE ViewPatterns       #-}
 {-| Building transactions
 -}
 module Convex.BuildTx(
@@ -37,6 +38,7 @@ import           Cardano.Api.Shelley  (Hash, NetworkId, PaymentKey,
 import qualified Cardano.Api.Shelley  as C
 import           Control.Lens         (_1, _2, at, mapped, over, set, (&))
 import qualified Convex.Lenses        as L
+import           Convex.Scripts       (toScriptData)
 import qualified Data.Map             as Map
 import           Data.Maybe           (fromMaybe)
 import qualified Plutus.V1.Ledger.Api as Plutus
@@ -51,41 +53,32 @@ spendPublicKeyOutput txIn =
   in over L.txIns ((txIn, wit) :)
 
 spendPlutusV1 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> TxBuild
-spendPlutusV1 txIn s d r =
-  let dat = C.fromPlutusData (Plutus.toData d)
-      red = C.fromPlutusData (Plutus.toData r)
-      wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+spendPlutusV1 txIn s (toScriptData -> dat) (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
 
 spendPlutusV1Ref :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> TxBuild
-spendPlutusV1Ref txIn refTxIn sh d r =
-  let dat = C.fromPlutusData (Plutus.toData d)
-      red = C.fromPlutusData (Plutus.toData r)
-      wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+spendPlutusV1Ref txIn refTxIn sh (toScriptData -> dat) (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid . addReference refTxIn
 
 spendPlutusV2 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> TxBuild
-spendPlutusV2 txIn s d r =
-  let dat = C.fromPlutusData (Plutus.toData d)
-      red = C.fromPlutusData (Plutus.toData r)
-      wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+spendPlutusV2 txIn s (toScriptData -> dat) (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
 
 spendPlutusV2Ref :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> TxBuild
-spendPlutusV2Ref txIn refTxIn sh d r =
-  let dat = C.fromPlutusData (Plutus.toData d)
-      red = C.fromPlutusData (Plutus.toData r)
-      wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+spendPlutusV2Ref txIn refTxIn sh (toScriptData -> dat) (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid . addReference refTxIn
 
 mintPlutusV1 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> TxBuild
-mintPlutusV1 script redeemer assetName quantity =
+mintPlutusV1 script (toScriptData -> red) assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
-      red = C.fromPlutusData (Plutus.toData redeemer)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
       wit      = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
@@ -99,9 +92,8 @@ assetValue hsh assetName quantity =
   C.valueFromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
 
 mintPlutusV2 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV2 -> redeemer -> C.AssetName -> C.Quantity -> TxBuild
-mintPlutusV2 script redeemer assetName quantity =
+mintPlutusV2 script (toScriptData -> red) assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-      red = C.fromPlutusData (Plutus.toData redeemer)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
       wit      = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
