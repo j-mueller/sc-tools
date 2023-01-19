@@ -21,6 +21,7 @@ with-compiler: ghc-8.10.7
 packages:
   src/base
   src/coin-selection
+  src/devnet
   src/mockchain
   src/dex/muesli/muesli-core
   src/dex/muesli/muesli-node-client

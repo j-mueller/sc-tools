@@ -8,10 +8,10 @@ license-files:
 
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
-homepage:      https://github.com/cardano-convex/sc-tools
-bug-reports:   https://github.com/cardano-convex/sc-tools
+homepage:      https://github.com/j-mueller/sc-tools
+bug-reports:   https://github.com/j-mueller/sc-tools
 description:
-  Please see the README on GitHub at <https://github.com/cardano-convex/sc-tools>
+  Please see the README on GitHub at <https://github.com/j-mueller/sc-tools>
 
 build-type:    Simple
 

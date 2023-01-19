@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-base
+name:          convex-devnet
 version:       0.0.1
-synopsis:      Base classes and types for working with cardano-api transactions
+synopsis:      Devnet for integration tests
 license: Apache-2.0
 license-files:
   LICENSE
@@ -14,6 +14,17 @@ description:
   Please see the README on GitHub at <https://github.com/j-mueller/sc-tools>
 
 build-type:    Simple
+data-files:
+  config/devnet/byron-delegate.key
+  config/devnet/byron-delegation.cert
+  config/devnet/cardano-node.json
+  config/devnet/genesis-alonzo.json
+  config/devnet/genesis-byron.json
+  config/devnet/genesis-shelley.json
+  config/devnet/kes.skey
+  config/devnet/opcert.cert
+  config/devnet/vrf.skey
+  config/protocol-parameters.json
 
 common lang
     default-language: Haskell2010
@@ -28,41 +39,36 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.Class
-      Convex.Constants
-      Convex.Era
-      Convex.Event
-      Convex.Lenses
-      Convex.Measures
-      Convex.MonadLog
-      Convex.Scripts
-      Convex.Utils
-      Convex.Utxos
+      Convex.Devnet.CardanoNode
+      Convex.Devnet.Logging
+      Convex.Devnet.NodeQueries
+      Convex.Devnet.Utils
     hs-source-dirs: lib
     build-depends:
-      base >= 4.14.0,
-      lens,
-      containers,
-      aeson,
-      mtl,
-      katip,
-      prettyprinter,
-      transformers,
-      text,
-      exceptions
-      
-    build-depends:
-      cardano-api,
-      cardano-ledger-shelley,
-      small-steps,
-      cardano-ledger-core,
-      cardano-ledger-babbage,
-      cardano-ledger-alonzo,
-      cardano-ledger-shelley-ma,
-      ouroboros-consensus-shelley,
-      plutus-ledger-api,
-      ouroboros-network,
-      cardano-slotting,
-      plutus-tx,
-      serialise,
-      bytestring
+      base >= 4.14.0
+      , aeson
+      , text
+      , time
+      , bytestring
+      , directory
+      , filepath
+      , process
+      , HUnit
+      , temporary
+      , async
+      , unix
+
+      -- cardano-node deps.
+      , cardano-api
+      , cardano-slotting
+      , io-classes
+
+      -- logging
+      , contra-tracer
+      , iohk-monitoring
+
+
+  other-modules:
+    Paths_convex_devnet
+  autogen-modules:
+    Paths_convex_devnet

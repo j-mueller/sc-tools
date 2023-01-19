@@ -8,10 +8,10 @@ license-files:
 
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
-homepage:      https://github.com/cardano-convex/sc-tools
-bug-reports:   https://github.com/cardano-convex/sc-tools
+homepage:      https://github.com/j-mueller/sc-tools
+bug-reports:   https://github.com/j-mueller/sc-tools
 description:
-  Please see the README on GitHub at <https://github.com/cardano-convex/sc-tools>
+  Please see the README on GitHub at <https://github.com/j-mueller/sc-tools>
 
 build-type:    Simple
 
@@ -20,7 +20,7 @@ common lang
     default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
                         DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
                         GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
-                        DeriveTraversable ImportQualifiedPost
+                        DeriveTraversable ImportQualifiedPost NumericUnderscores
     ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
                  -Wincomplete-uni-patterns -Wincomplete-record-updates
                  -Wredundant-constraints -Widentities
