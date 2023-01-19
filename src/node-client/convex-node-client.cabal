@@ -41,6 +41,9 @@ library
       time,
       containers,
 
+    build-depends:
+      convex-base
+
     -- cardano dependencies
     build-depends:
       cardano-api >= 1.35.3,

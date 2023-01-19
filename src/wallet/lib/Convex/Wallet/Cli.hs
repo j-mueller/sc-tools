@@ -15,7 +15,8 @@ import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Trans.Except (runExceptT)
 import           Convex.MonadLog            (MonadLog, MonadLogKatipT (..),
                                              logInfo, logInfoS, logWarnS)
-import           Convex.NodeClient.Types    (loadConnectInfo, runNodeClient)
+import           Convex.NodeClient.Types    (runNodeClient)
+import           Convex.NodeQueries         (loadConnectInfo)
 import           Convex.Utxos               (PrettyBalance (..))
 import qualified Convex.Wallet              as Wallet
 import           Convex.Wallet.Cli.Command  (CliCommand (..), commandParser)

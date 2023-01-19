@@ -35,6 +35,7 @@ library
       Convex.Lenses
       Convex.Measures
       Convex.MonadLog
+      Convex.NodeQueries
       Convex.Scripts
       Convex.Utils
       Convex.Utxos
@@ -57,9 +58,13 @@ library
       small-steps,
       cardano-ledger-core,
       cardano-ledger-babbage,
+      cardano-ledger-byron,
       cardano-ledger-alonzo,
       cardano-ledger-shelley-ma,
       ouroboros-consensus-shelley,
+      cardano-crypto-wrapper,
+      ouroboros-consensus,
+      ouroboros-consensus-cardano,
       plutus-ledger-api,
       ouroboros-network,
       cardano-slotting,

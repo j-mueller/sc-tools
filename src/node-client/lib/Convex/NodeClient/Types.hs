@@ -8,7 +8,6 @@ module Convex.NodeClient.Types(
   PipelinedLedgerStateClient(..),
   ClientBlock,
   runNodeClient,
-  loadConnectInfo,
   -- * Sync points
   ChainPoint(..),
   fromChainTip
@@ -20,34 +19,18 @@ import           Cardano.Api                                          (BlockInMo
                                                                        ChainPoint (..),
                                                                        ChainSyncClientPipelined,
                                                                        ChainTip (..),
-                                                                       ConsensusModeParams (..),
                                                                        Env (..),
-                                                                       EpochSlots (..),
                                                                        InitialLedgerStateError,
                                                                        LocalChainSyncClient (LocalChainSyncClientPipelined),
                                                                        LocalNodeClientProtocols (..),
                                                                        LocalNodeClientProtocolsInMode,
                                                                        LocalNodeConnectInfo (..),
-                                                                       NetworkId (Mainnet, Testnet),
-                                                                       NetworkMagic (..),
-                                                                       connectToLocalNode,
-                                                                       envSecurityParam)
-import qualified Cardano.Api                                          as CAPI
-import qualified Cardano.Chain.Genesis
-import           Cardano.Crypto                                       (RequiresNetworkMagic (..),
-                                                                       getProtocolMagic)
+                                                                       connectToLocalNode)
 import           Cardano.Slotting.Slot                                (WithOrigin (At, Origin))
-import           Control.Monad.Except                                 (MonadError,
-                                                                       throwError)
 import           Control.Monad.IO.Class                               (MonadIO (..))
 import           Control.Monad.Trans.Class                            (lift)
-import           Control.Monad.Trans.Except                           (ExceptT,
-                                                                       runExceptT)
-import           Data.SOP.Strict                                      (NP ((:*)))
-import qualified Ouroboros.Consensus.Cardano.CanHardFork              as Consensus
-import qualified Ouroboros.Consensus.HardFork.Combinator              as Consensus
-import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras   as HFC
-import qualified Ouroboros.Consensus.HardFork.Combinator.Basics       as HFC
+import           Control.Monad.Trans.Except                           (ExceptT)
+import           Convex.NodeQueries                                   (loadConnectInfo)
 import qualified Ouroboros.Network.Protocol.ChainSync.ClientPipelined as CSP
 
 {-|
@@ -56,40 +39,6 @@ newtype PipelinedLedgerStateClient =
   PipelinedLedgerStateClient
     { getPipelinedLedgerStateClient :: ChainSyncClientPipelined (BlockInMode CardanoMode) ChainPoint ChainTip IO ()
     }
-
-{-| Load the node config file and create 'LocalNodeConnectInfo' and 'Env' values that can be used to talk to the node.
--}
-loadConnectInfo :: (MonadError InitialLedgerStateError m, MonadIO m) => FilePath -> FilePath -> m (LocalNodeConnectInfo CardanoMode, Env)
-loadConnectInfo nodeConfigFilePath socketPath = do
-  (env, _) <- liftIO (runExceptT (CAPI.initialLedgerState nodeConfigFilePath)) >>= either throwError pure
-
-  -- Derive the NetworkId as described in network-magic.md from the
-  -- cardano-ledger-specs repo.
-  let byronConfig
-        = (\(Consensus.WrapPartialLedgerConfig (Consensus.ByronPartialLedgerConfig bc _) :* _) -> bc)
-        . HFC.getPerEraLedgerConfig
-        . HFC.hardForkLedgerConfigPerEra
-        $ envLedgerConfig env
-
-      networkMagic
-        = getProtocolMagic
-        $ Cardano.Chain.Genesis.configProtocolMagic byronConfig
-
-      networkId = case Cardano.Chain.Genesis.configReqNetMagic byronConfig of
-        RequiresNoMagic -> Mainnet
-        RequiresMagic   -> Testnet (NetworkMagic networkMagic)
-
-      cardanoModeParams = CardanoModeParams . EpochSlots $ 10 * envSecurityParam env
-
-  -- Connect to the node.
-  let connectInfo :: LocalNodeConnectInfo CardanoMode
-      connectInfo =
-          LocalNodeConnectInfo {
-            localConsensusModeParams = cardanoModeParams,
-            localNodeNetworkId       = networkId,
-            localNodeSocketPath      = socketPath
-          }
-  pure (connectInfo, env)
 
 runNodeClient ::
   FilePath

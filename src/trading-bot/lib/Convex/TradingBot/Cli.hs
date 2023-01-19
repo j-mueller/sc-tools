@@ -12,8 +12,8 @@ import           Control.Monad.Trans.Except                (runExceptT)
 import           Convex.MonadLog                           (MonadLog,
                                                             MonadLogKatipT (..),
                                                             logInfoS, logWarnS)
-import           Convex.NodeClient.Types                   (loadConnectInfo,
-                                                            runNodeClient)
+import           Convex.NodeClient.Types                   (runNodeClient)
+import           Convex.NodeQueries                        (loadConnectInfo)
 import           Convex.TradingBot.Annealing               (runAnnealing)
 import           Convex.TradingBot.Cli.Command             (CliCommand (..),
                                                             commandParser)
