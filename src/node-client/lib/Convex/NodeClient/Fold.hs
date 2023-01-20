@@ -14,6 +14,7 @@ module Convex.NodeClient.Fold(
   CatchingUp(..),
   catchingUpWithNode,
   caughtUpWithNode,
+  resumingFrom,
   catchingUp,
   caughtUp,
   foldClient,
@@ -43,6 +44,8 @@ import           Data.Sequence                                         (Seq)
 import qualified Data.Sequence                                         as Seq
 import           GHC.Generics                                          (Generic)
 import           Network.TypedProtocol.Pipelined                       (Nat (..))
+import Convex.NodeClient.Resuming (ResumingFrom)
+import qualified Convex.NodeClient.Resuming as R
 import           Ouroboros.Consensus.Block.Abstract                    (WithOrigin (..))
 import           Ouroboros.Network.Protocol.ChainSync.ClientPipelined  (ClientPipelinedStIdle (..),
                                                                         ClientStNext (..))
@@ -72,6 +75,11 @@ catchingUp = \case
 
 caughtUp :: CatchingUp -> Bool
 caughtUp = not . catchingUp
+
+resumingFrom :: ResumingFrom -> CatchingUp
+resumingFrom = \case
+  R.ResumingFromChainPoint cp st -> catchingUpWithNode cp (Just $ chainTipToChainPoint st)
+  R.ResumingFromOrigin st        -> catchingUpWithNode ChainPointAtGenesis (Just $ chainTipToChainPoint st)
 
 {-| Run the client until 'Nothing' is returned
 -}
