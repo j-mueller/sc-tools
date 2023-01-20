@@ -39,6 +39,7 @@ import           Convex.MonadLog                                (MonadLog,
                                                                  logUnless)
 import           Convex.NodeClient.Fold                         (CatchingUp (..),
                                                                  catchingUp,
+                                                                 catchingUpWithNode,
                                                                  foldClient)
 import           Convex.NodeClient.Resuming                     (resumingClient)
 import           Convex.NodeClient.Types                        (PipelinedLedgerStateClient)
@@ -85,11 +86,12 @@ initialState = ClientState mempty mempty mempty mempty (emptyPortfolio, mempty)
 
 tradingClient :: Rule -> K.LogEnv -> K.Namespace -> Wallet -> NetworkId -> Env -> PipelinedLedgerStateClient
 tradingClient rule logEnv ns wallet networkId env =
-  resumingClient [Constants.recent] $ \_ ->
-    foldClient
-      (CatchingUpWithNode, initialState)
-      env
-      (applyBlock rule logEnv ns wallet networkId)
+  let start = Constants.recent
+  in resumingClient [start] $ \_ ->
+      foldClient
+        (catchingUpWithNode start Nothing, initialState)
+        env
+        (applyBlock rule logEnv ns wallet networkId)
 
 applyBlock :: Rule -> K.LogEnv -> K.Namespace -> Wallet -> NetworkId -> CatchingUp -> (CatchingUp, ClientState) -> BlockInMode CardanoMode -> IO (Maybe (CatchingUp, ClientState))
 applyBlock rule logEnv ns wallet networkId c (oldC, state) block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
@@ -105,8 +107,8 @@ applyBlock rule logEnv ns wallet networkId c (oldC, state) block = K.runKatipCon
 
   state' <- flip execStateT newState $ do
     updatePrices rule c currentBlockNo currentSlot (Map.unionsWith (<>) (getOrderbookPrices networkId . fmap Right <$> orderBookEvents))
-    when (c == CaughtUpWithNode) $ do
-      when (oldC == CatchingUpWithNode) (logInfoS "Caught up with node")
+    when (not (catchingUp c)) $ do
+      when (catchingUp oldC) (logInfoS "Caught up with node")
       (pf, vl) <- use portfolio
       logInfoS $ "AUM: " <> Portfolio.formatAda (Portfolio.aum vl pf)
   pure (c, state')

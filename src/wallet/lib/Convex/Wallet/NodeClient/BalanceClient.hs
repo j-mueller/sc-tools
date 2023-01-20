@@ -14,7 +14,7 @@ import           Control.Monad.Trans.Maybe  (runMaybeT)
 import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
                                              logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
-                                             foldClient)
+                                             catchingUpWithNode, foldClient)
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
 import           Convex.Utxos               (PrettyBalance (..),
@@ -29,11 +29,13 @@ import qualified Katip                      as K
 
 balanceClient :: K.LogEnv -> K.Namespace -> FilePath -> WalletState -> Wallet -> Env -> PipelinedLedgerStateClient
 balanceClient logEnv ns filePath walletState wallet env =
-  resumingClient [chainPoint walletState] $ \_ ->
-    foldClient
-      (CatchingUpWithNode, utxoSet walletState)
-      env
-      (applyBlock logEnv ns filePath wallet)
+  let cp = chainPoint walletState
+      i  = catchingUpWithNode cp Nothing
+  in resumingClient [cp] $ \_ ->
+      foldClient
+        (i, utxoSet walletState)
+        env
+        (applyBlock logEnv ns filePath wallet)
 
 {-| Apply a new block
 -}
@@ -46,7 +48,7 @@ applyBlock logEnv ns filePath wallet c (oldC, state) block = K.runKatipContextT 
     logInfo $ PrettyUtxoChange change
     logInfo $ PrettyBalance newState
 
-  when (oldC == CatchingUpWithNode && c == CaughtUpWithNode) $
+  when (catchingUp oldC &&  not (catchingUp c)) $
     logInfoS "Caught up with node"
 
   when (not $ catchingUp c) $ do

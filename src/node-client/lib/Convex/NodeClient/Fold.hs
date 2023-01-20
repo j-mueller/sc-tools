@@ -1,13 +1,19 @@
 {-# LANGUAGE BangPatterns       #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE ViewPatterns       #-}
 {-| A node client that applies a fold to the stream of blocks.
 Unlike 'foldBlocks' from 'Cardano.Api', this one supports rollbacks.
 -}
 module Convex.NodeClient.Fold(
   CatchingUp(..),
+  catchingUpWithNode,
+  caughtUpWithNode,
   catchingUp,
   caughtUp,
   foldClient,
@@ -23,13 +29,19 @@ import           Cardano.Api                                           (Block (.
                                                                         ChainTip (..),
                                                                         Env,
                                                                         SlotNo,
+                                                                        chainTipToChainPoint,
                                                                         envSecurityParam)
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
+import           Convex.NodeClient.ChainTip                            (JSONChainPoint (..),
+                                                                        blockHeaderPoint)
 import           Convex.NodeClient.Types                               (ClientBlock,
                                                                         PipelinedLedgerStateClient (..),
                                                                         fromChainTip)
+import           Data.Aeson                                            (FromJSON,
+                                                                        ToJSON)
 import           Data.Sequence                                         (Seq)
 import qualified Data.Sequence                                         as Seq
+import           GHC.Generics                                          (Generic)
 import           Network.TypedProtocol.Pipelined                       (Nat (..))
 import           Ouroboros.Consensus.Block.Abstract                    (WithOrigin (..))
 import           Ouroboros.Network.Protocol.ChainSync.ClientPipelined  (ClientPipelinedStIdle (..),
@@ -41,14 +53,22 @@ import           Ouroboros.Network.Protocol.ChainSync.PipelineDecision (Pipeline
 {-| Whether we have fully caught up with the node
 -}
 data CatchingUp =
-  CatchingUpWithNode -- ^ Client is still catching up
-  | CaughtUpWithNode -- ^ Client fully caught up (client tip == server tip)
-  deriving (Eq, Ord, Show)
+  CatchingUpWithNode{ clientTip :: JSONChainPoint, serverTip :: Maybe JSONChainPoint} -- ^ Client is still catching up
+  | CaughtUpWithNode{ tip :: JSONChainPoint } -- ^ Client fully caught up (client tip == server tip)
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+catchingUpWithNode :: ChainPoint -> Maybe ChainPoint -> CatchingUp
+catchingUpWithNode (JSONChainPoint -> clientTip) (fmap JSONChainPoint -> serverTip) =
+  CatchingUpWithNode{clientTip, serverTip}
+
+caughtUpWithNode :: ChainPoint -> CatchingUp
+caughtUpWithNode (JSONChainPoint -> tip) = CaughtUpWithNode{tip}
 
 catchingUp :: CatchingUp -> Bool
 catchingUp = \case
-  CatchingUpWithNode -> True
-  CaughtUpWithNode   -> False
+  CatchingUpWithNode{} -> True
+  CaughtUpWithNode{}   -> False
 
 caughtUp :: CatchingUp -> Bool
 caughtUp = not . catchingUp
@@ -93,11 +113,11 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
       -> Nat n -- Number of requests inflight.
       -> History (w, s)
       -> CSP.ClientPipelinedStIdle n ClientBlock ChainPoint ChainTip IO ()
-    clientIdle_RequestMoreN clientTip serverTip n history
-      = case pipelineDecisionMax pipelineSize n clientTip serverTip  of
+    clientIdle_RequestMoreN clientTip_ serverTip_ n history
+      = case pipelineDecisionMax pipelineSize n clientTip_ serverTip_  of
           Collect -> case n of
             Succ predN -> CSP.CollectResponse Nothing (clientNextN predN history)
-          _ -> CSP.SendMsgRequestNextPipelined (clientIdle_RequestMoreN clientTip serverTip (Succ n) history)
+          _ -> CSP.SendMsgRequestNextPipelined (clientIdle_RequestMoreN clientTip_ serverTip_ (Succ n) history)
 
     clientNextN
       :: Nat n
@@ -106,10 +126,12 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
     clientNextN n history =
       ClientStNext {
           recvMsgRollForward = \newBlock serverChainTip -> do
-              let BlockInMode (Block (BlockHeader slotNo _blockHash currBlockNo) _) _ = newBlock
+              let BlockInMode (Block bh@(BlockHeader slotNo _blockHash currBlockNo) _) _ = newBlock
                   newClientTip = At currBlockNo
                   newServerTip = fromChainTip serverChainTip
-                  cu = if newClientTip == newServerTip then CaughtUpWithNode else CatchingUpWithNode
+                  cu = if newClientTip == newServerTip
+                        then caughtUpWithNode (chainTipToChainPoint serverChainTip)
+                        else catchingUpWithNode (blockHeaderPoint bh) (Just $ chainTipToChainPoint serverChainTip)
                   currentState =
                     case Seq.viewl history of
                       (_, (_, x)) Seq.:< _ -> x

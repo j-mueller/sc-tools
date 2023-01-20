@@ -28,6 +28,7 @@ common lang
 library
     import: lang
     exposed-modules:
+      Convex.NodeClient.ChainTip
       Convex.NodeClient.Fold
       Convex.NodeClient.Progress
       Convex.NodeClient.Resuming
@@ -40,6 +41,7 @@ library
       text,
       time,
       containers,
+      aeson
 
     build-depends:
       convex-base

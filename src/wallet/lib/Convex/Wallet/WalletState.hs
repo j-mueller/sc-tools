@@ -14,16 +14,15 @@ module Convex.Wallet.WalletState(
   readFromFile
 ) where
 
-import           Cardano.Api              (BlockHeader (..), ChainPoint (..))
-import           Control.Exception        (SomeException, catch)
-import           Convex.Constants         (lessRecent)
-import           Convex.Utxos             (UtxoSet)
-import           Data.Aeson               (FromJSON (..), ToJSON (..),
-                                           Value (..), decode, object,
-                                           withObject, (.:), (.=))
-import           Data.Aeson.Encode.Pretty (encodePretty)
-import qualified Data.ByteString.Lazy     as BSL
-import           GHC.Generics             (Generic)
+import           Cardano.Api                (BlockHeader (..), ChainPoint (..))
+import           Control.Exception          (SomeException, catch)
+import           Convex.Constants           (lessRecent)
+import           Convex.NodeClient.ChainTip (JSONChainPoint (..))
+import           Convex.Utxos               (UtxoSet)
+import           Data.Aeson                 (FromJSON (..), ToJSON (..), decode)
+import           Data.Aeson.Encode.Pretty   (encodePretty)
+import qualified Data.ByteString.Lazy       as BSL
+import           GHC.Generics               (Generic)
 
 data WalletState =
   WalletState
@@ -45,19 +44,6 @@ chainPoint WalletState{wsChainPoint = JSONChainPoint c} = c
 
 utxoSet :: WalletState -> UtxoSet
 utxoSet WalletState{wsUtxos} = wsUtxos
-
-newtype JSONChainPoint = JSONChainPoint ChainPoint
-  deriving newtype (Eq, Show)
-
-instance ToJSON JSONChainPoint where
-  toJSON (JSONChainPoint jp) = case jp of
-    ChainPointAtGenesis -> toJSON ("ChainPointAtGenesis" :: String)
-    ChainPoint s h      -> object ["slot" .= s, "block_header" .= h]
-
-instance FromJSON JSONChainPoint where
-  parseJSON (String "ChainPointAtGenesis") = pure (JSONChainPoint ChainPointAtGenesis)
-  parseJSON x = withObject "JSONChainPoint" (\obj ->
-    fmap JSONChainPoint (ChainPoint <$> obj .: "slot" <*> obj .: "block_header")) x
 
 initialWalletState :: WalletState
 initialWalletState = WalletState (JSONChainPoint lessRecent) mempty
