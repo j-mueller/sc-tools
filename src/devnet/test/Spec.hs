@@ -7,7 +7,6 @@ module Main where
 
 import qualified Cardano.Api               as C
 import           Control.Monad.Except      (runExceptT)
-import qualified Convex.BuildTx            as BuildTx
 import           Convex.Devnet.CardanoNode (NodeLog, RunningNode (..),
                                             getCardanoNodeVersion,
                                             withCardanoNodeDevnet)
@@ -17,11 +16,8 @@ import           Convex.Devnet.NodeQueries (loadConnectInfo, waitForTxn)
 import           Convex.Devnet.Utils       (failAfter, failure, withTempDir)
 import           Convex.Devnet.Wallet      (WalletLog)
 import qualified Convex.Devnet.Wallet      as W
-import           Convex.Lenses             (emptyTx)
-import           Convex.Utils              (txnUtxos)
 import qualified Convex.Wallet             as W
 import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Function             ((&))
 import           Data.List                 (isInfixOf)
 import qualified Data.Text                 as Text
 import           GHC.Generics              (Generic)
@@ -59,13 +55,11 @@ makePayment = do
     failAfter 10 $
       withTempDir "cardano-cluster" $ \tmp -> do
         withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode@RunningNode{rnNodeSocket, rnNetworkId} -> do
-          fct <- W.faucet
           wllt <- W.generateWallet
-          tx <- W.balanceAndSubmit (contramap TLWallet tr) runningNode fct $
-            emptyTx & BuildTx.payToAddress (W.addressInEra rnNetworkId wllt) (C.lovelaceToValue 100_000_000)
+          tx <- W.sendFaucetFundsTo (contramap TLWallet tr) runningNode (W.addressInEra rnNetworkId wllt) 100_000_000
           let txi = C.getTxId (C.getTxBody tx)
           traceWith tr (SubmitTx txi)
-          waitForTxn rnNetworkId rnNodeSocket (head $ txnUtxos tx)
+          waitForTxn rnNetworkId rnNodeSocket tx
           traceWith tr (FoundTx txi)
 
 data TestLog =

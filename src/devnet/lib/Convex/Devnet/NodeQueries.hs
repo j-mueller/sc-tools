@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE ViewPatterns #-}
 module Convex.Devnet.NodeQueries(
   querySystemStart,
   queryEraHistory,
@@ -6,18 +7,20 @@ module Convex.Devnet.NodeQueries(
   queryTipSlotNo,
   queryUTxO,
   waitForTxn,
+  waitForTxIn,
   localNodeConnectInfo,
   loadConnectInfo
 ) where
 
 import           Cardano.Api                                        (Address,
+                                                                     BabbageEra,
                                                                      BlockNo,
                                                                      CardanoMode,
                                                                      EraHistory,
                                                                      NetworkId,
                                                                      QueryInMode,
                                                                      ShelleyAddr,
-                                                                     SlotNo,
+                                                                     SlotNo, Tx,
                                                                      TxIn, UTxO)
 import qualified Cardano.Api                                        as C
 import           Cardano.Slotting.Slot                              (WithOrigin)
@@ -30,6 +33,7 @@ import           Control.Monad.Catch                                (MonadThrow)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Convex.Devnet.Utils                                (failure)
 import           Convex.NodeQueries                                 (loadConnectInfo)
+import           Convex.Utils                                       (txnUtxos)
 import qualified Convex.Utxos                                       as Utxos
 import qualified Data.Set                                           as Set
 import           Data.Word                                          (Word64)
@@ -100,8 +104,8 @@ throwOnEraMismatch res =
 
 {-| Wait until the output appears on the chain
 -}
-waitForTxn :: NetworkId -> FilePath -> TxIn -> IO ()
-waitForTxn networkId socket txIn = do
+waitForTxIn :: NetworkId -> FilePath -> TxIn -> IO ()
+waitForTxIn networkId socket txIn = do
   let query =
         C.QueryInEra
           C.BabbageEraInCardanoMode
@@ -117,3 +121,6 @@ waitForTxn networkId socket txIn = do
           threadDelay 2_000_000
           go
   go
+
+waitForTxn :: NetworkId -> FilePath -> Tx BabbageEra -> IO ()
+waitForTxn network socket (head . txnUtxos -> txi) = waitForTxIn network socket txi

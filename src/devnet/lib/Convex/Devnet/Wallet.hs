@@ -6,6 +6,7 @@
 -}
 module Convex.Devnet.Wallet(
   faucet,
+  sendFaucetFundsTo,
   walletUtxos,
   balanceAndSubmit,
   WalletLog(..),
@@ -15,11 +16,13 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api               (BabbageEra, BuildTx, Tx,
-                                            TxBodyContent)
+import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
+                                            Lovelace, Tx, TxBodyContent)
+import qualified Cardano.Api               as C
 import           Control.Monad.IO.Class    (MonadIO (..))
 import           Control.Monad.Reader      (ReaderT (..), ask, lift)
 import           Control.Tracer            (Tracer, traceWith)
+import qualified Convex.BuildTx            as BuildTx
 import           Convex.Class              (MonadBlockchain,
                                             runMonadBlockchainCardanoNodeT,
                                             sendTx)
@@ -27,11 +30,13 @@ import qualified Convex.CoinSelection      as CoinSelection
 import           Convex.Devnet.CardanoNode (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries as NodeQueries
 import           Convex.Devnet.Utils       (keysFor)
+import           Convex.Lenses             (emptyTx)
 import           Convex.MonadLog           (MonadLog (..))
 import           Convex.Utxos              (UtxoSet)
 import qualified Convex.Utxos              as Utxos
 import           Convex.Wallet             (Wallet (..), address)
 import           Data.Aeson                (FromJSON, ToJSON)
+import           Data.Function             ((&))
 import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Prettyprinter             (defaultLayoutOptions, layoutPretty)
@@ -45,6 +50,13 @@ faucet = Wallet . snd <$> keysFor "faucet"
 walletUtxos :: RunningNode -> Wallet -> IO UtxoSet
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
   Utxos.fromApiUtxo <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
+
+{-| Send the desired amount of lovelace to the address
+-}
+sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Lovelace -> IO (Tx BabbageEra)
+sendFaucetFundsTo tracer node destination amount = do
+  fct <- faucet
+  balanceAndSubmit tracer node fct (emptyTx & BuildTx.payToAddress destination (C.lovelaceToValue amount))
 
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the
 @RunningNode@ for blockchain stuff
