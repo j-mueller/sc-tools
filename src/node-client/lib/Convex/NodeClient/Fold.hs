@@ -35,6 +35,8 @@ import           Cardano.Api                                           (Block (.
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONChainPoint (..),
                                                                         blockHeaderPoint)
+import           Convex.NodeClient.Resuming                            (ResumingFrom)
+import qualified Convex.NodeClient.Resuming                            as R
 import           Convex.NodeClient.Types                               (ClientBlock,
                                                                         PipelinedLedgerStateClient (..),
                                                                         fromChainTip)
@@ -44,8 +46,6 @@ import           Data.Sequence                                         (Seq)
 import qualified Data.Sequence                                         as Seq
 import           GHC.Generics                                          (Generic)
 import           Network.TypedProtocol.Pipelined                       (Nat (..))
-import Convex.NodeClient.Resuming (ResumingFrom)
-import qualified Convex.NodeClient.Resuming as R
 import           Ouroboros.Consensus.Block.Abstract                    (WithOrigin (..))
 import           Ouroboros.Network.Protocol.ChainSync.ClientPipelined  (ClientPipelinedStIdle (..),
                                                                         ClientStNext (..))

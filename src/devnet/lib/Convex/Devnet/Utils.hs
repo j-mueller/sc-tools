@@ -8,17 +8,22 @@ module Convex.Devnet.Utils(
   readConfigFile,
   createSystemTempDirectory,
   withTempDir,
-  failAfter
+  failAfter,
+  keysFor
 ) where
 
-import           Cardano.Api                    (NetworkId)
+import           Cardano.Api                    (AsType, NetworkId, PaymentKey,
+                                                 SigningKey, VerificationKey)
 import qualified Cardano.Api                    as C
 import           Control.Exception              (catch, onException)
 import           Control.Monad.Class.MonadThrow (MonadThrow, throwIO)
 import           Control.Monad.Class.MonadTimer (DiffTime, MonadTimer, timeout)
 import           Control.Monad.IO.Class         (MonadIO (..))
+import qualified Data.Aeson                     as Aeson
+import           Data.Bifunctor                 (Bifunctor (..))
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString                as BS
+import           Data.Proxy                     (Proxy (..))
 import           Data.Text                      (Text)
 import           Data.Void                      (Void)
 import           GHC.IO.Exception               (IOErrorType (UnsatisfiedConstraints),
@@ -29,7 +34,7 @@ import qualified Paths_convex_devnet            as Pkg
 import           System.Directory               (createDirectoryIfMissing,
                                                  removePathForcibly)
 import           System.Exit                    (ExitCode (..))
-import           System.FilePath                (takeDirectory, (</>))
+import           System.FilePath                (takeDirectory, (<.>), (</>))
 import           System.Info                    (os)
 import           System.IO                      (BufferMode (NoBuffering),
                                                  Handle, IOMode (AppendMode),
@@ -41,6 +46,21 @@ import           Test.HUnit.Lang                (FailureReason (Reason),
                                                  HUnitFailure (HUnitFailure))
 
 import           Prelude
+
+-- | Read keys form a file
+keysFor :: String -> IO (VerificationKey PaymentKey, SigningKey PaymentKey)
+keysFor actor = do
+  bs <- readConfigFile ("credentials" </> actor <.> "sk")
+  let res =
+        first C.TextEnvelopeAesonDecodeError (Aeson.eitherDecodeStrict bs)
+          >>= C.deserialiseFromTextEnvelope asSigningKey
+  case res of
+    Left err ->
+      fail $ "cannot decode text envelope from '" <> show bs <> "', error: " <> show err
+    Right sk -> pure (C.getVerificationKey sk, sk)
+ where
+  asSigningKey :: AsType (SigningKey PaymentKey)
+  asSigningKey = C.proxyToAsType Proxy
 
 -- | Open given log file non-buffered in append mode and print a message with
 -- filepath to @stderr@ on exceptions.

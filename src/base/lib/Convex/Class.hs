@@ -40,13 +40,13 @@ import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult
 {-| Send transactions and resolve tx inputs.
 -}
 class Monad m => MonadBlockchain m where
-  sendTx :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
-  utxoByTxIn :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
+  sendTx                  :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
+  utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
   queryProtocolParameters :: m ProtocolParameters -- ^ Get the protocol parameters
-  queryStakePools :: m (Set PoolId) -- ^ Get the stake pools
-  querySystemStart :: m SystemStart
-  queryEraHistory :: m (EraHistory CardanoMode)
-  networkId :: m NetworkId -- ^ Get the network id
+  queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
+  querySystemStart        :: m SystemStart
+  queryEraHistory         :: m (EraHistory CardanoMode)
+  networkId               :: m NetworkId -- ^ Get the network id
 
 {-| Modify the mockchain internals
 -}

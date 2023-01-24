@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
 {-| Conversion functions and other conveniences
@@ -16,13 +17,15 @@ module Convex.Utils(
   txFromCbor,
   unsafeTxFromCbor,
   -- * Etc.
-  extractTx
+  extractTx,
+  txnUtxos
 ) where
 
 import           Cardano.Api            (BabbageEra, Block (..),
                                          BlockInMode (..), CardanoMode,
                                          NetworkId, PlutusScript,
-                                         PlutusScriptV1, PlutusScriptV2, Tx)
+                                         PlutusScriptV1, PlutusScriptV2, Tx,
+                                         TxIn)
 import qualified Cardano.Api.Shelley    as C
 import           Control.Monad          (void, when)
 import           Control.Monad.IO.Class (MonadIO (..))
@@ -91,3 +94,12 @@ extractTx txIds =
     BlockInMode (Block _ txns) C.BabbageEraInCardanoMode ->
       traverse_ extractTx' txns
     _                                                    -> pure ()
+
+{-| The UTxOs produced by the transaction
+-}
+txnUtxos :: Tx era -> [TxIn]
+txnUtxos tx =
+  let C.TxBody C.TxBodyContent{C.txOuts} = C.getTxBody tx
+      txi  = C.getTxId (C.getTxBody tx)
+  in take (length txOuts) (C.TxIn txi . C.TxIx <$> [0..])
+

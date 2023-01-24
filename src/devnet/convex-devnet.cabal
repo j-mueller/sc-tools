@@ -15,6 +15,8 @@ description:
 
 build-type:    Simple
 data-files:
+  config/credentials/faucet.sk
+  config/credentials/faucet.vk
   config/devnet/byron-delegate.key
   config/devnet/byron-delegation.cert
   config/devnet/cardano-node.json
@@ -43,6 +45,7 @@ library
       Convex.Devnet.Logging
       Convex.Devnet.NodeQueries
       Convex.Devnet.Utils
+      Convex.Devnet.Wallet
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0
@@ -57,18 +60,47 @@ library
       , temporary
       , async
       , unix
+      , exceptions
+      , containers
+      , convex-wallet
+      , convex-base
+      , convex-coin-selection
+      , mtl
+      , prettyprinter
 
       -- cardano-node deps.
       , cardano-api
       , cardano-slotting
       , io-classes
+      , ouroboros-consensus
 
       -- logging
       , contra-tracer
       , iohk-monitoring
 
-
   other-modules:
     Paths_convex_devnet
   autogen-modules:
     Paths_convex_devnet
+
+test-suite convex-devnet-test
+  import: lang
+  type:   exitcode-stdio-1.0
+  main-is: Spec.hs
+  ghc-options: -threaded -rtsopts
+  other-modules:
+  hs-source-dirs:
+    test
+  build-depends:
+    base >= 4.14.0
+    , tasty
+    , tasty-hunit
+    , convex-devnet
+    , convex-base
+    , convex-coin-selection
+    , convex-wallet
+    , cardano-api
+    , mtl
+    , text
+    , contra-tracer
+    , aeson
