@@ -51,7 +51,12 @@ module Convex.Lenses(
 
   -- * Addresses
   _AddressInEra,
-  _Address
+  _Address,
+
+  -- * Hashes
+  _ScriptHash,
+  _KeyHash,
+  _PlutusPubKeyHash
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
@@ -67,7 +72,7 @@ import           Cardano.Api.Shelley                (Address, ReferenceScript,
 import qualified Cardano.Api.Shelley                as C
 import qualified Cardano.Ledger.BaseTypes           as Shelley
 import qualified Cardano.Ledger.Core                as Core
-import qualified Cardano.Ledger.Credential          as Shelley
+import qualified Cardano.Ledger.Credential          as Credential
 import           Cardano.Ledger.Crypto              (StandardCrypto)
 import           Cardano.Ledger.Era                 (Era)
 import qualified Cardano.Ledger.Hashes              as Hashes
@@ -81,7 +86,10 @@ import           Control.Lens                       (Iso', Lens', Prism', iso,
 import           Control.State.Transition           (STS (State))
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
+import           Data.Proxy                         (Proxy (..))
 import           Data.Word                          (Word64)
+import           Plutus.V1.Ledger.Crypto            (PubKeyHash (..))
+import qualified PlutusTx.Prelude                   as PlutusTx
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 -}
@@ -226,9 +234,9 @@ _TxOut = iso from to where
   from (C.TxOut addr vl dt rs) = (addr, vl, dt, rs)
   to (addr, vl, dt, rs) = C.TxOut addr vl dt rs
 
-_ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+_ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
 _ShelleyAddressInBabbageEra = prism' from to where
-  to :: C.AddressInEra C.BabbageEra -> Maybe (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+  to :: C.AddressInEra C.BabbageEra -> Maybe (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
   to x = case x of
     (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) (C.ShelleyAddress ntw pmt stakeRef)) -> Just (ntw, pmt, stakeRef)
     (C.AddressInEra (C.ByronAddressInAnyEra) _) -> Nothing
@@ -240,11 +248,11 @@ _PaymentCredentialByKey = prism' from to where
   to (C.PaymentCredentialByKey k) = Just k
   to _                            = Nothing
 
-_ShelleyPaymentCredentialByKey :: Prism' (Shelley.PaymentCredential StandardCrypto) (Keys.KeyHash 'Keys.Payment StandardCrypto)
+_ShelleyPaymentCredentialByKey :: Prism' (Credential.PaymentCredential StandardCrypto) (Keys.KeyHash 'Keys.Payment StandardCrypto)
 _ShelleyPaymentCredentialByKey = prism' from to where
-  from = Shelley.KeyHashObj
-  to (Shelley.KeyHashObj k)  = Just k
-  to Shelley.ScriptHashObj{} = Nothing
+  from = Credential.KeyHashObj
+  to (Credential.KeyHashObj k)  = Just k
+  to Credential.ScriptHashObj{} = Nothing
 
 _PaymentCredentialByScript :: Prism' C.PaymentCredential C.ScriptHash
 _PaymentCredentialByScript = prism' from to where
@@ -252,11 +260,11 @@ _PaymentCredentialByScript = prism' from to where
   to (C.PaymentCredentialByScript k) = Just k
   to C.PaymentCredentialByKey{}      = Nothing
 
-_ShelleyPaymentCredentialByScript :: Prism' (Shelley.PaymentCredential StandardCrypto) (Hashes.ScriptHash StandardCrypto)
+_ShelleyPaymentCredentialByScript :: Prism' (Credential.PaymentCredential StandardCrypto) (Hashes.ScriptHash StandardCrypto)
 _ShelleyPaymentCredentialByScript = prism' from to where
-  from = Shelley.ScriptHashObj
-  to (Shelley.ScriptHashObj s) = Just s
-  to Shelley.KeyHashObj{}      = Nothing
+  from = Credential.ScriptHashObj
+  to (Credential.ScriptHashObj s) = Just s
+  to Credential.KeyHashObj{}      = Nothing
 
 _KeyWitness :: Prism' (C.Witness witctx era) (C.KeyWitnessInCtx witctx)
 _KeyWitness = prism' from to where
@@ -318,8 +326,30 @@ _AddressInEra = prism' from to where
   to _ = Nothing
   from = C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage)
 
-_Address :: Iso' (Address ShelleyAddr) (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+_Address :: Iso' (Address ShelleyAddr) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
 _Address = iso from to where
-  from :: Address ShelleyAddr -> (Shelley.Network, Shelley.PaymentCredential StandardCrypto, Shelley.StakeReference StandardCrypto)
+  from :: Address ShelleyAddr -> (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
   from (C.ShelleyAddress n p s) = (n, p, s)
   to (n, p, s) = C.ShelleyAddress n p s
+
+_KeyHash :: Iso' (Keys.KeyHash 'Keys.Payment StandardCrypto) (C.Hash C.PaymentKey)
+_KeyHash = iso from to where
+  from :: Keys.KeyHash 'Keys.Payment StandardCrypto -> C.Hash C.PaymentKey
+  from hash = C.PaymentKeyHash hash
+  to (C.PaymentKeyHash h) = h
+
+_ScriptHash :: Iso' (Hashes.ScriptHash StandardCrypto) C.ScriptHash
+_ScriptHash = iso from to where
+  from :: Hashes.ScriptHash StandardCrypto -> C.ScriptHash
+  from = C.fromShelleyScriptHash
+
+  to :: C.ScriptHash -> Hashes.ScriptHash StandardCrypto
+  to = C.toShelleyScriptHash
+
+_PlutusPubKeyHash :: Prism' PubKeyHash (C.Hash C.PaymentKey)
+_PlutusPubKeyHash = prism' from to where
+  from :: C.Hash C.PaymentKey -> PubKeyHash
+  from = PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
+
+  to :: PubKeyHash -> Maybe (C.Hash C.PaymentKey)
+  to (PubKeyHash h) = C.deserialiseFromRawBytes (C.proxyToAsType $ Proxy @(C.Hash C.PaymentKey)) $ PlutusTx.fromBuiltin h
