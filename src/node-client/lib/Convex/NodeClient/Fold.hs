@@ -17,6 +17,7 @@ module Convex.NodeClient.Fold(
   resumingFrom,
   catchingUp,
   caughtUp,
+  shouldLog,
   foldClient,
   foldClient'
   ) where
@@ -34,7 +35,8 @@ import           Cardano.Api                                           (Block (.
                                                                         envSecurityParam)
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONChainPoint (..),
-                                                                        blockHeaderPoint)
+                                                                        JSONChainTip (..),
+                                                                        blockHeaderTip)
 import           Convex.NodeClient.Resuming                            (ResumingFrom)
 import qualified Convex.NodeClient.Resuming                            as R
 import           Convex.NodeClient.Types                               (ClientBlock,
@@ -56,30 +58,48 @@ import           Ouroboros.Network.Protocol.ChainSync.PipelineDecision (Pipeline
 {-| Whether we have fully caught up with the node
 -}
 data CatchingUp =
-  CatchingUpWithNode{ clientTip :: JSONChainPoint, serverTip :: Maybe JSONChainPoint} -- ^ Client is still catching up
-  | CaughtUpWithNode{ tip :: JSONChainPoint } -- ^ Client fully caught up (client tip == server tip)
+  CatchingUpWithNode{ clientTip :: JSONChainTip, serverTip :: Maybe JSONChainPoint} -- ^ Client is still catching up
+  | CaughtUpWithNode{ tip :: JSONChainTip } -- ^ Client fully caught up (client tip == server tip)
   deriving stock (Eq, Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-catchingUpWithNode :: ChainPoint -> Maybe ChainPoint -> CatchingUp
-catchingUpWithNode (JSONChainPoint -> clientTip) (fmap JSONChainPoint -> serverTip) =
+catchingUpWithNode :: ChainTip -> Maybe ChainPoint -> CatchingUp
+catchingUpWithNode (JSONChainTip -> clientTip) (fmap JSONChainPoint -> serverTip) =
   CatchingUpWithNode{clientTip, serverTip}
 
-caughtUpWithNode :: ChainPoint -> CatchingUp
-caughtUpWithNode (JSONChainPoint -> tip) = CaughtUpWithNode{tip}
+caughtUpWithNode :: ChainTip -> CatchingUp
+caughtUpWithNode (JSONChainTip -> tip) = CaughtUpWithNode{tip}
 
 catchingUp :: CatchingUp -> Bool
 catchingUp = \case
   CatchingUpWithNode{} -> True
   CaughtUpWithNode{}   -> False
 
+{-| Whether it is a good time to log something. Returns true if
+
+* The client has fully caught up with the node, OR
+* The client is catching up and the block number is a multiple of 10.000
+
+-}
+shouldLog :: CatchingUp -> Bool
+shouldLog = \case
+  CaughtUpWithNode{} -> True
+  CatchingUpWithNode (JSONChainTip (ChainTip _ _ (BlockNo n))) _ -> n `mod` 10_000 == 0
+  CatchingUpWithNode{} -> False
+
 caughtUp :: CatchingUp -> Bool
 caughtUp = not . catchingUp
 
 resumingFrom :: ResumingFrom -> CatchingUp
 resumingFrom = \case
-  R.ResumingFromChainPoint cp st -> catchingUpWithNode cp (Just $ chainTipToChainPoint st)
-  R.ResumingFromOrigin st        -> catchingUpWithNode ChainPointAtGenesis (Just $ chainTipToChainPoint st)
+  R.ResumingFromChainPoint ChainPointAtGenesis st ->
+    catchingUpWithNode ChainTipAtGenesis (Just $ chainTipToChainPoint st)
+  R.ResumingFromChainPoint (ChainPoint a b) st ->
+    -- it's a bit annoying that we only have a chain point and not a chain tip here
+    -- maybe we should use Either instead of setting the block no. to 0?
+    let ct = ChainTip a b 0
+    in catchingUpWithNode ct (Just $ chainTipToChainPoint st)
+  R.ResumingFromOrigin st        -> catchingUpWithNode ChainTipAtGenesis (Just $ chainTipToChainPoint st)
 
 {-| Run the client until 'Nothing' is returned
 -}
@@ -138,8 +158,8 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
                   newClientTip = At currBlockNo
                   newServerTip = fromChainTip serverChainTip
                   cu = if newClientTip == newServerTip
-                        then caughtUpWithNode (chainTipToChainPoint serverChainTip)
-                        else catchingUpWithNode (blockHeaderPoint bh) (Just $ chainTipToChainPoint serverChainTip)
+                        then caughtUpWithNode serverChainTip
+                        else catchingUpWithNode (blockHeaderTip bh) (Just $ chainTipToChainPoint serverChainTip)
                   currentState =
                     case Seq.viewl history of
                       (_, (_, x)) Seq.:< _ -> x
