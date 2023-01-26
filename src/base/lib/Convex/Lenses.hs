@@ -56,7 +56,8 @@ module Convex.Lenses(
   -- * Hashes
   _ScriptHash,
   _KeyHash,
-  _PlutusPubKeyHash
+  _PlutusPubKeyHash,
+  _PaymentCredential
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
@@ -353,3 +354,11 @@ _PlutusPubKeyHash = prism' from to where
 
   to :: PubKeyHash -> Maybe (C.Hash C.PaymentKey)
   to (PubKeyHash h) = C.deserialiseFromRawBytes (C.proxyToAsType $ Proxy @(C.Hash C.PaymentKey)) $ PlutusTx.fromBuiltin h
+
+_PaymentCredential :: Iso' C.PaymentCredential (Credential.PaymentCredential StandardCrypto)
+_PaymentCredential = iso from to where
+  from :: C.PaymentCredential -> Credential.PaymentCredential StandardCrypto
+  from (C.PaymentCredentialByKey (C.PaymentKeyHash kh)) = Credential.KeyHashObj kh
+  from (C.PaymentCredentialByScript sh)                 = Credential.ScriptHashObj (C.toShelleyScriptHash sh)
+
+  to = C.fromShelleyPaymentCredential
