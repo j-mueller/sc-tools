@@ -30,7 +30,7 @@ import qualified Katip                      as K
 balanceClient :: K.LogEnv -> K.Namespace -> FilePath -> WalletState -> Wallet -> Env -> PipelinedLedgerStateClient
 balanceClient logEnv ns filePath walletState wallet env =
   let cp = chainPoint walletState
-      i  = catchingUpWithNode cp Nothing
+      i  = catchingUpWithNode cp Nothing Nothing
   in resumingClient [cp] $ \_ ->
       foldClient
         (i, utxoSet walletState)

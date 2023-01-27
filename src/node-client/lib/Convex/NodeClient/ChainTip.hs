@@ -7,12 +7,13 @@ module Convex.NodeClient.ChainTip(
   JSONChainTip(..),
   blockHeaderTip,
   JSONChainPoint(..),
-  blockHeaderPoint
+  blockHeaderPoint,
+  JSONBlockNo(..)
 ) where
 
-import           Cardano.Api               (BlockHeader (..), ChainPoint (..),
-                                            ChainTip (..), Hash,
-                                            chainTipToChainPoint,
+import           Cardano.Api               (BlockHeader (..), BlockNo (..),
+                                            ChainPoint (..), ChainTip (..),
+                                            Hash, chainTipToChainPoint,
                                             deserialiseFromRawBytesHex,
                                             proxyToAsType)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
@@ -50,6 +51,15 @@ instance FromJSON JSONChainPoint where
   parseJSON (Aeson.String "ChainPointAtGenesis") = pure (JSONChainPoint ChainPointAtGenesis)
   parseJSON x = withObject "JSONChainPoint" (\obj ->
     fmap JSONChainPoint (ChainPoint <$> obj .: "slot" <*> obj .: "block_header")) x
+
+newtype JSONBlockNo = JSONBlockNo{unJSONBlockNo :: BlockNo }
+  deriving newtype (Eq, Show)
+
+instance ToJSON JSONBlockNo where
+  toJSON (JSONBlockNo (BlockNo n)) = toJSON n
+
+instance FromJSON JSONBlockNo where
+  parseJSON x = (JSONBlockNo . BlockNo) <$> parseJSON x
 
 blockHeaderPoint :: BlockHeader -> ChainPoint
 blockHeaderPoint = chainTipToChainPoint . blockHeaderTip

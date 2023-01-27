@@ -36,7 +36,6 @@ library
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      mtl,
       transformers,
       text,
       time,
