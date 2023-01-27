@@ -17,6 +17,7 @@ module Convex.NodeClient.Fold(
   resumingFrom,
   catchingUp,
   caughtUp,
+  getClientPoint,
   shouldLog,
   foldClient,
   foldClient'
@@ -63,6 +64,11 @@ data CatchingUp =
   | CaughtUpWithNode{ tip :: JSONChainTip } -- ^ Client fully caught up (client tip == server tip)
   deriving stock (Eq, Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
+
+getClientPoint :: CatchingUp -> JSONChainPoint
+getClientPoint = \case
+  CatchingUpWithNode{clientPoint} -> clientPoint
+  CaughtUpWithNode{tip}           -> JSONChainPoint $ chainTipToChainPoint $ unJSONChainTip tip
 
 catchingUpWithNode :: ChainPoint -> Maybe BlockNo -> Maybe ChainPoint -> CatchingUp
 catchingUpWithNode (JSONChainPoint -> clientPoint) (fmap JSONBlockNo -> clientBlockNo) (fmap JSONChainPoint -> serverTip) =
