@@ -47,7 +47,7 @@ faucet = Wallet . snd <$> keysFor "faucet"
 
 {-| Query the node for UTXOs that belong to the wallet
 -}
-walletUtxos :: RunningNode -> Wallet -> IO UtxoSet
+walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO)
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
   Utxos.fromApiUtxo <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
 

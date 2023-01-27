@@ -30,7 +30,7 @@ import           Convex.NodeClient.Fold       (CatchingUp (..), catchingUp,
 import           Convex.NodeClient.Resuming   (resumingClient)
 import           Convex.NodeClient.Types      (PipelinedLedgerStateClient)
 import           Convex.TradingBot.Cli.Config (Order (..))
-import           Convex.Utxos                 (UtxoSet, apply)
+import           Convex.Utxos                 (UtxoSet, apply, toUtxoTx)
 import qualified Convex.Utxos                 as Utxos
 import           Convex.Wallet                (Wallet)
 import qualified Convex.Wallet                as Wallet
@@ -60,14 +60,14 @@ sellOrderClient info logEnv ns wallet order env = do
       env
       (applyBlock info logEnv ns wallet tx)
 
-applyBlock :: LocalNodeConnectInfo CardanoMode -> K.LogEnv -> K.Namespace -> Wallet -> C.TxBodyContent C.BuildTx ERA -> CatchingUp -> UtxoSet -> BlockInMode CardanoMode -> IO (Maybe UtxoSet)
+applyBlock :: LocalNodeConnectInfo CardanoMode -> K.LogEnv -> K.Namespace -> Wallet -> C.TxBodyContent C.BuildTx ERA -> CatchingUp -> UtxoSet C.CtxTx -> BlockInMode CardanoMode -> IO (Maybe (UtxoSet C.CtxTx))
 applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
   let change = Utxos.extract (Wallet.shelleyPaymentCredential wallet) state block
       newState = apply state change
 
   when (not isCatchingUp) $ do
     void $ runMonadBlockchainCardanoNodeT info $ do
-      (tx_, change_) <- balanceForWallet wallet state tx
+      (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
       logInfoS (show tx_)
       logInfoS (show change_)
       sendTx tx_

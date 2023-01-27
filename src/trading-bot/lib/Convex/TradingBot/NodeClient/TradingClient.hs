@@ -20,6 +20,7 @@ import           Cardano.Api                                    (AssetName,
                                                                  PolicyId,
                                                                  Quantity,
                                                                  SlotNo, Value)
+import qualified Cardano.Api                                    as C
 import           Control.Lens                                   (Lens', _2,
                                                                  anon, at,
                                                                  makeLenses,
@@ -68,7 +69,7 @@ import qualified Katip                                          as K
 -}
 data ClientState =
   ClientState
-    { _walletState    :: !UtxoSet
+    { _walletState    :: !(UtxoSet C.CtxTx)
     , _orderbookState :: !(ResolvedInputs OrderbookEvent)
     , _lastPrices     :: !(Map (PolicyId, AssetName) (Lovelace, Quantity))
     , _lpPrices       :: !(Map (PolicyId, AssetName) LPPrices)
@@ -89,7 +90,7 @@ tradingClient rule logEnv ns wallet networkId env =
   let start = Constants.recent
   in resumingClient [start] $ \_ ->
       foldClient
-        (catchingUpWithNode start Nothing, initialState)
+        (catchingUpWithNode start Nothing Nothing, initialState)
         env
         (applyBlock rule logEnv ns wallet networkId)
 
