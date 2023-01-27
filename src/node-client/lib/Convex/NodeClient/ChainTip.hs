@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
 {-| ChainTip type with ToJSON / FromJSON instances
@@ -8,19 +9,24 @@ module Convex.NodeClient.ChainTip(
   blockHeaderTip,
   JSONChainPoint(..),
   blockHeaderPoint,
-  JSONBlockNo(..)
+  JSONBlockNo(..),
+
+  -- * Etc.
+  chainPointText
 ) where
 
 import           Cardano.Api               (BlockHeader (..), BlockNo (..),
                                             ChainPoint (..), ChainTip (..),
                                             Hash, chainTipToChainPoint,
                                             deserialiseFromRawBytesHex,
-                                            proxyToAsType)
+                                            proxyToAsType,
+                                            serialiseToRawBytesHexText)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
                                             withObject, (.:), (.=))
 import qualified Data.Aeson                as Aeson
 import           Data.Proxy                (Proxy (..))
 import           Data.Text                 (Text)
+import qualified Data.Text                 as Text
 import qualified Data.Text.Encoding        as Text
 import qualified Ouroboros.Consensus.Block as Consensus
 
@@ -63,3 +69,9 @@ instance FromJSON JSONBlockNo where
 
 blockHeaderPoint :: BlockHeader -> ChainPoint
 blockHeaderPoint = chainTipToChainPoint . blockHeaderTip
+
+chainPointText :: ChainPoint -> Text
+chainPointText = \case
+  ChainPointAtGenesis -> "Genesis"
+  ChainPoint (Consensus.SlotNo slot) blockHeader ->
+    serialiseToRawBytesHexText blockHeader <> ":" <> Text.pack (show slot)
