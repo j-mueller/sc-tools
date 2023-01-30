@@ -18,11 +18,13 @@ module Convex.Devnet.CardanoNode(
   withCardanoNode,
   getCardanoNodeVersion,
   waitForFullySynchronized,
+  waitForBlock,
   withCardanoNodeDevnet
 ) where
 
 import           Cardano.Api               (NetworkId)
 import qualified Cardano.Api               as C
+import           Cardano.Slotting.Slot     (withOriginToMaybe)
 import           Cardano.Slotting.Time     (diffRelativeTime, getRelativeTime,
                                             toRelativeTime)
 import           Control.Concurrent        (threadDelay)
@@ -246,6 +248,15 @@ waitForFullySynchronized tracer RunningNode{rnNodeSocket, rnNetworkId} = do
     if timeDifference < 20 -- TODO: derive from known network and block times
       then pure ()
       else threadDelay 3_000_000 >> check systemStart
+
+{-| Wait until at least one block has been produced (ie. the tip is not genesis)
+-}
+waitForBlock :: RunningNode -> IO C.BlockNo
+waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
+  withOriginToMaybe <$> Q.queryTipBlock rnNetworkId rnNodeSocket >>= \case
+    Just blockNo -> pure blockNo
+    Nothing -> do
+      threadDelay 1_000_000 >> waitForBlock n
 
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
