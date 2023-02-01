@@ -37,6 +37,7 @@ library
       Convex.MonadLog
       Convex.NodeQueries
       Convex.PlutusLedger
+      Convex.OnChainState
       Convex.Scripts
       Convex.Utils
       Convex.Utxos

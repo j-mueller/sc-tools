@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 module Convex.Utxos(
+  AddressCredential,
   -- * Utxo sets
   UtxoSet(..),
   toUtxoTx,
@@ -70,6 +72,7 @@ import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
+import           GHC.Generics                  (Generic)
 import           Prelude                       hiding (null)
 import           Prettyprinter                 (Doc, Pretty (..), hang, parens,
                                                 viaShow, vsep, (<+>))
@@ -83,8 +86,8 @@ newtype UtxoSet ctx a = UtxoSet{ _utxos :: Map C.TxIn (C.TxOut ctx C.BabbageEra,
   deriving stock (Eq, Show, Functor)
   deriving newtype (Semigroup, Monoid)
 
-deriving instance (FromJSON a, FromJSON (C.TxOut ctx C.BabbageEra)) => FromJSON (UtxoSet ctx a)
-deriving instance (ToJSON a, ToJSON (C.TxOut ctx C.BabbageEra)) => ToJSON (UtxoSet ctx a)
+deriving newtype instance (FromJSON a, FromJSON (C.TxOut ctx C.BabbageEra)) => FromJSON (UtxoSet ctx a)
+deriving newtype instance (ToJSON a, ToJSON (C.TxOut ctx C.BabbageEra)) => ToJSON (UtxoSet ctx a)
 
 {-| Change the context of the outputs in this utxo set
 -}
@@ -157,6 +160,10 @@ data UtxoChange ctx a =
     { _outputsAdded   :: Map C.TxIn (C.TxOut ctx C.BabbageEra, a)
     , _outputsRemoved :: Map C.TxIn (C.TxOut ctx C.BabbageEra, a)
     }
+  deriving stock (Eq, Show, Generic)
+
+deriving anyclass instance (FromJSON a, FromJSON (C.TxOut ctx C.BabbageEra)) => FromJSON (UtxoChange ctx a)
+deriving anyclass instance (ToJSON a, ToJSON (C.TxOut ctx C.BabbageEra)) => ToJSON (UtxoChange ctx a)
 
 {-| Change the context of the outputs in this utxo change
 -}
