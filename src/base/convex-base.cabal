@@ -51,7 +51,8 @@ library
       prettyprinter,
       transformers,
       text,
-      exceptions
+      exceptions,
+      time
       
     build-depends:
       cardano-api,

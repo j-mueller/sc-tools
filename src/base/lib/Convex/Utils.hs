@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE ViewPatterns      #-}
 {-| Conversion functions and other conveniences
 -}
 module Convex.Utils(
@@ -18,24 +19,34 @@ module Convex.Utils(
   unsafeTxFromCbor,
   -- * Etc.
   extractTx,
-  txnUtxos
+  txnUtxos,
+  slotToUtcTime
 ) where
 
-import           Cardano.Api            (BabbageEra, Block (..),
-                                         BlockInMode (..), CardanoMode,
-                                         NetworkId, PlutusScript,
-                                         PlutusScriptV1, PlutusScriptV2, Tx,
-                                         TxIn)
-import qualified Cardano.Api.Shelley    as C
-import           Control.Monad          (void, when)
-import           Control.Monad.IO.Class (MonadIO (..))
-import           Data.Aeson             (Result (..), fromJSON, object, (.=))
-import           Data.Bifunctor         (Bifunctor (..))
-import           Data.Foldable          (traverse_)
-import           Data.Function          ((&))
-import           Data.Proxy             (Proxy (..))
-import           Data.Set               (Set)
-import qualified Data.Set               as Set
+import           Cardano.Api                          (BabbageEra, Block (..),
+                                                       BlockInMode (..),
+                                                       CardanoMode, NetworkId,
+                                                       PlutusScript,
+                                                       PlutusScriptV1,
+                                                       PlutusScriptV2, SlotNo,
+                                                       Tx, TxIn)
+import qualified Cardano.Api.Shelley                  as C
+import           Cardano.Slotting.EpochInfo.API       (EpochInfo,
+                                                       epochInfoSlotToUTCTime,
+                                                       hoistEpochInfo)
+import           Control.Monad                        (void, when)
+import           Control.Monad.Except                 (runExcept)
+import           Control.Monad.IO.Class               (MonadIO (..))
+import           Data.Aeson                           (Result (..), fromJSON,
+                                                       object, (.=))
+import           Data.Bifunctor                       (Bifunctor (..))
+import           Data.Foldable                        (traverse_)
+import           Data.Function                        ((&))
+import           Data.Proxy                           (Proxy (..))
+import           Data.Set                             (Set)
+import qualified Data.Set                             as Set
+import           Data.Time.Clock                      (UTCTime)
+import qualified Ouroboros.Consensus.HardFork.History as Consensus
 
 scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
@@ -103,3 +114,13 @@ txnUtxos tx =
       txi  = C.getTxId (C.getTxBody tx)
   in take (length txOuts) (C.TxIn txi . C.TxIx <$> [0..])
 
+{-| Convert a slot number to UTC time
+-}
+slotToUtcTime :: C.EraHistory mode -> C.SystemStart -> SlotNo -> Either String UTCTime
+slotToUtcTime (toLedgerEpochInfo -> info) systemStart slot = epochInfoSlotToUTCTime info systemStart slot
+
+-- FIXME: Looks like this function is exposed by Cardano.Api in cardano-node@v1.36
+toLedgerEpochInfo :: C.EraHistory mode -> EpochInfo (Either String)
+toLedgerEpochInfo (C.EraHistory _ interpreter) =
+  hoistEpochInfo (first show . runExcept) $
+    Consensus.interpreterToEpochInfo interpreter
