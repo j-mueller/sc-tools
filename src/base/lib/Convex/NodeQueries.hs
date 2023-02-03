@@ -1,18 +1,24 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs      #-}
+{-# LANGUAGE LambdaCase #-}
 {-| Conveniences for working with a local @cardano-node@
 -}
 module Convex.NodeQueries(
-  loadConnectInfo
+  loadConnectInfo,
+  queryEraHistory,
+  querySystemStart,
+  queryLocalState
 ) where
 
 import           Cardano.Api                                        (CardanoMode,
                                                                      ConsensusModeParams (..),
                                                                      Env (..),
                                                                      EpochSlots (..),
+                                                                     EraHistory,
                                                                      InitialLedgerStateError,
                                                                      LocalNodeConnectInfo (..),
                                                                      NetworkId (Mainnet, Testnet),
                                                                      NetworkMagic (..),
+                                                                     SystemStart,
                                                                      envSecurityParam)
 import qualified Cardano.Api                                        as CAPI
 import qualified Cardano.Chain.Genesis
@@ -67,3 +73,16 @@ loadConnectInfo nodeConfigFilePath socketPath = do
             localNodeSocketPath      = socketPath
           }
   pure (connectInfo, env)
+
+querySystemStart :: LocalNodeConnectInfo CardanoMode -> IO SystemStart
+querySystemStart = queryLocalState CAPI.QuerySystemStart
+
+queryEraHistory :: LocalNodeConnectInfo CardanoMode -> IO (EraHistory CardanoMode)
+queryEraHistory = queryLocalState (CAPI.QueryEraHistory CAPI.CardanoModeIsMultiEra)
+
+queryLocalState :: CAPI.QueryInMode CardanoMode b -> LocalNodeConnectInfo CardanoMode -> IO b
+queryLocalState query connectInfo = do
+  CAPI.queryNodeLocalState connectInfo Nothing query >>= \case
+    Left err -> do
+      fail ("queryLocalState: Failed with " <> show err)
+    Right result -> pure result
