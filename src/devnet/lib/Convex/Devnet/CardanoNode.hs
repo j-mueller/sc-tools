@@ -254,8 +254,8 @@ waitForFullySynchronized tracer RunningNode{rnNodeSocket, rnNetworkId} = do
 waitForBlock :: RunningNode -> IO C.BlockNo
 waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
   withOriginToMaybe <$> Q.queryTipBlock rnNetworkId rnNodeSocket >>= \case
-    Just blockNo -> pure blockNo
-    Nothing -> do
+    Just blockNo | blockNo >= 1 -> pure blockNo
+    _ -> do
       threadDelay 1_000_000 >> waitForBlock n
 
 -- | Start a single cardano-node devnet using the config from config/ and
