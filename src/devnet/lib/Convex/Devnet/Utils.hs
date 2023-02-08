@@ -68,7 +68,7 @@ withLogFile :: FilePath -> (Handle -> IO a) -> IO a
 withLogFile filepath io = do
   createDirectoryIfMissing True (takeDirectory filepath)
   withFile filepath AppendMode (\out -> hSetBuffering out NoBuffering >> io out)
-    `onException` putStrLn ("Logfile written to: " <> filepath)
+    `onException` (putStrLn ("Logfile written to: " <> filepath) >> BS.readFile filepath >>= BS.putStr)
 
 -- | Create a unique temporary directory.
 createSystemTempDirectory :: String -> IO FilePath
