@@ -342,14 +342,14 @@ instance Monad m => MonadMockchain (MockchainT m) where
 
 {-| All transaction outputs
 -}
-utxoSet :: MonadMockchain m => m (UtxoSet Cardano.Api.CtxUTxO)
+utxoSet :: MonadMockchain m => m (UtxoSet Cardano.Api.CtxUTxO ())
 utxoSet =
   let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain
 -}
-walletUtxo :: MonadMockchain m => Wallet -> m (UtxoSet Cardano.Api.CtxUTxO)
+walletUtxo :: MonadMockchain m => Wallet -> m (UtxoSet Cardano.Api.CtxUTxO ())
 walletUtxo wallet = do
   fmap (onlyCredential (paymentCredential wallet)) utxoSet
 

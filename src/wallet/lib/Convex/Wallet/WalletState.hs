@@ -28,14 +28,14 @@ import           GHC.Generics               (Generic)
 data WalletState =
   WalletState
     { wsChainPoint :: JSONChainPoint
-    , wsUtxos      :: UtxoSet C.CtxTx
+    , wsUtxos      :: UtxoSet C.CtxTx ()
     }
     deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON, FromJSON)
 
 {-| Construct a 'WalletState' from a UTxO set and a block header
 -}
-walletState :: UtxoSet C.CtxTx -> BlockHeader -> WalletState
+walletState :: UtxoSet C.CtxTx () -> BlockHeader -> WalletState
 walletState wsUtxos (BlockHeader slot hsh _)=
   let wsChainPoint = JSONChainPoint $ ChainPoint slot hsh
   in WalletState{wsUtxos, wsChainPoint}
@@ -43,7 +43,7 @@ walletState wsUtxos (BlockHeader slot hsh _)=
 chainPoint :: WalletState -> ChainPoint
 chainPoint WalletState{wsChainPoint = JSONChainPoint c} = c
 
-utxoSet :: WalletState -> UtxoSet C.CtxTx
+utxoSet :: WalletState -> UtxoSet C.CtxTx ()
 utxoSet WalletState{wsUtxos} = wsUtxos
 
 initialWalletState :: WalletState

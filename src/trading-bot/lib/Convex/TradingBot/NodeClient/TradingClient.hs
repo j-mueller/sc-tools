@@ -69,7 +69,7 @@ import qualified Katip                                          as K
 -}
 data ClientState =
   ClientState
-    { _walletState    :: !(UtxoSet C.CtxTx)
+    { _walletState    :: !(UtxoSet C.CtxTx ())
     , _orderbookState :: !(ResolvedInputs OrderbookEvent)
     , _lastPrices     :: !(Map (PolicyId, AssetName) (Lovelace, Quantity))
     , _lpPrices       :: !(Map (PolicyId, AssetName) LPPrices)
@@ -96,7 +96,7 @@ tradingClient rule logEnv ns wallet networkId env =
 
 applyBlock :: Rule -> K.LogEnv -> K.Namespace -> Wallet -> NetworkId -> CatchingUp -> (CatchingUp, ClientState) -> BlockInMode CardanoMode -> IO (Maybe (CatchingUp, ClientState))
 applyBlock rule logEnv ns wallet networkId c (oldC, state) block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
-  let walletChange = Utxos.extract (Wallet.shelleyPaymentCredential wallet) (_walletState state) block
+  let walletChange = Utxos.extract (const $ Just ()) (Wallet.shelleyPaymentCredential wallet) (_walletState state) block
       (orderBookEvents, newOrderBookState) = extract (\e -> maybe Nothing (either (const Nothing) Just) . LPPoolEvent.extract e) (state ^. orderbookState) block
       newWalletState = Utxos.apply (state ^. walletState) walletChange
       BlockInMode (Block blockHeader _) _ = block

@@ -300,7 +300,7 @@ txOutChange _ = mempty
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxUTxO -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
 balanceForWallet wallet walletUtxo txb = do
   n <- networkId
   params <- queryProtocolParameters
@@ -312,7 +312,7 @@ balanceForWallet wallet walletUtxo txb = do
   let combinedTxIns =
         let UtxoSet w = walletUtxo
             UTxO o = otherInputs
-        in UTxO (Map.union w o)
+        in UTxO (Map.union (fmap fst w) o)
   finalBody <- either (fail . show) pure (addMissingInputs pools params combinedTxIns walletAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
   csi <- prepCSInputs walletAddress combinedTxIns finalBody
   start <- querySystemStart
@@ -326,14 +326,14 @@ signForWallet wallet (C.BalancedTxBody txbody _changeOutput _fee) =
   let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
   in C.makeSignedTransaction wit txbody
 
-addOwnInput :: TxBodyContent BuildTx ERA -> UtxoSet ctx -> TxBodyContent BuildTx ERA
+addOwnInput :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent BuildTx ERA
 addOwnInput body (Utxos.onlyAda . Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
   | Map.null _utxos = body
   | not (List.null $ view L.txIns body) = body
   | otherwise =
       spendPublicKeyOutput (fst $ head $ Map.toList _utxos) body
 
-setCollateral :: TxBodyContent BuildTx ERA -> UtxoSet ctx -> TxBodyContent BuildTx ERA
+setCollateral :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent BuildTx ERA
 setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
   if not (runsScripts body)
     then body -- no script witnesses in inputs.
@@ -352,7 +352,7 @@ runsScripts body =
 
 {-| Add inputs to ensure that the balance is strictly positive
 -}
-addMissingInputs :: Set PoolId -> ProtocolParameters -> C.UTxO ERA -> C.AddressInEra C.BabbageEra -> UtxoSet ctx -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
+addMissingInputs :: Set PoolId -> ProtocolParameters -> C.UTxO ERA -> C.AddressInEra C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
 addMissingInputs poolIds protocolParameters utxo_ returnAddress walletUtxo txBodyContent = do
   txb <- first BodyError (C.makeTransactionBody txBodyContent)
   let bal = C.evaluateTransactionBalance protocolParameters poolIds utxo_ txb & view L._TxOutValue
@@ -379,7 +379,7 @@ addMissingInputs poolIds protocolParameters utxo_ returnAddress walletUtxo txBod
 {-| Select inputs from the wallet's UTXO set to cover the given amount of lovelace.
 Will only consider inputs that have no other assets besides Ada.
 -}
-addAdaOnlyInputsFor :: C.Lovelace -> UtxoSet ctx -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
+addAdaOnlyInputsFor :: C.Lovelace -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
 addAdaOnlyInputsFor l availableUtxo txBodyContent =
   case Wallet.selectAdaInputsCovering availableUtxo l of
     Nothing -> Left (NotEnoughAdaOnlyOutputsFor l)
@@ -391,7 +391,7 @@ non-Ada asset then no inputs will be added.
 -}
 addInputsForNonAdaAssets ::
   C.Value ->
-  UtxoSet ctx ->
+  UtxoSet ctx a ->
   TxBodyContent BuildTx ERA ->
   Either CoinSelectionError (TxBodyContent BuildTx ERA, C.Value)
 addInputsForNonAdaAssets (fst . splitValue -> negatives) availableUtxo txBodyContent

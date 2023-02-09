@@ -33,6 +33,7 @@ import qualified Convex.Lenses             as L
 import           Convex.Utxos              (UtxoSet (..), onlyAda)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
                                             withObject, (.:), (.=))
+import           Data.Bifunctor            (Bifunctor (..))
 import           Data.List                 (find)
 import qualified Data.Map.Strict           as Map
 import           Data.Maybe                (fromMaybe, mapMaybe)
@@ -91,22 +92,23 @@ parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAdaInputsCovering :: UtxoSet ctx -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAdaInputsCovering :: UtxoSet ctx a -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
 selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSet) target
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAnyInputsCovering :: UtxoSet ctx -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAnyInputsCovering :: UtxoSet ctx a -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
 selectAnyInputsCovering UtxoSet{_utxos} (C.Lovelace target) =
   let append (C.Lovelace total_, txIns) (txIn, C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) -> C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
   find (\(C.Lovelace c, _) -> c >= target)
   $ scanl append (C.Lovelace 0, [])
+  $ fmap (second fst)
   $ Map.toAscList _utxos
 
 {-| Select inputs that cover the given amount of non-Ada
 assets.
 -}
-selectMixedInputsCovering :: UtxoSet ctx -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
+selectMixedInputsCovering :: UtxoSet ctx a -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
 selectMixedInputsCovering UtxoSet{_utxos} xs =
   let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
       coversTarget (candidateVl, _txIns) =
@@ -124,4 +126,5 @@ selectMixedInputsCovering UtxoSet{_utxos} xs =
     find coversTarget
     $ scanl append (mempty, mempty)
     $ mapMaybe relevantValue
+    $ fmap (second fst)
     $ Map.toAscList _utxos
