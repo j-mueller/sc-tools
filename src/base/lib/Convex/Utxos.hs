@@ -287,7 +287,7 @@ inv (UtxoChange added removed) = UtxoChange removed added
 
 {-| Extract from a block the UTXO changes at the given address
 -}
-extract :: (C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> UtxoChange C.CtxTx a
+extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> UtxoChange C.CtxTx a
 extract ex cred state = \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbage ex state cred block
   _                                         -> mempty
@@ -295,12 +295,12 @@ extract ex cred state = \case
 {-| Extract from a block the UTXO changes at the given address
 -}
 extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> UtxoChange C.CtxTx ()
-extract_ = extract (const $ Just ())
+extract_ = extract (\_ -> const $ Just ())
 
-extractBabbage :: (C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> UtxoChange C.CtxTx a
+extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> UtxoChange C.CtxTx a
 extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn ex state cred) txns
 
-extractBabbageTxn :: forall a. (C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> UtxoChange C.CtxTx a
+extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> UtxoChange C.CtxTx a
 extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
@@ -314,7 +314,8 @@ extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
       checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))
       checkOutput txIx_ txOut
         | preview (L._TxOut . _1 . L._AddressInEra . L._Address . _2) txOut == Just cred =
-            fmap  (\a -> (TxIn txId txIx_, (txOut, a))) (ex txOut)
+            let txi = TxIn txId txIx_
+            in fmap  (\a -> (txi, (txOut, a))) (ex txi txOut)
         | otherwise = Nothing
 
       _outputsAdded =

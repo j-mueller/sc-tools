@@ -62,7 +62,7 @@ sellOrderClient info logEnv ns wallet order env = do
 
 applyBlock :: LocalNodeConnectInfo CardanoMode -> K.LogEnv -> K.Namespace -> Wallet -> C.TxBodyContent C.BuildTx ERA -> CatchingUp -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> IO (Maybe (UtxoSet C.CtxTx ()))
 applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
-  let change = Utxos.extract (const $ Just ()) (Wallet.shelleyPaymentCredential wallet) state block
+  let change = Utxos.extract_ (Wallet.shelleyPaymentCredential wallet) state block
       newState = apply state change
 
   when (not isCatchingUp) $ do

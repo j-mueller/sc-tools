@@ -41,7 +41,7 @@ balanceClient logEnv ns filePath walletState wallet env =
 -}
 applyBlock :: K.LogEnv -> K.Namespace -> FilePath -> Wallet -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx ()) -> BlockInMode CardanoMode -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx ()))
 applyBlock logEnv ns filePath wallet c (oldC, state) block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
-  let change = Utxos.extract (const $ Just ()) (Wallet.shelleyPaymentCredential wallet) state block
+  let change = Utxos.extract_ (Wallet.shelleyPaymentCredential wallet) state block
       newState = apply state change
 
   when (not $ Utxos.null change) $ do
