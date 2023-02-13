@@ -9,6 +9,7 @@
 module Convex.Wallet(
   Wallet(..),
   paymentCredential,
+  verificationKeyHash,
   shelleyPaymentCredential,
   address,
   addressInEra,
@@ -59,9 +60,12 @@ instance Show Wallet where
 {-| The wallet's payment credential (public key)
 -}
 paymentCredential :: Wallet -> PaymentCredential
-paymentCredential Wallet{getWallet} =
-  let hsh = C.verificationKeyHash (C.getVerificationKey getWallet)
-  in C.PaymentCredentialByKey hsh
+paymentCredential = C.PaymentCredentialByKey . verificationKeyHash
+
+{-| Verification key hash of the wallet
+-}
+verificationKeyHash :: Wallet -> C.Hash C.PaymentKey
+verificationKeyHash = C.verificationKeyHash . C.getVerificationKey . getWallet
 
 shelleyPaymentCredential :: Wallet -> Shelley.PaymentCredential StandardCrypto
 shelleyPaymentCredential =
