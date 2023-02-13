@@ -97,10 +97,7 @@ test-suite convex-devnet-test
     , tasty-hunit
     , convex-devnet
     , convex-base
-    , convex-coin-selection
-    , convex-wallet
     , cardano-api
     , mtl
     , text
-    , contra-tracer
     , aeson
