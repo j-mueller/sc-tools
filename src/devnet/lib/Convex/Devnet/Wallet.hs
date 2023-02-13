@@ -7,6 +7,7 @@
 module Convex.Devnet.Wallet(
   faucet,
   sendFaucetFundsTo,
+  createSeededWallet,
   walletUtxos,
   balanceAndSubmit,
   WalletLog(..),
@@ -35,6 +36,7 @@ import           Convex.MonadLog           (MonadLog (..))
 import           Convex.Utxos              (UtxoSet)
 import qualified Convex.Utxos              as Utxos
 import           Convex.Wallet             (Wallet (..), address)
+import qualified Convex.Wallet             as Wallet
 import           Data.Aeson                (FromJSON, ToJSON)
 import           Data.Function             ((&))
 import           Data.Text                 (Text)
@@ -58,6 +60,16 @@ sendFaucetFundsTo tracer node destination amount = do
   fct <- faucet
   balanceAndSubmit tracer node fct (emptyTx & BuildTx.payToAddress destination (C.lovelaceToValue amount))
 
+{-| Create a new wallet and send some funds to it. Returns when the seed txn has been registered
+on the chain.
+-}
+createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Lovelace -> IO Wallet
+createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} amount = do
+  wallet <- Wallet.generateWallet
+  traceWith tracer (GeneratedWallet wallet)
+  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) amount >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
+  pure wallet
+
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the
 @RunningNode@ for blockchain stuff
 -}
@@ -79,7 +91,8 @@ balanceAndSubmit tracer node wallet tx = do
 data WalletLog =
   WalletLogInfo Text
   | WalletLogWarn Text
-  deriving stock (Eq, Show, Generic)
+  | GeneratedWallet Wallet
+  deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
 newtype TracerMonadLogT m a = TracerMonadLogT{unTracerMonadLogT :: ReaderT (Tracer m WalletLog) m a}
