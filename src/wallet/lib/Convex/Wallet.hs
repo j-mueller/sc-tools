@@ -16,6 +16,7 @@ module Convex.Wallet(
   privateKey,
   generateWallet,
   parse,
+  signTx,
   -- * UTxOs and coin selection
   selectAdaInputsCovering,
   selectAnyInputsCovering,
@@ -72,6 +73,15 @@ shelleyPaymentCredential =
   fromMaybe (error "shelleyPaymentCredential: Expected ShelleyAddress in babbage era")
   . preview (L._AddressInEra . L._Address . _2)
   . addressInEra C.Mainnet
+
+{-| Add the wallet's signature to the signatures of the transaction
+-}
+signTx :: IsShelleyBasedEra era => Wallet -> C.Tx era -> C.Tx era
+signTx Wallet{getWallet} tx =
+  let C.Tx body wits = tx
+      wit = (C.makeShelleyKeyWitness body $ C.WitnessPaymentKey getWallet) : wits
+      stx = C.makeSignedTransaction wit body
+  in stx
 
 {-| The address of the wallet
 -}
