@@ -1,4 +1,5 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase     #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-| Translating between cardano-api/cardano-ledger and plutus representations
 -}
 module Convex.PlutusLedger(
@@ -24,7 +25,11 @@ module Convex.PlutusLedger(
   transStakeAddressReference,
   unTransStakeAddressReference,
 
-  unTransAddressInEra
+  unTransAddressInEra,
+
+  -- * Tx IDs
+  unTransTxOutRef,
+  transTxOutRef
 
 ) where
 
@@ -103,3 +108,13 @@ unTransAddressInEra networkId (PV1.Address cred staking) =
       <$> unTransCredential cred
       <*> unTransStakeAddressReference staking
       )
+
+unTransTxOutRef :: PV1.TxOutRef -> Maybe C.TxIn
+unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId=PV1.TxId bs, PV1.txOutRefIdx} =
+  let i = C.deserialiseFromRawBytes C.AsTxId $ PlutusTx.fromBuiltin bs
+  in C.TxIn <$> i <*> pure (C.TxIx $ fromIntegral txOutRefIdx)
+
+transTxOutRef :: C.TxIn -> PV1.TxOutRef
+transTxOutRef (C.TxIn txId (C.TxIx ix)) =
+  let i = PV1.TxId $ PlutusTx.toBuiltin $ C.serialiseToRawBytes txId
+  in PV1.TxOutRef i (fromIntegral ix)
