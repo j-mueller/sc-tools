@@ -8,6 +8,7 @@ module Convex.Devnet.NodeQueries(
   queryUTxO,
   waitForTxn,
   waitForTxIn,
+  waitForTxInSpend,
   localNodeConnectInfo,
   loadConnectInfo
 ) where
@@ -28,7 +29,8 @@ import           Cardano.Slotting.Time                              (SystemStart
 import           Control.Concurrent                                 (threadDelay)
 import           Control.Exception                                  (Exception,
                                                                      throwIO)
-import           Control.Monad                                      (when)
+import           Control.Monad                                      (unless,
+                                                                     when)
 import           Control.Monad.Catch                                (MonadThrow)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Convex.Devnet.Utils                                (failure)
@@ -124,3 +126,23 @@ waitForTxIn networkId socket txIn = do
 
 waitForTxn :: NetworkId -> FilePath -> Tx BabbageEra -> IO ()
 waitForTxn network socket (head . txnUtxos -> txi) = waitForTxIn network socket txi
+
+{-| Wait until the 'TxIn' is not part of the utxo set anymore
+-}
+waitForTxInSpend :: NetworkId -> FilePath -> TxIn -> IO ()
+waitForTxInSpend networkId socket txIn = do
+  let query =
+        C.QueryInEra
+          C.BabbageEraInCardanoMode
+          ( C.QueryInShelleyBasedEra
+              C.ShelleyBasedEraBabbage
+              ( C.QueryUTxO
+                  (C.QueryUTxOByTxIn (Set.singleton txIn))
+              )
+          )
+      go = do
+        utxo <- Utxos.fromApiUtxo <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        unless (utxo == mempty) $ do
+          threadDelay 2_000_000
+          go
+  go
