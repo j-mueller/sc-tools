@@ -49,8 +49,8 @@ import           Cardano.Api                   (AddressInEra, BabbageEra,
                                                 Block (..), BlockInMode (..),
                                                 CardanoMode, EraInMode (..),
                                                 PaymentCredential, Tx (..),
-                                                TxIn (..), TxIx (..), UTxO (..),
-                                                Value)
+                                                TxId, TxIn (..), TxIx (..),
+                                                UTxO (..), Value)
 import qualified Cardano.Api                   as C
 import           Cardano.Api.Shelley           (TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
@@ -67,6 +67,7 @@ import           Data.Bifunctor                (Bifunctor (..))
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
+import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
@@ -285,9 +286,10 @@ apply UtxoSet{_utxos} UtxoChange{_outputsAdded, _outputsRemoved} =
 inv :: UtxoChange ctx a -> UtxoChange ctx a
 inv (UtxoChange added removed) = UtxoChange removed added
 
-{-| Extract from a block the UTXO changes at the given address
+{-| Extract from a block the UTXO changes at the given address. Returns the
+'UtxoChange' itself and a set of all transactions that affected the change.
 -}
-extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> UtxoChange C.CtxTx a
+extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> (Set TxId, UtxoChange C.CtxTx a)
 extract ex cred state = \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbage ex state cred block
   _                                         -> mempty
@@ -295,12 +297,12 @@ extract ex cred state = \case
 {-| Extract from a block the UTXO changes at the given address
 -}
 extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> UtxoChange C.CtxTx ()
-extract_ = extract (\_ -> const $ Just ())
+extract_ a b = snd . extract (\_ -> const $ Just ()) a b
 
-extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> UtxoChange C.CtxTx a
+extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> (Set TxId, UtxoChange C.CtxTx a)
 extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn ex state cred) txns
 
-extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> UtxoChange C.CtxTx a
+extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> (Set TxId, UtxoChange C.CtxTx a)
 extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
@@ -328,7 +330,12 @@ extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
         $ mapMaybe checkInput
         $ fmap (uncurry TxIn . bimap CS.fromShelleyTxId txIx . (\(CT.TxIn i n) -> (i, n)))
         $ Set.toList inputs
-  in UtxoChange{_outputsAdded, _outputsRemoved}
+
+      txIds =
+        if Map.null _outputsAdded && Map.null _outputsRemoved
+          then mempty
+          else Set.singleton txId
+  in (txIds, UtxoChange{_outputsAdded, _outputsRemoved})
 
 txIx :: CT.TxIx -> TxIx
 txIx (CT.TxIx i) = TxIx (fromIntegral i)
