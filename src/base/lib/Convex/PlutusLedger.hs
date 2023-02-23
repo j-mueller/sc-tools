@@ -22,6 +22,9 @@ module Convex.PlutusLedger(
   transCredential,
   unTransCredential,
 
+  transStakeCredential,
+  unTransStakeCredential,
+
   transStakeAddressReference,
   unTransStakeAddressReference,
 
@@ -82,22 +85,22 @@ transCredential = \case
 
 transStakeAddressReference :: C.StakeAddressReference -> Maybe PV1.StakingCredential
 transStakeAddressReference = \case
-  C.StakeAddressByValue x -> Just (PV1.StakingHash $ fromCardanoStakeCredential x)
+  C.StakeAddressByValue x -> Just (PV1.StakingHash $ transStakeCredential x)
   C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo slotNo) (TxIx txIx) (CertIx ptrIx))) -> Just (PV1.StakingPtr (fromIntegral slotNo) (fromIntegral txIx) (fromIntegral ptrIx))
   C.NoStakeAddress -> Nothing
 
-fromCardanoStakeCredential :: C.StakeCredential -> PV1.Credential
-fromCardanoStakeCredential (C.StakeCredentialByKey stakeKeyHash) = PV1.PubKeyCredential (transStakeKeyHash stakeKeyHash)
-fromCardanoStakeCredential (C.StakeCredentialByScript scriptHash) = PV1.ScriptCredential (transScriptHash scriptHash)
+transStakeCredential :: C.StakeCredential -> PV1.Credential
+transStakeCredential (C.StakeCredentialByKey stakeKeyHash) = PV1.PubKeyCredential (transStakeKeyHash stakeKeyHash)
+transStakeCredential (C.StakeCredentialByScript scriptHash) = PV1.ScriptCredential (transScriptHash scriptHash)
 
-toCardanoStakeCredential :: PV1.Credential -> Maybe C.StakeCredential
-toCardanoStakeCredential (PV1.PubKeyCredential pubKeyHash) = C.StakeCredentialByKey <$> unTransStakeKeyHash pubKeyHash
-toCardanoStakeCredential (PV1.ScriptCredential validatorHash) = C.StakeCredentialByScript <$> unTransScriptHash validatorHash
+unTransStakeCredential :: PV1.Credential -> Maybe C.StakeCredential
+unTransStakeCredential (PV1.PubKeyCredential pubKeyHash) = C.StakeCredentialByKey <$> unTransStakeKeyHash pubKeyHash
+unTransStakeCredential (PV1.ScriptCredential validatorHash) = C.StakeCredentialByScript <$> unTransScriptHash validatorHash
 
 unTransStakeAddressReference :: Maybe PV1.StakingCredential -> Maybe C.StakeAddressReference
 unTransStakeAddressReference Nothing = Just C.NoStakeAddress
 unTransStakeAddressReference (Just (PV1.StakingHash credential)) =
-  C.StakeAddressByValue <$> toCardanoStakeCredential credential
+  C.StakeAddressByValue <$> unTransStakeCredential credential
 unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
   Just (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
