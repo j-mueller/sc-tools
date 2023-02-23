@@ -17,6 +17,8 @@ module Convex.Wallet(
   generateWallet,
   parse,
   signTx,
+  addSignature,
+  addSignatureExtended,
   -- * UTxOs and coin selection
   selectAdaInputsCovering,
   selectAnyInputsCovering,
@@ -25,7 +27,8 @@ module Convex.Wallet(
 
 import           Cardano.Api               (Address, AddressInEra,
                                             IsShelleyBasedEra, NetworkId,
-                                            PaymentCredential, PaymentKey,
+                                            PaymentCredential,
+                                            PaymentExtendedKey, PaymentKey,
                                             ShelleyAddr, SigningKey)
 import qualified Cardano.Api               as C
 import qualified Cardano.Ledger.Credential as Shelley
@@ -74,14 +77,30 @@ shelleyPaymentCredential =
   . preview (L._AddressInEra . L._Address . _2)
   . addressInEra C.Mainnet
 
+{-| Sign the transaction body with the signing key and attach the signature
+to the transaction
+-}
+addSignature :: IsShelleyBasedEra era => SigningKey PaymentKey -> C.Tx era -> C.Tx era
+addSignature (C.WitnessPaymentKey -> key) tx =
+  let C.Tx body wits = tx
+      wit = (C.makeShelleyKeyWitness body key) : wits
+      stx = C.makeSignedTransaction wit body
+  in stx
+
+{-| Sign the transaction body with the extended signing key and attach the signature
+to the transaction
+-}
+addSignatureExtended :: IsShelleyBasedEra era => SigningKey PaymentExtendedKey -> C.Tx era -> C.Tx era
+addSignatureExtended (C.WitnessPaymentExtendedKey -> key) tx =
+  let C.Tx body wits = tx
+      wit = (C.makeShelleyKeyWitness body key) : wits
+      stx = C.makeSignedTransaction wit body
+  in stx
+
 {-| Add the wallet's signature to the signatures of the transaction
 -}
 signTx :: IsShelleyBasedEra era => Wallet -> C.Tx era -> C.Tx era
-signTx Wallet{getWallet} tx =
-  let C.Tx body wits = tx
-      wit = (C.makeShelleyKeyWitness body $ C.WitnessPaymentKey getWallet) : wits
-      stx = C.makeSignedTransaction wit body
-  in stx
+signTx Wallet{getWallet} = addSignature getWallet
 
 {-| The address of the wallet
 -}
