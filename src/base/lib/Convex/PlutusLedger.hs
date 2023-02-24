@@ -18,6 +18,12 @@ module Convex.PlutusLedger(
   transAssetName,
   unTransAssetName,
 
+  transPolicyId,
+  unTransPolicyId,
+
+  transAssetId,
+  unTransAssetId,
+
   -- * Credentials and addresses
   transCredential,
   unTransCredential,
@@ -41,7 +47,9 @@ import           Cardano.Ledger.BaseTypes  (CertIx (..), TxIx (..))
 import           Cardano.Ledger.Credential (Ptr (..))
 import qualified Cardano.Ledger.Mary.Value as Mary (AssetName (..))
 import           Data.ByteString.Short     (fromShort)
+import qualified Data.ByteString.Short     as Short
 import qualified Plutus.V1.Ledger.Api      as PV1
+import qualified Plutus.V1.Ledger.Value    as Value
 import qualified PlutusTx.Prelude          as PlutusTx
 
 transScriptHash :: C.ScriptHash -> PV1.ValidatorHash
@@ -56,6 +64,32 @@ transAssetName (Mary.AssetName bs) = PV1.TokenName (PV1.toBuiltin (fromShort bs)
 
 unTransAssetName :: PV1.TokenName -> C.AssetName
 unTransAssetName (PV1.TokenName bs) = C.AssetName $ PV1.fromBuiltin bs
+
+transPolicyId :: C.PolicyId -> PV1.MintingPolicyHash
+transPolicyId (C.PolicyId scriptHash) = PV1.MintingPolicyHash $ PlutusTx.toBuiltin (C.serialiseToRawBytes scriptHash)
+
+unTransPolicyId :: PV1.MintingPolicyHash -> Maybe C.PolicyId
+unTransPolicyId (PV1.MintingPolicyHash bs) =
+  C.deserialiseFromRawBytes C.AsPolicyId (PlutusTx.fromBuiltin bs)
+
+transAssetId :: C.AssetId -> Value.AssetClass
+transAssetId C.AdaAssetId = Value.assetClass PV1.adaSymbol PV1.adaToken
+transAssetId (C.AssetId policyId assetName) =
+    Value.assetClass
+        (Value.mpsSymbol . transPolicyId $ policyId)
+        (transAssetName $ toMaryAssetName assetName)
+
+toMaryAssetName :: C.AssetName -> Mary.AssetName
+toMaryAssetName (C.AssetName n) = Mary.AssetName $ Short.toShort n
+
+unTransAssetId :: Value.AssetClass -> Maybe C.AssetId
+unTransAssetId (Value.AssetClass (currencySymbol, tokenName))
+    | currencySymbol == PV1.adaSymbol && tokenName == PV1.adaToken =
+        pure C.AdaAssetId
+    | otherwise =
+        C.AssetId
+            <$> unTransPolicyId (Value.currencyMPSHash currencySymbol)
+            <*> pure (unTransAssetName tokenName)
 
 unTransPubKeyHash :: PV1.PubKeyHash -> Maybe (C.Hash C.PaymentKey)
 unTransPubKeyHash (PV1.PubKeyHash pkh) =
