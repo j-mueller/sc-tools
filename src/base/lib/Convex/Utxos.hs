@@ -75,7 +75,8 @@ import           Data.DList                    (DList)
 import qualified Data.DList                    as DList
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
-import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
+import           Data.Maybe                    (isJust, isNothing, listToMaybe,
+                                                mapMaybe)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
@@ -338,7 +339,7 @@ inv (UtxoChange added removed) = UtxoChange removed added
 {-| Extract from a block the UTXO changes at the given address. Returns the
 'UtxoChange' itself and a set of all transactions that affected the change.
 -}
-extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> [UtxoChangeEvent a]
+extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> Maybe AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> [UtxoChangeEvent a]
 extract ex cred state = DList.toList . \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbage ex state cred block
   _                                         -> mempty
@@ -346,12 +347,12 @@ extract ex cred state = DList.toList . \case
 {-| Extract from a block the UTXO changes at the given address
 -}
 extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> UtxoChange C.CtxTx ()
-extract_ a b = foldMap fromEvent . extract (\_ -> const $ Just ()) a b
+extract_ a b = foldMap fromEvent . extract (\_ -> const $ Just ()) (Just a) b
 
-extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> DList (UtxoChangeEvent a)
+extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> Block BabbageEra -> DList (UtxoChangeEvent a)
 extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn ex state cred) txns
 
-extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
+extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
 extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
@@ -364,7 +365,7 @@ extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
 
       checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))
       checkOutput txIx_ txOut
-        | preview (L._TxOut . _1 . L._AddressInEra . L._Address . _2) txOut == Just cred =
+        | isNothing cred || preview (L._TxOut . _1 . L._AddressInEra . L._Address . _2) txOut == cred =
             let txi = TxIn txid txIx_
             in fmap  (\a -> (txi, (txOut, a))) (ex txi txOut)
         | otherwise = Nothing
