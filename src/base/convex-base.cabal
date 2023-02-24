@@ -72,4 +72,5 @@ library
       cardano-slotting,
       plutus-tx,
       serialise,
-      bytestring
+      bytestring,
+      dlist

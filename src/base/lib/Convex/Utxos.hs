@@ -24,16 +24,23 @@ module Convex.Utxos(
   fromApiUtxo,
   selectUtxo,
 
+  -- * Events based on transactions
+  UtxoChangeEvent,
+  AddUtxoEvent(..),
+  RemoveUtxoEvent(..),
+  extract,
+  txId,
+
   -- * Changes to utxo sets
   UtxoChange(..),
   toUtxoChangeTx,
+  fromEvent,
   PrettyUtxoChange(..),
   outputsAdded,
   outputsRemoved,
   null,
   apply,
   inv,
-  extract,
   extract_,
   describeChange,
 
@@ -64,10 +71,11 @@ import           Control.Lens                  (_1, _2, makeLenses, makePrisms,
 import qualified Convex.Lenses                 as L
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Bifunctor                (Bifunctor (..))
+import           Data.DList                    (DList)
+import qualified Data.DList                    as DList
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, listToMaybe, mapMaybe)
-import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
@@ -155,8 +163,8 @@ removeUtxos ins = over _UtxoSet (flip Map.withoutKeys ins)
 -}
 data UtxoChange ctx a =
   UtxoChange
-    { _outputsAdded   :: Map C.TxIn (C.TxOut ctx C.BabbageEra, a)
-    , _outputsRemoved :: Map C.TxIn (C.TxOut ctx C.BabbageEra, a)
+    { _outputsAdded   :: !(Map C.TxIn (C.TxOut ctx C.BabbageEra, a))
+    , _outputsRemoved :: !(Map C.TxIn (C.TxOut ctx C.BabbageEra, a))
     }
 
 {-| Change the context of the outputs in this utxo change
@@ -182,6 +190,47 @@ instance Monoid (UtxoChange ctx a) where
 -}
 null :: UtxoChange ctx a -> Bool
 null UtxoChange{_outputsAdded, _outputsRemoved} = Map.null _outputsAdded && Map.null _outputsRemoved
+
+{-| An event that caused the utxo set to change
+-}
+type UtxoChangeEvent a = Either (AddUtxoEvent a) (RemoveUtxoEvent a)
+
+{-| A new tx out was added
+-}
+data AddUtxoEvent a =
+  AddUtxoEvent
+    { aueEvent :: !a
+    , aueTxOut :: !(C.TxOut C.CtxTx C.BabbageEra)
+    , aueTxIn  :: !TxIn
+    , aueTx    :: !TxId
+    }
+
+{-| A tx output was spent
+-}
+data RemoveUtxoEvent a =
+  RemoveUtxoEvent
+    { rueEvent :: !a
+    , rueTxOut :: !(C.TxOut C.CtxTx C.BabbageEra)
+    , rueTxIn  :: !TxIn
+    , rueTx    :: !TxId
+    -- ^ Id of the transaction that spent the output
+    }
+
+{-| The 'UtxoChange' represented by the event.
+-}
+fromEvent :: UtxoChangeEvent a -> UtxoChange C.CtxTx a
+fromEvent = \case
+  Left AddUtxoEvent{aueEvent, aueTxOut, aueTxIn} ->
+    let ch = Map.singleton aueTxIn (aueTxOut, aueEvent)
+    in UtxoChange ch mempty
+  Right RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn} ->
+    let ch = Map.singleton rueTxIn (rueTxOut, rueEvent)
+    in UtxoChange mempty ch
+
+{-| ID of the transaction that caused the event
+-}
+txId :: UtxoChangeEvent a -> TxId
+txId = either aueTx rueTx
 
 {-| A type capturing the effect a 'UtxoChange' has on the total balance of each address that it touches
 -}
@@ -289,24 +338,24 @@ inv (UtxoChange added removed) = UtxoChange removed added
 {-| Extract from a block the UTXO changes at the given address. Returns the
 'UtxoChange' itself and a set of all transactions that affected the change.
 -}
-extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> (Set TxId, UtxoChange C.CtxTx a)
-extract ex cred state = \case
+extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> [UtxoChangeEvent a]
+extract ex cred state = DList.toList . \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbage ex state cred block
   _                                         -> mempty
 
 {-| Extract from a block the UTXO changes at the given address
 -}
 extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> UtxoChange C.CtxTx ()
-extract_ a b = snd . extract (\_ -> const $ Just ()) a b
+extract_ a b = foldMap fromEvent . extract (\_ -> const $ Just ()) a b
 
-extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> (Set TxId, UtxoChange C.CtxTx a)
+extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> Block BabbageEra -> DList (UtxoChangeEvent a)
 extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn ex state cred) txns
 
-extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> (Set TxId, UtxoChange C.CtxTx a)
+extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
 extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
-      txId = C.getTxId txBody
+      txid = C.getTxId txBody
 
       allOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody' scriptData
 
@@ -316,26 +365,28 @@ extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
       checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))
       checkOutput txIx_ txOut
         | preview (L._TxOut . _1 . L._AddressInEra . L._Address . _2) txOut == Just cred =
-            let txi = TxIn txId txIx_
+            let txi = TxIn txid txIx_
             in fmap  (\a -> (txi, (txOut, a))) (ex txi txOut)
         | otherwise = Nothing
 
+      mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTx = txid}
+
+      mkO (rueTxIn, (rueTxOut, rueEvent)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTx = txid}
+
       _outputsAdded =
-        Map.fromList
+        DList.fromList
+        $ fmap (Left . mkI)
         $ mapMaybe (uncurry checkOutput)
         $ (zip (TxIx <$> [0..]) allOuts)
 
       _outputsRemoved =
-        Map.fromList
+        DList.fromList
+        $ fmap (Right . mkO)
         $ mapMaybe checkInput
         $ fmap (uncurry TxIn . bimap CS.fromShelleyTxId txIx . (\(CT.TxIn i n) -> (i, n)))
         $ Set.toList inputs
 
-      txIds =
-        if Map.null _outputsAdded && Map.null _outputsRemoved
-          then mempty
-          else Set.singleton txId
-  in (txIds, UtxoChange{_outputsAdded, _outputsRemoved})
+  in _outputsAdded <> _outputsRemoved
 
 txIx :: CT.TxIx -> TxIx
 txIx (CT.TxIx i) = TxIx (fromIntegral i)
