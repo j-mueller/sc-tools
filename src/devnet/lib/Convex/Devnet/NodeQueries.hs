@@ -3,6 +3,7 @@
 module Convex.Devnet.NodeQueries(
   querySystemStart,
   queryEraHistory,
+  queryTip,
   queryTipBlock,
   queryTipSlotNo,
   queryUTxO,
@@ -77,10 +78,13 @@ cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots
 queryTipBlock :: NetworkId -> FilePath -> IO (WithOrigin BlockNo)
 queryTipBlock = queryLocalState C.QueryChainBlockNo
 
+queryTip :: NetworkId -> FilePath -> IO (SlotNo, C.Hash C.BlockHeader)
+queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) networkId socket >>= \case
+  C.ChainPointAtGenesis -> failure "queryTip: chain point at genesis"
+  C.ChainPoint slot hsh -> pure (slot, hsh)
+
 queryTipSlotNo :: NetworkId -> FilePath -> IO SlotNo
-queryTipSlotNo networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) networkId socket >>= \case
-  C.ChainPointAtGenesis -> failure "queryTipSlotNo: chain point at genesis"
-  C.ChainPoint slot _   -> pure slot
+queryTipSlotNo networkId socket = fst <$> queryTip networkId socket
 
 -- | Query UTxO for all given addresses at given point.
 --
