@@ -41,13 +41,9 @@ newtype PipelinedLedgerStateClient =
     }
 
 runNodeClient ::
-  -- | Path to the cardano-node config file (e.g. <path to cardano-node project>/configuration/cardano/mainnet-config.json)
   FilePath
-  -- | Path to local cardano-node socket. This is the path specified by the @--socket-path@ command line option when running the node.
   -> FilePath
-  -- | Client
   -> (LocalNodeConnectInfo CardanoMode -> Env -> IO PipelinedLedgerStateClient)
-  -- | Final state
   -> ExceptT InitialLedgerStateError IO ()
 runNodeClient nodeConfigFilePath socketPath client = do
   (connectInfo, env) <- loadConnectInfo nodeConfigFilePath socketPath
