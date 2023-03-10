@@ -224,18 +224,10 @@ type History a = Seq (SlotNo, a)
 
 -- | Add a new state to the history
 pushHistoryState
-  :: -- | Environement used to get the security param, k.
-    Env
-     -- | History of k items.
+  :: Env
   -> History a
-     -- | Slot number of the new item.
   -> SlotNo
-     -- | New item to add to the history
   -> a
-  -- | ( The new history with the new item appended
-  --   , Any exisiting items that are now past the security parameter
-  --      and hence can no longer be rolled back.
-  --   )
   -> (History a, History a)
 
 pushHistoryState env hist ix st
