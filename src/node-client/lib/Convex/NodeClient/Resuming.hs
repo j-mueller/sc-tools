@@ -23,10 +23,10 @@ data ResumingFrom =
 of a list of 'ChainPoint's.
 -}
 resumingClient ::
+  -- | List of synchronisation points. If the list is empty, the client will receive all blocks, starting from genesis.
   [ChainPoint] ->
-  -- ^ List of synchronisation points. If the list is empty, the client will receive all blocks, starting from genesis.
+  -- | Function that returns the actual node client, depending on where we resumed from
   (ResumingFrom -> PipelinedLedgerStateClient) ->
-  -- ^ Function that returns the actual node client, depending on where we resumed from
   PipelinedLedgerStateClient
 resumingClient syncPoints f = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
   let initialise :: CSP.ClientPipelinedStIdle 'Z ClientBlock ChainPoint ChainTip IO ()
