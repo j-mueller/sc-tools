@@ -134,7 +134,7 @@ foldClient' ::
   -- | Rollback
   (ChainPoint -> w -> s -> IO (w, s)) ->
   -- | Fold
-  (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe (w, s))) -> -- ^ Fold
+  (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe (w, s))) ->
   PipelinedLedgerStateClient
 foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
 
