@@ -62,7 +62,7 @@ w9 = mkWallet "addr_sk1xc4ad4jph6fp0kx5edkj8wdd4kw5qxgyu0yf7y0gkqgexa53spqsvlgty
 w10 :: Wallet
 w10 = mkWallet "addr_sk129sf8z7c4qvzm3lgw0m0scu6nm456lxjdjtwpywcleqwp23mfv3swq8t6h"
 
-{-| 100 Ada for each wallet
+{-| 100.000 Ada for each wallet
 -}
 initialUTxOs :: [(Wallet, Coin)]
 initialUTxOs =

@@ -28,6 +28,7 @@ packages:
   src/node-client
   src/trading-bot
   src/wallet
+  src/un-ada
 
 source-repository-package
     type: git
