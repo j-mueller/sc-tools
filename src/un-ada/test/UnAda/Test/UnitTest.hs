@@ -39,12 +39,10 @@ canMintUnAda = mockchainSucceeds $ do
   mintingTx <- balanceAndSubmit Wallet.w1 tx
   _ <- unAdaPaymentTo 5_000_000 Wallet.w1 Wallet.w2
 
-  case findUnAdaOutputs mintingTx of
-    [(txi, (txo, _))] -> do
-      let tx' = emptyTx & burnUnAda Defaults.networkId txi txo 3_000_000
-      fmap findUnAdaOutputs (balanceAndSubmit Wallet.w1 tx') >>= \xs ->
-        if length xs == 1 then pure () else fail "1: Expected exactly one unAda output"
-    _ -> fail "0: Expected exactly one unAda output"
+  (txi, (txo, _)) <- getUnAdaOutput mintingTx
+
+  let tx' = emptyTx & burnUnAda Defaults.networkId txi txo 3_000_000
+  balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
 
 unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
@@ -56,3 +54,12 @@ unAdaPaymentTo q wFrom wTo = do
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
   balanceAndSubmit wFrom tx
+
+{-| Get exactly 1 un-Ada output from the transaction. Fails if there are 0 or more than one
+un-Ada outputs.
+-}
+getUnAdaOutput :: MonadFail m => C.Tx C.BabbageEra -> m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, ()))
+getUnAdaOutput tx = case findUnAdaOutputs tx of
+  []  -> fail "getUnAdaOutput: Found no outputs locked by the unAda validator, expected 1"
+  [k] -> pure k
+  xs  -> fail $ "getUnAdaOutput: Found " <> show (length xs) <> " outputs locked by the unAda validator, expected 1"
