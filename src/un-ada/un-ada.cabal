@@ -38,13 +38,14 @@ library
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
-      cardano-api
+      lens
 
     build-depends:
       convex-base,
       convex-coin-selection
 
     build-depends:
+      cardano-api,
       plutus-tx,
       plutus-tx-plugin,
       plutus-ledger-api
@@ -67,4 +68,6 @@ test-suite un-ada-test
     convex-mockchain,
     convex-wallet,
     convex-base,
-    convex-coin-selection
+    convex-coin-selection,
+    cardano-api,
+    lens

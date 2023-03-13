@@ -129,7 +129,7 @@ waitForTxIn networkId socket txIn = do
   go
 
 waitForTxn :: NetworkId -> FilePath -> Tx BabbageEra -> IO ()
-waitForTxn network socket (head . txnUtxos -> txi) = waitForTxIn network socket txi
+waitForTxn network socket (head . fmap fst . txnUtxos -> txi) = waitForTxIn network socket txi
 
 {-| Wait until the 'TxIn' is not part of the utxo set anymore
 -}

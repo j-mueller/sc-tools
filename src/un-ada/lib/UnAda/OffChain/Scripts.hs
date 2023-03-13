@@ -8,7 +8,8 @@ module UnAda.OffChain.Scripts(
   mintingPolicyScript,
   scripts,
   unAdaAssetId,
-  assetName
+  assetName,
+  unAdaPaymentCredential
 ) where
 
 import           Cardano.Api.Shelley         (AssetId (..), AssetName,
@@ -39,6 +40,9 @@ mintingPolicyCompiled :: ValidatorHash -> CompiledCode (() -> ScriptContext -> (
 mintingPolicyCompiled hsh_ = $$(PlutusTx.compile [|| \hsh r c ->
                             check $ mintingPolicy hsh r c ||])
   `PlutusTx.applyCode` PlutusTx.liftCode hsh_
+
+unAdaPaymentCredential :: PaymentCredential
+unAdaPaymentCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript
 
 {-| The UnAda mps script
 -}
