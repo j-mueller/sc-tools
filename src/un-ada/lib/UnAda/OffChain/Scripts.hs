@@ -6,6 +6,8 @@ module UnAda.OffChain.Scripts(
   Scripts(..),
   validatorScript,
   mintingPolicyScript,
+  mintingPolicyId,
+  mintingPolicyHash,
   scripts,
   unAdaAssetId,
   assetName,
@@ -16,7 +18,9 @@ import           Cardano.Api.Shelley         (AssetId (..), AssetName,
                                               PaymentCredential, PlutusScriptV2,
                                               PolicyId, Script)
 import qualified Cardano.Api.Shelley         as C
+import           Convex.PlutusLedger         (transPolicyId)
 import           Convex.Scripts              (compiledCodeToScript)
+import qualified Plutus.V1.Ledger.Api        as PV1
 import           Plutus.V1.Ledger.Scripts    (ValidatorHash)
 import           Plutus.V2.Ledger.Contexts   (ScriptContext)
 import           PlutusTx                    (CompiledCode)
@@ -26,10 +30,9 @@ import           UnAda.OnChain.MintingPolicy (mintingPolicy)
 import           UnAda.OnChain.Types         (UnAdaRedeemer, UnAdaState)
 import           UnAda.OnChain.Validator     (unAdaValidator)
 
-validatorScriptCompiled :: CompiledCode (UnAdaState -> UnAdaRedeemer -> ScriptContext -> ())
+validatorScriptCompiled :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())
 validatorScriptCompiled =
-  $$(PlutusTx.compile [|| \d r c ->
-                          check $ unAdaValidator d r c ||])
+  $$(PlutusTx.compile [|| \d r c -> unAdaValidator d r c ||])
 
 {-| The UnAda validator script
 -}
@@ -48,6 +51,12 @@ unAdaPaymentCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusSc
 -}
 mintingPolicyScript :: C.PlutusScript C.PlutusScriptV2
 mintingPolicyScript = compiledCodeToScript validatorScriptCompiled
+
+mintingPolicyId :: PolicyId
+mintingPolicyId = C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV2 mintingPolicyScript
+
+mintingPolicyHash :: PV1.MintingPolicyHash
+mintingPolicyHash = transPolicyId mintingPolicyId
 
 data Scripts =
   Scripts
@@ -68,7 +77,7 @@ scripts =
     { sValidator = C.PlutusScript C.PlutusScriptV2 validatorScript
     , sMintingPolicy = C.PlutusScript C.PlutusScriptV2 mintingPolicyScript
     , sCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript
-    , sAssetId = (C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV2 mintingPolicyScript, assetName)
+    , sAssetId = (mintingPolicyId, assetName)
     }
 
 unAdaAssetId :: AssetId

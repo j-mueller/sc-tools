@@ -20,9 +20,12 @@ import qualified Convex.Lenses          as L
 import           Convex.Scripts         (fromScriptData)
 import           Convex.Utils           (txnUtxos)
 import           Data.Maybe             (mapMaybe)
-import           UnAda.OffChain.Scripts (assetName, mintingPolicyScript,
+import           Plutus.V1.Ledger.Time  (POSIXTime (..))
+import           UnAda.OffChain.Scripts (assetName, mintingPolicyHash,
+                                         mintingPolicyScript,
                                          unAdaPaymentCredential,
                                          validatorScript)
+import           UnAda.OnChain.Types    (UnAdaState)
 
 mintUnAda :: NetworkId -> Quantity -> TxBuild
 mintUnAda n q =
@@ -32,7 +35,8 @@ mintUnAda n q =
 addOutputFor :: NetworkId -> Quantity -> TxBuild
 addOutputFor n q =
   let vl = lovelaceToValue (quantityToLovelace q)
-  in payToPlutusV2 n validatorScript () vl
+      st = (POSIXTime 0, mintingPolicyHash)
+  in payToPlutusV2 n validatorScript st vl
 
 burnUnAda :: NetworkId -> TxIn -> TxOut CtxTx BabbageEra -> Quantity -> TxBuild
 burnUnAda n txi txOut q =
@@ -46,15 +50,15 @@ burnUnAda n txi txOut q =
         then addOutputFor n remainingQuantity
         else id
 
-extract :: TxOut CtxTx BabbageEra -> Maybe ()
+extract :: TxOut CtxTx BabbageEra -> Maybe UnAdaState
 extract txOut
   | preview (L._TxOut . _1 . L._AddressInEra . L._Address . _2 . to C.fromShelleyPaymentCredential) txOut == Just unAdaPaymentCredential =
     case txOut ^. L._TxOut . _3 of
-      C.TxOutDatumInTx _ (fromScriptData -> Just ()) -> Just ()
+      C.TxOutDatumInTx _ (fromScriptData -> Just st) -> Just st
       _                                              -> Nothing
   | otherwise = Nothing
 
-findUnAdaOutputs :: Tx BabbageEra -> [(TxIn, (TxOut CtxTx BabbageEra, ()))]
+findUnAdaOutputs :: Tx BabbageEra -> [(TxIn, (TxOut CtxTx BabbageEra, UnAdaState))]
 findUnAdaOutputs =
   let f (txi, txo) = fmap (\dt -> (txi, (txo, dt))) (extract txo)
   in mapMaybe f . txnUtxos
