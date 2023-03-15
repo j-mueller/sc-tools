@@ -178,7 +178,6 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
               newState <- applyBlock cu currentState newBlock
               case newState of
                 Nothing -> do
-                  putStrLn "foldClient: Shutting down"
                   clientIdle_DoneN n
                 Just !s' -> do
                   let (newHistory, _) = pushHistoryState env history slotNo s'
@@ -205,7 +204,6 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
       Succ predN -> do
         return $ CollectResponse Nothing (clientNext_DoneN predN) -- Ignore remaining message responses
       Zero -> do
-        putStrLn "Chain Sync: done!"
         return $ SendMsgDone ()
 
     clientNext_DoneN
