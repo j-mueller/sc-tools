@@ -203,7 +203,8 @@ data AddUtxoEvent a =
     { aueEvent :: !a
     , aueTxOut :: !(C.TxOut C.CtxTx C.BabbageEra)
     , aueTxIn  :: !TxIn
-    , aueTx    :: !TxId
+    , aueTxId  :: !TxId
+    , aueTx    :: C.Tx BabbageEra
     }
 
 {-| A tx output was spent
@@ -213,8 +214,10 @@ data RemoveUtxoEvent a =
     { rueEvent :: !a
     , rueTxOut :: !(C.TxOut C.CtxTx C.BabbageEra)
     , rueTxIn  :: !TxIn
-    , rueTx    :: !TxId
+    , rueTxId  :: !TxId
     -- ^ Id of the transaction that spent the output
+    , rueTx    :: C.Tx BabbageEra
+    -- ^ The transaction that spent the output
     }
 
 {-| The 'UtxoChange' represented by the event.
@@ -231,7 +234,7 @@ fromEvent = \case
 {-| ID of the transaction that caused the event
 -}
 txId :: UtxoChangeEvent a -> TxId
-txId = either aueTx rueTx
+txId = either aueTxId rueTxId
 
 {-| A type capturing the effect a 'UtxoChange' has on the total balance of each address that it touches
 -}
@@ -353,7 +356,7 @@ extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet
 extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn ex state cred) txns
 
 extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
-extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
+extractBabbageTxn ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
       txid = C.getTxId txBody
@@ -370,9 +373,9 @@ extractBabbageTxn ex UtxoSet{_utxos} cred (Tx txBody _) =
             in fmap  (\a -> (txi, (txOut, a))) (ex txi txOut)
         | otherwise = Nothing
 
-      mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTx = txid}
+      mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTxId = txid, aueTx = theTx}
 
-      mkO (rueTxIn, (rueTxOut, rueEvent)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTx = txid}
+      mkO (rueTxIn, (rueTxOut, rueEvent)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = theTx}
 
       _outputsAdded =
         DList.fromList
