@@ -22,7 +22,6 @@ import           Convex.PlutusLedger         (transPolicyId)
 import           Convex.Scripts              (compiledCodeToScript)
 import qualified Plutus.V1.Ledger.Api        as PV1
 import           Plutus.V1.Ledger.Scripts    (ValidatorHash)
-import           Plutus.V2.Ledger.Contexts   (ScriptContext)
 import           PlutusTx                    (CompiledCode)
 import qualified PlutusTx
 import           PlutusTx.Prelude
@@ -38,10 +37,10 @@ validatorScriptCompiled =
 validatorScript :: C.PlutusScript PlutusScriptV2
 validatorScript = compiledCodeToScript validatorScriptCompiled
 
-mintingPolicyCompiled :: ValidatorHash -> CompiledCode (() -> ScriptContext -> ())
+mintingPolicyCompiled :: ValidatorHash -> CompiledCode (BuiltinData -> BuiltinData -> ())
 mintingPolicyCompiled hsh_ = $$(PlutusTx.compile [|| \hsh r c ->
                             check $ mintingPolicy hsh r c ||])
-  `PlutusTx.applyCode` PlutusTx.liftCode hsh_
+  `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData hsh_)
 
 unAdaPaymentCredential :: PaymentCredential
 unAdaPaymentCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript

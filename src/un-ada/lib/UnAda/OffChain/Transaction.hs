@@ -35,8 +35,10 @@ mintUnAda n q =
 addOutputFor :: NetworkId -> Quantity -> TxBuild
 addOutputFor n q =
   let vl = lovelaceToValue (quantityToLovelace q)
-      st = (POSIXTime 0, mintingPolicyHash)
-  in payToPlutusV2 n validatorScript st vl
+  in payToPlutusV2 n validatorScript mockDatum vl
+
+
+mockDatum = (POSIXTime 0, mintingPolicyHash)
 
 burnUnAda :: NetworkId -> TxIn -> TxOut CtxTx BabbageEra -> Quantity -> TxBuild
 burnUnAda n txi txOut q =
@@ -44,7 +46,7 @@ burnUnAda n txi txOut q =
       unlockedQuantity = lovelaceToQuantity (selectLovelace unlockedVl)
       remainingQuantity = max 0 (unlockedQuantity - q)
   in
-    spendPlutusV2 txi validatorScript () () -- FIXME: Use proper datum
+    spendPlutusV2 txi validatorScript mockDatum ()
     . mintPlutusV2 mintingPolicyScript () assetName (negate q)
     . if remainingQuantity > 0
         then addOutputFor n remainingQuantity
