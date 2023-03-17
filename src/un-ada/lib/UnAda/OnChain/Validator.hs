@@ -12,7 +12,7 @@ import           UnAda.OnChain.Types       (UnAdaRedeemer, UnAdaState)
 
 {-# INLINABLE unAdaValidator #-}
 unAdaValidator :: BuiltinData -> BuiltinData -> BuiltinData -> ()
-unAdaValidator _ _ _ = ()
+unAdaValidator _ _ _context = ()
   -- let ScriptContext txInfo _ = context
   --     -- vs = C.valueSpent txInfo
   --     TxInfo{txInfoValidRange} = txInfo

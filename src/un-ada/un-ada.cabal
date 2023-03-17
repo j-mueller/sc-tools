@@ -70,4 +70,7 @@ test-suite un-ada-test
     convex-base,
     convex-coin-selection,
     cardano-api,
-    lens
+    lens,
+    plutus-ledger-api,
+    plutus-tx,
+    plutus-core

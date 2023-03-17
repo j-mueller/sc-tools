@@ -27,7 +27,6 @@ import           PlutusTx                    (CompiledCode)
 import qualified PlutusTx
 import           PlutusTx.Prelude
 import           UnAda.OnChain.MintingPolicy (mintingPolicy)
-import           UnAda.OnChain.Types         (UnAdaRedeemer, UnAdaState)
 import           UnAda.OnChain.Validator     (unAdaValidator)
 
 validatorScriptCompiled :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())

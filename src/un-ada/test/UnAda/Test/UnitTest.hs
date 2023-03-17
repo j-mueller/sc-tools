@@ -21,17 +21,26 @@ import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import           Data.Function                  ((&))
+import           Plutus.V1.Ledger.Time          (POSIXTime (..))
+import           PlutusCore.Data                (Data (..))
+import qualified PlutusTx
 import           Test.Tasty                     (TestTree, testGroup)
-import           Test.Tasty.HUnit               (Assertion, testCase)
+import           Test.Tasty.HUnit               (Assertion, testCase,
+                                                 testCaseSteps)
 import           UnAda.OffChain.Transaction     (burnUnAda, findUnAdaOutputs,
                                                  mintUnAda)
 import           UnAda.OffChain.Value           (unLovelaceValue)
-import           UnAda.OnChain.Types            (UnAdaState)
+import           UnAda.OnChain.Types            (BuiltinData (UnAdaStateBuiltin),
+                                                 UnAdaState (..))
 
 tests :: TestTree
 tests = testGroup "unit tests"
   [ testCase "mint some un-Ada" canMintUnAda
   , testCase "burn some un-Ada" canBurnUnAda
+  , testGroup "ToData / FromData"
+      [ testCaseSteps "toData UnAdaState" toDataUnAdaState
+      , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
+      ]
   ]
 
 canMintUnAda :: Assertion
@@ -74,3 +83,25 @@ getUnAdaOutput tx = case findUnAdaOutputs tx of
   []  -> fail "getUnAdaOutput: Found no outputs locked by the unAda validator, expected 1"
   [k] -> pure k
   xs  -> fail $ "getUnAdaOutput: Found " <> show (length xs) <> " outputs locked by the unAda validator, expected 1"
+
+testState :: UnAdaState
+testState = UnAdaState{spendAfter = POSIXTime 1000, mps = "aabbccddeeff"}
+
+toDataUnAdaState :: (String -> IO ()) -> Assertion
+toDataUnAdaState step = do
+  case PlutusTx.toData testState of
+    Constr 0
+      [ I 1000
+      , B _
+      ] -> pure ()
+    x -> do
+      step (show x)
+      fail "unexpected format"
+
+builtinPatternUnAdaState :: (String -> IO ()) -> Assertion
+builtinPatternUnAdaState step = do
+  case PlutusTx.toBuiltinData testState of
+    UnAdaStateBuiltin 1000 _mpsB -> pure ()
+    x -> do
+      step (show x)
+      fail "unexpected format"
