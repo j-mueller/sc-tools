@@ -15,6 +15,7 @@ module Convex.Lenses(
   txMintValue,
   txFee,
   txFee',
+  txValidityRange,
   txMetadata,
   txProtocolParams,
   txInsCollateral,
@@ -138,6 +139,11 @@ txFee' :: Lens' (C.TxBodyContent v e) (C.TxFee e)
 txFee' = lens get set_ where
   get           = C.txFee
   set_ body fee = body{C.txFee = fee}
+
+txValidityRange :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e, C.TxValidityUpperBound e)
+txValidityRange = lens get set_ where
+  get = C.txValidityRange
+  set_ body range = body{C.txValidityRange = range}
 
 txFee :: Lens' (C.TxBodyContent v BabbageEra) C.Lovelace
 txFee = lens get set_ where

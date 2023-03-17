@@ -57,6 +57,8 @@ import           Data.Maybe            (isNothing, mapMaybe, maybeToList)
 import           Data.Set              (Set)
 import qualified Data.Set              as Set
 
+import qualified Debug.Trace           as Trace
+
 type ERA = BabbageEra
 
 {-| Inputs needed for coin selection
@@ -94,6 +96,8 @@ data BalancingError =
 -}
 balanceTransactionBody :: SystemStart -> EraHistory CardanoMode -> ProtocolParameters -> Set PoolId -> CSInputs -> Either BalancingError (C.BalancedTxBody ERA, BalanceChanges)
 balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs{csiUtxo, csiTxBody, csiChangeAddress, csiNumWitnesses} = do
+
+  Trace.traceM (show $ C.txValidityRange csiTxBody)
 
   let changeOutputSmall = C.TxOut csiChangeAddress (C.lovelaceToTxOutValue 1) C.TxOutDatumNone C.ReferenceScriptNone
       changeOutputLarge = C.TxOut csiChangeAddress (C.lovelaceToTxOutValue $ C.Lovelace (2^(64 :: Integer)) - 1) C.TxOutDatumNone C.ReferenceScriptNone

@@ -1,5 +1,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE ViewPatterns       #-}
 {-| Unit tests for UnAda
 -}
 module UnAda.Test.UnitTest (
@@ -21,7 +22,9 @@ import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import           Data.Function                  ((&))
-import           Plutus.V1.Ledger.Time          (POSIXTime (..))
+import           Plutus.V1.Ledger.Interval      (Extended (..), LowerBound (..),
+                                                 interval)
+import           Plutus.V1.Ledger.Time          (POSIXTime (..), POSIXTimeRange)
 import           PlutusCore.Data                (Data (..))
 import qualified PlutusTx
 import           Test.Tasty                     (TestTree, testGroup)
@@ -30,7 +33,7 @@ import           Test.Tasty.HUnit               (Assertion, testCase,
 import           UnAda.OffChain.Transaction     (burnUnAda, findUnAdaOutputs,
                                                  mintUnAda)
 import           UnAda.OffChain.Value           (unLovelaceValue)
-import           UnAda.OnChain.Types            (BuiltinData (UnAdaStateBuiltin),
+import           UnAda.OnChain.Types            (BuiltinData (FiniteExtended, FinitePOSIXTimeRange, ItvlBound, UnAdaStateBuiltin),
                                                  UnAdaState (..))
 
 tests :: TestTree
@@ -40,6 +43,9 @@ tests = testGroup "unit tests"
   , testGroup "ToData / FromData"
       [ testCaseSteps "toData UnAdaState" toDataUnAdaState
       , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
+      , testCaseSteps "builtin pattern Extended.Finite" builtinPatternExtendedFinite
+      , testCaseSteps "builtin pattern LowerBound" builtinPatternLowerBound
+      , testCaseSteps "builtin pattern POSIXTimeRange" builtinPatternRange
       ]
   ]
 
@@ -48,7 +54,7 @@ canMintUnAda = mockchainSucceeds mintSomeUnAda
 
 mintSomeUnAda :: (MonadFail m, MonadMockchain m) => m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
 mintSomeUnAda = do
-  let tx = emptyTx & mintUnAda Defaults.networkId 10_000_000
+  let tx = emptyTx & mintUnAda Defaults.networkId 1 10_000_000
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   mintingTx <- balanceAndSubmit Wallet.w1 tx
   _ <- unAdaPaymentTo 5_000_000 Wallet.w1 Wallet.w2
@@ -57,9 +63,9 @@ mintSomeUnAda = do
 
 canBurnUnAda :: Assertion
 canBurnUnAda = mockchainSucceeds $ do
-  (txi, (txo, _)) <- mintSomeUnAda
+  (txi, (txo, st)) <- mintSomeUnAda
 
-  let tx' = emptyTx & burnUnAda Defaults.networkId txi txo 3_000_000
+  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 3_000_000
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
@@ -102,6 +108,33 @@ builtinPatternUnAdaState :: (String -> IO ()) -> Assertion
 builtinPatternUnAdaState step = do
   case PlutusTx.toBuiltinData testState of
     UnAdaStateBuiltin 1000 _mpsB -> pure ()
+    x -> do
+      step (show x)
+      fail "unexpected format"
+
+builtinPatternExtendedFinite :: (String -> IO ()) -> Assertion
+builtinPatternExtendedFinite step = do
+  case PlutusTx.toBuiltinData (Finite (POSIXTime 0)) of
+    FiniteExtended (PlutusTx.toData -> I 0) -> pure ()
+    x -> do
+      step (show x)
+      fail "unexpected format"
+
+builtinPatternLowerBound :: (String -> IO ()) -> Assertion
+builtinPatternLowerBound step = do
+  case PlutusTx.toBuiltinData (LowerBound (Finite (POSIXTime 0)) True) of
+    ItvlBound (FiniteExtended (PlutusTx.toData -> I 0)) _ -> pure ()
+    x -> do
+      step (show x)
+      fail "unexpected format"
+
+testRange :: POSIXTimeRange
+testRange = interval 0 100
+
+builtinPatternRange :: (String -> IO ()) -> Assertion
+builtinPatternRange step = do
+  case PlutusTx.toBuiltinData testRange of
+    FinitePOSIXTimeRange (ItvlBound (FiniteExtended (PlutusTx.toData -> I 0)) _) _ -> pure ()
     x -> do
       step (show x)
       fail "unexpected format"

@@ -13,7 +13,8 @@ import           Cardano.Api            (BabbageEra, CtxTx, NetworkId, Quantity,
                                          lovelaceToValue, quantityToLovelace,
                                          selectLovelace)
 import qualified Cardano.Api.Shelley    as C
-import           Control.Lens           (_1, _2, _3, preview, to, view, (^.))
+import           Control.Lens           (_1, _2, _3, preview, set, to, view,
+                                         (^.))
 import           Convex.BuildTx         (TxBuild, mintPlutusV2, payToPlutusV2,
                                          spendPlutusV2)
 import qualified Convex.Lenses          as L
@@ -25,31 +26,36 @@ import           UnAda.OffChain.Scripts (assetName, mintingPolicyHash,
                                          mintingPolicyScript,
                                          unAdaPaymentCredential,
                                          validatorScript)
-import           UnAda.OnChain.Types    (UnAdaState)
+import           UnAda.OnChain.Types    (UnAdaState (..))
 
-mintUnAda :: NetworkId -> Quantity -> TxBuild
-mintUnAda n q =
-  addOutputFor n q
+mintUnAda :: NetworkId -> POSIXTime -> Quantity -> TxBuild
+mintUnAda n currentTime q =
+  addOutputFor n currentTime q
   . mintPlutusV2 mintingPolicyScript () assetName q
 
-addOutputFor :: NetworkId -> Quantity -> TxBuild
-addOutputFor n q =
+addOutputFor ::
+  NetworkId ->
+  POSIXTime ->
+    -- ^ Current time
+  Quantity ->
+  TxBuild
+addOutputFor n spendAfter q =
   let vl = lovelaceToValue (quantityToLovelace q)
-  in payToPlutusV2 n validatorScript mockDatum vl
+      dt = UnAdaState{spendAfter, mps = mintingPolicyHash}
+  in payToPlutusV2 n validatorScript dt vl
 
-
-mockDatum = (POSIXTime 0, mintingPolicyHash)
-
-burnUnAda :: NetworkId -> TxIn -> TxOut CtxTx BabbageEra -> Quantity -> TxBuild
-burnUnAda n txi txOut q =
+burnUnAda :: NetworkId -> POSIXTime -> TxIn -> TxOut CtxTx BabbageEra -> UnAdaState -> Quantity -> TxBuild
+burnUnAda n currentTime txi txOut oldState q =
   let unlockedVl = view (L._TxOut . _2 . L._TxOutValue) txOut
       unlockedQuantity = lovelaceToQuantity (selectLovelace unlockedVl)
       remainingQuantity = max 0 (unlockedQuantity - q)
+      dummyRange = (C.TxValidityLowerBound C.ValidityLowerBoundInBabbageEra 0, C.TxValidityUpperBound C.ValidityUpperBoundInBabbageEra 200)
   in
-    spendPlutusV2 txi validatorScript mockDatum ()
+    spendPlutusV2 txi validatorScript oldState ()
     . mintPlutusV2 mintingPolicyScript () assetName (negate q)
+    . set L.txValidityRange dummyRange
     . if remainingQuantity > 0
-        then addOutputFor n remainingQuantity
+        then addOutputFor n currentTime remainingQuantity
         else id
 
 extract :: TxOut CtxTx BabbageEra -> Maybe UnAdaState
