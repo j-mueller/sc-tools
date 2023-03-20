@@ -18,7 +18,8 @@ import           Cardano.Api.Shelley         (AssetId (..), AssetName,
                                               PaymentCredential, PlutusScriptV2,
                                               PolicyId, Script)
 import qualified Cardano.Api.Shelley         as C
-import           Convex.PlutusLedger         (transPolicyId)
+import           Convex.PlutusLedger         (toMaryAssetName, transAssetName,
+                                              transPolicyId)
 import           Convex.Scripts              (compiledCodeToScript)
 import qualified Plutus.V1.Ledger.Api        as PV1
 import           Plutus.V1.Ledger.Scripts    (ValidatorHash)
@@ -28,9 +29,17 @@ import           PlutusTx.Prelude
 import           UnAda.OnChain.MintingPolicy (mintingPolicy)
 import           UnAda.OnChain.Validator     (unAdaValidator)
 
+assetName :: AssetName
+assetName = "unAda"
+
+unAdaAssetId :: AssetId
+unAdaAssetId = uncurry AssetId $ sAssetId scripts
+
 validatorScriptCompiled :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())
 validatorScriptCompiled =
-  $$(PlutusTx.compile [|| \d r c -> unAdaValidator d r c ||])
+  $$(PlutusTx.compile [|| \tn d r c -> unAdaValidator tn d r c ||])
+    `PlutusTx.applyCode`
+  PlutusTx.liftCode (PlutusTx.toBuiltinData $ transAssetName $ toMaryAssetName assetName)
 
 {-| The UnAda validator script
 -}
@@ -64,9 +73,6 @@ data Scripts =
     , sAssetId       :: !(PolicyId, AssetName)
     }
 
-assetName :: AssetName
-assetName = "unAda"
-
 {-| The script and hashes for UnAda
 -}
 scripts :: Scripts
@@ -77,6 +83,3 @@ scripts =
     , sCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript
     , sAssetId = (mintingPolicyId, assetName)
     }
-
-unAdaAssetId :: AssetId
-unAdaAssetId = uncurry AssetId $ sAssetId scripts

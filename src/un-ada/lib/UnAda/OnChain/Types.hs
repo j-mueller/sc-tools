@@ -18,6 +18,7 @@ module UnAda.OnChain.Types(
     referenceInputs,
     outputs,
     fee,
+    rest8,
     -- * Validity intervals
     FinitePOSIXTimeRange,
     fiFrom,

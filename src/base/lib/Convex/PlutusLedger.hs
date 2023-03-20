@@ -16,6 +16,7 @@ module Convex.PlutusLedger(
 
   -- * Asset names
   transAssetName,
+  toMaryAssetName,
   unTransAssetName,
 
   transPolicyId,
