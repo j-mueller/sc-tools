@@ -26,7 +26,7 @@ import           Plutus.V1.Ledger.Scripts    (ValidatorHash)
 import           PlutusTx                    (CompiledCode)
 import qualified PlutusTx
 import           PlutusTx.Prelude
-import           UnAda.OnChain.MintingPolicy (mintingPolicy)
+import           UnAda.OnChain.MintingPolicy (unAdaMintingPolicy)
 import           UnAda.OnChain.Validator     (unAdaValidator)
 
 assetName :: AssetName
@@ -47,9 +47,9 @@ validatorScript :: C.PlutusScript PlutusScriptV2
 validatorScript = compiledCodeToScript validatorScriptCompiled
 
 mintingPolicyCompiled :: ValidatorHash -> CompiledCode (BuiltinData -> BuiltinData -> ())
-mintingPolicyCompiled hsh_ = $$(PlutusTx.compile [|| \hsh r c ->
-                            check $ mintingPolicy hsh r c ||])
+mintingPolicyCompiled hsh_ = $$(PlutusTx.compile [|| \validatorHash assetName r c -> unAdaMintingPolicy validatorHash assetName r c ||])
   `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData hsh_)
+  `PlutusTx.applyCode` PlutusTx.liftCode (PlutusTx.toBuiltinData $ transAssetName $ toMaryAssetName assetName)
 
 unAdaPaymentCredential :: PaymentCredential
 unAdaPaymentCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript

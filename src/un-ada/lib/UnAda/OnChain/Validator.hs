@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
@@ -25,20 +26,22 @@ unAdaValidator :: BuiltinData -> BuiltinData -> BuiltinData -> BuiltinData -> ()
 unAdaValidator (TokenName . unsafeDataAsB -> tokenName) (UnAdaStateBuiltin spendAfter mps) _redeemer ScriptContext{txInfo} =
   case txInfo of
     TxInfoV2{inputs, outputs, rest8=TxInfoPartTwo{validRange, mint}} ->
-      let itvl = unsafeFromBuiltinData validRange
+      let !itvl = unsafeFromBuiltinData validRange
+          !minted = totalValMinted mps tokenName (unsafeFromBuiltinData mint)
+          !locked = totalValLocked mps tokenName (unsafeFromBuiltinData outputs)
+          !prod   = totalValUnlocked mps tokenName (unsafeFromBuiltinData inputs)
       in if spendAfter `Interval.before` itvl
           then
-            if totalValMinted mps tokenName (unsafeFromBuiltinData mint) ==
-                  (totalValLocked mps tokenName (unsafeFromBuiltinData outputs))
-                  - (totalValUnlocked mps tokenName (unsafeFromBuiltinData inputs))
-            then ()
+            if minted == locked - prod
+            then if minted == 0
+              then traceError "must mint non-zero amount of tokens" ()
+              else ()
             else traceError "total value locked must equal total value minted" ()
           else traceError "spendAfter must be before validity interval" ()
 
 {-# INLINEABLE totalValMinted #-}
 totalValMinted :: BuiltinByteString -> TokenName -> Value -> Integer
-totalValMinted bs tn valueMinted =
-  valueOf valueMinted (CurrencySymbol bs) tn
+totalValMinted bs tn valueMinted = valueOf valueMinted (CurrencySymbol bs) tn
 
 {-# INLINEABLE totalValLocked #-}
 totalValLocked :: BuiltinByteString -> TokenName -> [TxOut] -> Integer

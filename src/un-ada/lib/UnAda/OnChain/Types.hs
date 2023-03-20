@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NoImplicitPrelude  #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE PatternSynonyms    #-}
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE ViewPatterns       #-}
@@ -39,6 +40,8 @@ module UnAda.OnChain.Types(
     validRange,
     rest4
   ),
+  -- * Script Purpose
+  scriptPurposeMinting,
   UnAdaRedeemer
 ) where
 
@@ -89,6 +92,13 @@ pattern TxInfoV2{inputs, referenceInputs, outputs, fee, rest8} <-
 
 pattern FiniteExtended :: Integer -> BuiltinData
 pattern FiniteExtended a <- (unsafeDataAsConstr -> (_, [unsafeDataAsI -> a]))
+
+{-# INLINABLE scriptPurposeMinting #-}
+scriptPurposeMinting :: BuiltinData -> (BuiltinData -> r) -> r
+scriptPurposeMinting (unsafeDataAsConstr -> (n, [arg])) mint =
+  if n == 0
+    then mint arg
+    else traceError "scriptPurposeMinting: Wrong script purpose" ()
 
 -- {-# INLINEABLE matchExtended #-}
 -- matchExtended :: BuiltinData -> r -> (BuiltinData -> r) -> r -> r
