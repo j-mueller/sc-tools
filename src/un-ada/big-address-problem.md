@@ -48,3 +48,7 @@ The solution involves two Plutus scripts: A minting policy and a validator. The 
 ## The price of `unAda`
 
 One would expect the price of `unAda` to be exactly one Ada, because they are interchangeable. But in reality the price of `unAda` is likely going to be slightly less than one Ada, for two reasons. First, `unAda` does not earn any staking rewards while real Ada does. So one `unAda` will always be one `unAda`, as the saying goes, but one real Ada today will actually be worth approx. 1.06 Ada a year from now, because Ada always includes a claim to future staking rewards. Because of that, the future value of the Ada that backs `unAda` needs to be discounted in order to arrive at a fair value for `unAda`. Second, while it is guaranteed that one `unAda` can always be converted to one Ada, there is no guarantee that the conversion can take place *right now*: The transaction could be rejected due to UTxO contention (someone else spent the UTxO and we need to select a different one), or there could be a waiting period if all reserve UTxOs are still time locked. So `unAda` is less liquid than real Ada.
+
+## Related work
+
+The concept of a 1-1 stablecoin is quite common on Ethereum and related chains where it is known as [Wrapped Ethereum](https://coinmarketcap.com/alexandria/article/what-is-wrapped-ethereum-weth), or more generally wrapped tokens.
