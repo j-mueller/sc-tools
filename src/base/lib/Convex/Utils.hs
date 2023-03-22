@@ -20,33 +20,40 @@ module Convex.Utils(
   -- * Etc.
   extractTx,
   txnUtxos,
-  slotToUtcTime
+  slotToUtcTime,
+  utcTimeToSlot
 ) where
 
-import           Cardano.Api                          (BabbageEra, Block (..),
-                                                       BlockInMode (..),
-                                                       CardanoMode, NetworkId,
-                                                       PlutusScript,
-                                                       PlutusScriptV1,
-                                                       PlutusScriptV2, SlotNo,
-                                                       Tx, TxIn)
-import qualified Cardano.Api.Shelley                  as C
-import           Cardano.Slotting.EpochInfo.API       (EpochInfo,
-                                                       epochInfoSlotToUTCTime,
-                                                       hoistEpochInfo)
-import           Control.Monad                        (void, when)
-import           Control.Monad.Except                 (runExcept)
-import           Control.Monad.IO.Class               (MonadIO (..))
-import           Data.Aeson                           (Result (..), fromJSON,
-                                                       object, (.=))
-import           Data.Bifunctor                       (Bifunctor (..))
-import           Data.Foldable                        (traverse_)
-import           Data.Function                        ((&))
-import           Data.Proxy                           (Proxy (..))
-import           Data.Set                             (Set)
-import qualified Data.Set                             as Set
-import           Data.Time.Clock                      (UTCTime)
-import qualified Ouroboros.Consensus.HardFork.History as Consensus
+import           Cardano.Api                              (BabbageEra,
+                                                           Block (..),
+                                                           BlockInMode (..),
+                                                           CardanoMode,
+                                                           NetworkId,
+                                                           PlutusScript,
+                                                           PlutusScriptV1,
+                                                           PlutusScriptV2,
+                                                           SlotNo, Tx, TxIn)
+import qualified Cardano.Api.Shelley                      as C
+import           Cardano.Slotting.EpochInfo.API           (EpochInfo,
+                                                           epochInfoSlotToUTCTime,
+                                                           hoistEpochInfo)
+import qualified Cardano.Slotting.Time                    as Time
+import           Control.Monad                            (void, when)
+import           Control.Monad.Except                     (runExcept)
+import           Control.Monad.IO.Class                   (MonadIO (..))
+import           Data.Aeson                               (Result (..),
+                                                           fromJSON, object,
+                                                           (.=))
+import           Data.Bifunctor                           (Bifunctor (..))
+import           Data.Foldable                            (traverse_)
+import           Data.Function                            ((&))
+import           Data.Proxy                               (Proxy (..))
+import           Data.Set                                 (Set)
+import qualified Data.Set                                 as Set
+import           Data.Time.Clock                          (NominalDiffTime,
+                                                           UTCTime)
+import qualified Ouroboros.Consensus.HardFork.History     as Consensus
+import qualified Ouroboros.Consensus.HardFork.History.Qry as Qry
 
 scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
@@ -118,6 +125,12 @@ txnUtxos tx =
 -}
 slotToUtcTime :: C.EraHistory mode -> C.SystemStart -> SlotNo -> Either String UTCTime
 slotToUtcTime (toLedgerEpochInfo -> info) systemStart slot = epochInfoSlotToUTCTime info systemStart slot
+
+{-| Convert a UTC time to slot no. Returns the time spent and time left in this slot.
+-}
+utcTimeToSlot :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+utcTimeToSlot (C.EraHistory _ interpreter) systemStart t = first show $
+  Qry.interpretQuery interpreter (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
 
 -- FIXME: Looks like this function is exposed by Cardano.Api in cardano-node@v1.36
 toLedgerEpochInfo :: C.EraHistory mode -> EpochInfo (Either String)
