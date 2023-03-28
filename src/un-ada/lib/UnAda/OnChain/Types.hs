@@ -99,6 +99,7 @@ scriptPurposeMinting (unsafeDataAsConstr -> (n, [arg])) mint =
   if n == 0
     then mint arg
     else traceError "scriptPurposeMinting: Wrong script purpose" ()
+scriptPurposeMinting _ _ = traceError "scriptPurposeMinting: Unexpected data"
 
 -- {-# INLINEABLE matchExtended #-}
 -- matchExtended :: BuiltinData -> r -> (BuiltinData -> r) -> r -> r

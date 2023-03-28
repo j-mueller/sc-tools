@@ -78,8 +78,8 @@ data Scripts =
 scripts :: Scripts
 scripts =
   Scripts
-    { sValidator = C.PlutusScript C.PlutusScriptV2 validatorScript
+    { sValidator     = C.PlutusScript C.PlutusScriptV2 validatorScript
     , sMintingPolicy = C.PlutusScript C.PlutusScriptV2 mintingPolicyScript
-    , sCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript
-    , sAssetId = (mintingPolicyId, assetName)
+    , sCredential    = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript
+    , sAssetId       = (mintingPolicyId, assetName)
     }
