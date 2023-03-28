@@ -1,5 +1,6 @@
-{-# LANGUAGE LambdaCase     #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE TypeApplications #-}
 {-| Translating between cardano-api/cardano-ledger and plutus representations
 -}
 module Convex.PlutusLedger(
@@ -39,8 +40,11 @@ module Convex.PlutusLedger(
 
   -- * Tx IDs
   unTransTxOutRef,
-  transTxOutRef
+  transTxOutRef,
 
+  -- * POSIX Time
+  unTransPOSIXTime,
+  transPOSIXTime
 ) where
 
 import qualified Cardano.Api.Shelley       as C
@@ -49,6 +53,7 @@ import           Cardano.Ledger.Credential (Ptr (..))
 import qualified Cardano.Ledger.Mary.Value as Mary (AssetName (..))
 import           Data.ByteString.Short     (fromShort)
 import qualified Data.ByteString.Short     as Short
+import           Data.Time.Clock.POSIX     (POSIXTime)
 import qualified Plutus.V1.Ledger.Api      as PV1
 import qualified Plutus.V1.Ledger.Value    as Value
 import qualified PlutusTx.Prelude          as PlutusTx
@@ -156,3 +161,9 @@ transTxOutRef :: C.TxIn -> PV1.TxOutRef
 transTxOutRef (C.TxIn txId (C.TxIx ix)) =
   let i = PV1.TxId $ PlutusTx.toBuiltin $ C.serialiseToRawBytes txId
   in PV1.TxOutRef i (fromIntegral ix)
+
+transPOSIXTime :: POSIXTime -> PV1.POSIXTime
+transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToFrac posixTimeSeconds))
+
+unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
+unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
