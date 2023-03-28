@@ -21,6 +21,7 @@ module Convex.Lenses(
   txInsCollateral,
   txScriptValidity,
   txAuxScripts,
+  txExtraKeyWits,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -175,6 +176,11 @@ txMetadata :: Lens' (C.TxBodyContent v BabbageEra) (C.TxMetadataInEra BabbageEra
 txMetadata = lens get set_ where
   get = C.txMetadata
   set_ body m = body{C.txMetadata=m}
+
+txExtraKeyWits :: Lens' (C.TxBodyContent v BabbageEra) (C.TxExtraKeyWitnesses BabbageEra)
+txExtraKeyWits = lens get set_ where
+  get = C.txExtraKeyWits
+  set_ body k = body{C.txExtraKeyWits = k}
 
 txAuxScripts :: Lens' (C.TxBodyContent v BabbageEra) (C.TxAuxScripts BabbageEra)
 txAuxScripts = lens get set_ where
