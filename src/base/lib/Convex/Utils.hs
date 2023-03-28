@@ -21,7 +21,8 @@ module Convex.Utils(
   extractTx,
   txnUtxos,
   slotToUtcTime,
-  utcTimeToSlot
+  utcTimeToSlot,
+  utcTimeToSlotUnsafe
 ) where
 
 import           Cardano.Api                              (BabbageEra,
@@ -45,6 +46,7 @@ import           Data.Aeson                               (Result (..),
                                                            fromJSON, object,
                                                            (.=))
 import           Data.Bifunctor                           (Bifunctor (..))
+import           Data.Either                              (fromRight)
 import           Data.Foldable                            (traverse_)
 import           Data.Function                            ((&))
 import           Data.Proxy                               (Proxy (..))
@@ -131,6 +133,14 @@ slotToUtcTime (toLedgerEpochInfo -> info) systemStart slot = epochInfoSlotToUTCT
 utcTimeToSlot :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
 utcTimeToSlot (C.EraHistory _ interpreter) systemStart t = first show $
   Qry.interpretQuery interpreter (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
+
+{-| Convert a UTC time to slot no. Returns the time spent and time left in this slot.
+Extends the interpreter range to infinity before running the query (ignoring
+any future hard forks)
+-}
+utcTimeToSlotUnsafe :: C.EraHistory mode -> C.SystemStart -> UTCTime -> (SlotNo, NominalDiffTime, NominalDiffTime)
+utcTimeToSlotUnsafe (C.EraHistory _ interpreter) systemStart t = fromRight (error "utcTimeToSlotUnsafe: interpretQuery failed unexpectedly") $
+  Qry.interpretQuery (Qry.unsafeExtendSafeZone interpreter) (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
 
 -- FIXME: Looks like this function is exposed by Cardano.Api in cardano-node@v1.36
 toLedgerEpochInfo :: C.EraHistory mode -> EpochInfo (Either String)
