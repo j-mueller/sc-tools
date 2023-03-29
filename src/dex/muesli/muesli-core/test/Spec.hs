@@ -64,7 +64,7 @@ putReferenceScript wallet = do
   let tx = emptyTx
             & payToPlutusV2Inline (Wallet.addressInEra Defaults.networkId wallet) Muesli.orderBookV3 (C.lovelaceToValue 1_000_000)
             & setMinAdaDepositAll Defaults.protocolParameters
-  txId <- balanceAndSubmit wallet tx
+  txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   pure (C.TxIn txId (C.TxIx 0))
 
 {-| Mint an LP NFT and return the asset name
@@ -91,13 +91,13 @@ placeOrder wllt = do
           }
       addr = Wallet.addressInEra Defaults.networkId wllt
       tx = emptyTx & BuildTx.buyOrder addr (Just Defaults.networkId) order
-  txId <- balanceAndSubmit wllt tx
+  txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wllt tx
   pure (C.TxIn txId (C.TxIx 0), order, addr)
 
 cancelBuyOrder :: Wallet -> C.TxIn -> C.AddressInEra C.BabbageEra -> BuyOrder -> Mockchain C.TxId
 cancelBuyOrder wllt txIn returnAddress order = do
   let tx = emptyTx & BuildTx.cancelBuyOrder returnAddress txIn order
-  balanceAndSubmit wllt tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit wllt tx
 
 -- TODO: Move somewhere else!
 fromCardanoTxIn :: C.TxIn -> PV1.TxOutRef

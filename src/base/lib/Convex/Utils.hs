@@ -22,7 +22,9 @@ module Convex.Utils(
   txnUtxos,
   slotToUtcTime,
   utcTimeToSlot,
-  utcTimeToSlotUnsafe
+  utcTimeToSlotUnsafe,
+  posixTimeToSlot,
+  posixTimeToSlotUnsafe
 ) where
 
 import           Cardano.Api                              (BabbageEra,
@@ -42,11 +44,11 @@ import qualified Cardano.Slotting.Time                    as Time
 import           Control.Monad                            (void, when)
 import           Control.Monad.Except                     (runExcept)
 import           Control.Monad.IO.Class                   (MonadIO (..))
+import           Convex.PlutusLedger                      (unTransPOSIXTime)
 import           Data.Aeson                               (Result (..),
                                                            fromJSON, object,
                                                            (.=))
 import           Data.Bifunctor                           (Bifunctor (..))
-import           Data.Either                              (fromRight)
 import           Data.Foldable                            (traverse_)
 import           Data.Function                            ((&))
 import           Data.Proxy                               (Proxy (..))
@@ -54,8 +56,10 @@ import           Data.Set                                 (Set)
 import qualified Data.Set                                 as Set
 import           Data.Time.Clock                          (NominalDiffTime,
                                                            UTCTime)
+import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime)
 import qualified Ouroboros.Consensus.HardFork.History     as Consensus
 import qualified Ouroboros.Consensus.HardFork.History.Qry as Qry
+import qualified Plutus.V1.Ledger.Time                    as PV1
 
 scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
@@ -134,13 +138,26 @@ utcTimeToSlot :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String 
 utcTimeToSlot (C.EraHistory _ interpreter) systemStart t = first show $
   Qry.interpretQuery interpreter (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
 
-{-| Convert a UTC time to slot no. Returns the time spent and time left in this slot.
-Extends the interpreter range to infinity before running the query (ignoring
-any future hard forks)
+{-| Convert a 'PV1.POSIXTime' to slot no. Returns the time spent and time left in this slot.
 -}
-utcTimeToSlotUnsafe :: C.EraHistory mode -> C.SystemStart -> UTCTime -> (SlotNo, NominalDiffTime, NominalDiffTime)
-utcTimeToSlotUnsafe (C.EraHistory _ interpreter) systemStart t = fromRight (error "utcTimeToSlotUnsafe: interpretQuery failed unexpectedly") $
+posixTimeToSlot :: C.EraHistory mode -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+posixTimeToSlot eraHistory systemStart (posixSecondsToUTCTime . unTransPOSIXTime -> utcTime) =
+  utcTimeToSlot eraHistory systemStart utcTime
+
+{-| Convert a UTC time to slot no. Returns the time spent and time left in this slot.
+Extends the interpreter range to infinity before running the query, ignoring
+any future hard forks. This avoids horizon errors for times that are in the future.
+It may still fail for times that are in the past (before the beginning of the horizin)
+-}
+utcTimeToSlotUnsafe :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+utcTimeToSlotUnsafe (C.EraHistory _ interpreter) systemStart t = first show $
   Qry.interpretQuery (Qry.unsafeExtendSafeZone interpreter) (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
+
+{-| Convert a 'PV1.POSIXTime' to slot no. Returns the time spent and time left in this slot.
+-}
+posixTimeToSlotUnsafe :: C.EraHistory mode -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+posixTimeToSlotUnsafe eraHistory systemStart (posixSecondsToUTCTime . unTransPOSIXTime -> utcTime) =
+  utcTimeToSlotUnsafe eraHistory systemStart utcTime
 
 -- FIXME: Looks like this function is exposed by Cardano.Api in cardano-node@v1.36
 toLedgerEpochInfo :: C.EraHistory mode -> EpochInfo (Either String)

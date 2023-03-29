@@ -22,6 +22,7 @@ module Convex.CoinSelection(
   BalancingError(..),
   balanceTransactionBody,
   balanceForWallet,
+  balanceTx,
   signForWallet,
   -- * Balance changes
   balanceChanges,
@@ -297,26 +298,46 @@ txOutChange (view L._TxOut -> (fmap C.fromShelleyPaymentCredential . preview (L.
   BalanceChanges (Map.singleton addr value)
 txOutChange _ = mempty
 
-{-| Balance the transaction using the wallet's funds, then sign it.
+{-| Balance the transaction using the given UTXOs and return address. This
+calls 'balanceTransactionBody' after preparing all the required inputs.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
-balanceForWallet wallet walletUtxo txb = do
-  n <- networkId
+balanceTx ::
+  (MonadBlockchain m, MonadFail m) =>
+
+  -- | Address used for leftover funds
+  AddressInEra BabbageEra ->
+
+  -- | Set of UTxOs that can be used to supply missing funds
+  UtxoSet C.CtxUTxO a ->
+
+  -- | The unbalanced transaction body
+  TxBodyContent BuildTx ERA ->
+
+  -- | The balanced transaction body and the balance changes (per address)
+  m (C.BalancedTxBody ERA, BalanceChanges)
+balanceTx returnAddress walletUtxo txb = do
   params <- queryProtocolParameters
   pools <- queryStakePools
-  let walletAddress = Wallet.addressInEra n wallet
-      txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just params)
+  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just params)
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns txb)
   let combinedTxIns =
         let UtxoSet w = walletUtxo
             UTxO o = otherInputs
         in UTxO (Map.union (fmap fst w) o)
-  finalBody <- either (fail . show) pure (addMissingInputs pools params combinedTxIns walletAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
-  csi <- prepCSInputs walletAddress combinedTxIns finalBody
+  finalBody <- either (fail . show) pure (addMissingInputs pools params combinedTxIns returnAddress walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
+  csi <- prepCSInputs returnAddress combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
-  first (signForWallet wallet) <$> either (fail . show) pure (balanceTransactionBody start hist params pools csi)
+  either (fail . show) pure (balanceTransactionBody start hist params pools csi)
+
+{-| Balance the transaction using the wallet's funds, then sign it.
+-}
+balanceForWallet :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet wallet walletUtxo txb = do
+  n <- networkId
+  let walletAddress = Wallet.addressInEra n wallet
+  first (signForWallet wallet) <$> balanceTx walletAddress walletUtxo txb
 
 {-| Sign a transaction with the wallet's key
 -}

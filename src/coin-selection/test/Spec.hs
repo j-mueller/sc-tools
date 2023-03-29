@@ -65,20 +65,20 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 payToPlutusScript :: Mockchain C.TxIn
 payToPlutusScript = do
   let tx = emptyTx & payToPlutusV1 Defaults.networkId txInscript () (C.lovelaceToValue 10_000_000)
-  i <- balanceAndSubmit Wallet.w1 tx
+  i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 spendPlutusScript :: C.TxIn -> Mockchain C.TxId
 spendPlutusScript ref = do
   let tx = emptyTx & spendPlutusV1 ref txInscript () ()
-  balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
   let tx = emptyTx
             & payToPlutusV1Inline (Wallet.addressInEra Defaults.networkId wallet) txInscript (C.lovelaceToValue 1_000_000)
             & setMinAdaDepositAll Defaults.protocolParameters
-  txId <- balanceAndSubmit wallet tx
+  txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   pure (C.TxIn txId (C.TxIx 0))
 
 spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
@@ -86,13 +86,13 @@ spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = emptyTx
             & spendPlutusV1Ref txIn refTxIn (Just $ C.hashScript $ C.PlutusScript C.PlutusScriptV1 txInscript) () ()
-  balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 mintingPlutus :: Mockchain C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
   let tx = emptyTx & mintPlutusV1 mintingScript () "assetName" 100
-  balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 spendTokens :: C.TxId -> Mockchain C.TxId
 spendTokens _ = do
@@ -110,4 +110,4 @@ nativeAssetPaymentTo q wFrom wTo = do
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
-  balanceAndSubmit wFrom tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit wFrom tx

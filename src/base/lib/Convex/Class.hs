@@ -6,6 +6,8 @@ module Convex.Class(
   MonadBlockchain(..),
   MonadMockchain(..),
   getSlot,
+  setSlot,
+  setPOSIXTime,
   nextSlot,
 
   -- * Implementation
@@ -25,6 +27,7 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     TxId)
 import           Cardano.Ledger.Shelley.API                        (UTxO)
 import           Cardano.Slotting.Time                             (SystemStart)
+import           Control.Lens                                      (_1, view)
 import           Control.Monad.IO.Class                            (MonadIO (..))
 import           Control.Monad.Reader                              (MonadTrans,
                                                                     ReaderT (..),
@@ -34,8 +37,10 @@ import           Convex.Era                                        (ERA)
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     logInfoS,
                                                                     logWarnS)
+import           Convex.Utils                                      (posixTimeToSlotUnsafe)
 import           Data.Set                                          (Set)
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
+import qualified Plutus.V1.Ledger.Time                             as PV1
 
 {-| Send transactions and resolve tx inputs.
 -}
@@ -58,6 +63,17 @@ class MonadBlockchain m => MonadMockchain m where
 -}
 getSlot :: MonadMockchain m => m SlotNo
 getSlot = modifySlot (\s -> (s, s))
+
+{-| Get the current slot number
+-}
+setSlot :: MonadMockchain m => SlotNo -> m ()
+setSlot s = modifySlot (\_ -> (s, ()))
+
+{-| Set the slot number to the slot that contains the given POSIX time.
+-}
+setPOSIXTime :: (MonadFail m, MonadMockchain m) => PV1.POSIXTime -> m ()
+setPOSIXTime tm =
+  (posixTimeToSlotUnsafe <$> queryEraHistory <*> querySystemStart <*> pure tm) >>= either fail (setSlot . view _1)
 
 {-| Increase the slot number by 1.
 -}
