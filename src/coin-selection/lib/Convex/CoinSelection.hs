@@ -81,7 +81,7 @@ data CoinSelectionError =
   UnsupportedBalance (C.TxOutValue ERA)
   | BodyError C.TxBodyError
   | NotEnoughAdaOnlyOutputsFor C.Lovelace
-  | NotEnoughMixedOutputsFor C.Value
+  | NotEnoughMixedOutputsFor{ valuesNeeded :: [(C.PolicyId, C.AssetName, C.Quantity)], valueProvided :: C.Value, txBalance :: C.Value }
   deriving Show
 
 data BalancingError =
@@ -414,12 +414,13 @@ addInputsForNonAdaAssets ::
   UtxoSet ctx a ->
   TxBodyContent BuildTx ERA ->
   Either CoinSelectionError (TxBodyContent BuildTx ERA, C.Value)
-addInputsForNonAdaAssets (fst . splitValue -> negatives) availableUtxo txBodyContent
-  | isNothing (C.valueToLovelace $ C.valueFromList negatives) = do
+addInputsForNonAdaAssets txBal availableUtxo txBodyContent
+  | isNothing (C.valueToLovelace $ C.valueFromList $ fst $ splitValue txBal) = do
       let nativeAsset (C.AdaAssetId, _) = Nothing
           nativeAsset (C.AssetId p n, C.Quantity q) = Just (p, n, C.Quantity (abs q))
-      case Wallet.selectMixedInputsCovering availableUtxo (mapMaybe nativeAsset negatives) of
-        Nothing -> Left (NotEnoughMixedOutputsFor (C.valueFromList negatives))
+          missingNativeAssets = mapMaybe nativeAsset (fst $ splitValue txBal)
+      case Wallet.selectMixedInputsCovering availableUtxo missingNativeAssets of
+        Nothing -> Left (NotEnoughMixedOutputsFor missingNativeAssets (Utxos.totalBalance availableUtxo) txBal)
         Just (total, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
   | otherwise = return (txBodyContent, mempty)
 
