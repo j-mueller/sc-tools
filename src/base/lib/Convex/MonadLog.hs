@@ -66,14 +66,14 @@ logWarnS :: forall m. MonadLog m => String -> m ()
 logWarnS = logWarn' . fromString
 
 newtype MonadLogIgnoreT m a = MonadLogIgnoreT { runMonadLogIgnoreT :: m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
 
 instance Monad m => MonadLog (MonadLogIgnoreT m) where
   logInfo' _ = pure ()
   logWarn' _ = pure ()
 
 newtype MonadLogKatipT m a = MonadLogKatipT { runMonadLogKatipT :: m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
 
 instance KatipContext m => MonadLog (MonadLogKatipT m) where
     logInfo' s =
