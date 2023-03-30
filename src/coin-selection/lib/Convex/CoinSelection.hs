@@ -477,9 +477,7 @@ requiredTxIns body =
   <> Set.fromList (view (L.txInsCollateral . L._TxInsCollateral) body)
 
 lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
-lookupTxIns allTxIns = do
-  C.UTxO rest <- utxoByTxIn allTxIns
-  pure (C.UTxO rest)
+lookupTxIns = utxoByTxIn
 
 keyWitnesses :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
 keyWitnesses (view L.txIns -> inputs) = do

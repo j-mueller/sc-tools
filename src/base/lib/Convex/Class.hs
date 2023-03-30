@@ -9,6 +9,7 @@ module Convex.Class(
   setSlot,
   setPOSIXTime,
   nextSlot,
+  setTimeToValidRange,
 
   -- * Implementation
   MonadBlockchainCardanoNodeT(..),
@@ -74,6 +75,15 @@ setSlot s = modifySlot (\_ -> (s, ()))
 setPOSIXTime :: (MonadFail m, MonadMockchain m) => PV1.POSIXTime -> m ()
 setPOSIXTime tm =
   (posixTimeToSlotUnsafe <$> queryEraHistory <*> querySystemStart <*> pure tm) >>= either fail (setSlot . view _1)
+
+{-| Change the clock so that the current slot time is within the given validity range.
+This MAY move the clock backwards!
+-}
+setTimeToValidRange :: MonadMockchain m => (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra) -> m ()
+setTimeToValidRange = \case
+  (C.TxValidityLowerBound _ lowerSlot, _) -> setSlot lowerSlot
+  (_, C.TxValidityUpperBound _ upperSlot) -> setSlot (pred upperSlot)
+  _                                       -> pure ()
 
 {-| Increase the slot number by 1.
 -}
