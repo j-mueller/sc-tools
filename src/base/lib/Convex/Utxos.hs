@@ -20,8 +20,10 @@ module Convex.Utxos(
   onlyPubKey,
   onlyAddress,
   onlyCredential,
+  onlyStakeCredential,
   removeUtxos,
   fromApiUtxo,
+  toApiUtxo,
   selectUtxo,
 
   -- * Events based on transactions
@@ -55,9 +57,10 @@ module Convex.Utxos(
 import           Cardano.Api                   (AddressInEra, BabbageEra,
                                                 Block (..), BlockInMode (..),
                                                 CardanoMode, EraInMode (..),
-                                                PaymentCredential, Tx (..),
-                                                TxId, TxIn (..), TxIx (..),
-                                                UTxO (..), Value)
+                                                PaymentCredential,
+                                                StakeCredential, Tx (..), TxId,
+                                                TxIn (..), TxIx (..), UTxO (..),
+                                                Value)
 import qualified Cardano.Api                   as C
 import           Cardano.Api.Shelley           (TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
@@ -66,8 +69,8 @@ import qualified Cardano.Ledger.BaseTypes      as CT
 import qualified Cardano.Ledger.Credential     as Shelley
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.TxIn           as CT
-import           Control.Lens                  (_1, _2, makeLenses, makePrisms,
-                                                over, preview, view)
+import           Control.Lens                  (_1, _2, _3, makeLenses,
+                                                makePrisms, over, preview, view)
 import qualified Convex.Lenses                 as L
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Bifunctor                (Bifunctor (..))
@@ -108,6 +111,11 @@ makePrisms ''UtxoSet
 fromApiUtxo :: UTxO BabbageEra -> UtxoSet C.CtxUTxO ()
 fromApiUtxo (UTxO x) = UtxoSet (fmap (,()) x)
 
+{-| Convert a utxo set to a @cardano-api@ 'UTxO BabbageEra'
+-}
+toApiUtxo :: UtxoSet C.CtxUTxO () -> UTxO BabbageEra
+toApiUtxo (UtxoSet s) = UTxO (fmap fst s)
+
 {-| Pick an unspent output from the 'UtxoSet', if there is one.
 -}
 selectUtxo :: UtxoSet ctx a -> Maybe (C.TxIn, (C.TxOut ctx C.BabbageEra, a))
@@ -141,6 +149,13 @@ onlyAddress addr =
 onlyCredential :: PaymentCredential -> UtxoSet ctx a -> UtxoSet ctx a
 onlyCredential c =
   let flt (fmap CS.fromShelleyPaymentCredential . preview (_1 . L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2) -> k) = k == Just c
+  in fst . partition flt
+
+{-| Restrict the utxo set to outputs with the given stake credential
+-}
+onlyStakeCredential :: StakeCredential -> UtxoSet ctx a -> UtxoSet ctx a
+onlyStakeCredential (C.StakeAddressByValue -> c) =
+  let flt (fmap CS.fromShelleyStakeReference . preview (_1 . L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _3) -> k) = k == Just c
   in fst . partition flt
 
 {-| Restrict the 'UtxoSet' to public key outputs
