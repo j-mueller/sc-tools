@@ -34,6 +34,8 @@ import           Control.Monad.Reader                              (MonadTrans,
                                                                     ReaderT (..),
                                                                     ask, asks,
                                                                     lift)
+import           Control.Monad.Trans.Except                        (ExceptT)
+import           Control.Monad.Trans.Except.Result                 (ResultT)
 import           Convex.Era                                        (ERA)
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     logInfoS,
@@ -54,11 +56,37 @@ class Monad m => MonadBlockchain m where
   queryEraHistory         :: m (EraHistory CardanoMode)
   networkId               :: m NetworkId -- ^ Get the network id
 
+instance MonadBlockchain m => MonadBlockchain (ResultT m) where
+  sendTx = lift . sendTx
+  utxoByTxIn = lift . utxoByTxIn
+  queryProtocolParameters = lift queryProtocolParameters
+  queryStakePools = lift queryStakePools
+  querySystemStart = lift querySystemStart
+  queryEraHistory = lift queryEraHistory
+  networkId = lift networkId
+
+instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
+  sendTx = lift . sendTx
+  utxoByTxIn = lift . utxoByTxIn
+  queryProtocolParameters = lift queryProtocolParameters
+  queryStakePools = lift queryStakePools
+  querySystemStart = lift querySystemStart
+  queryEraHistory = lift queryEraHistory
+  networkId = lift networkId
+
 {-| Modify the mockchain internals
 -}
 class MonadBlockchain m => MonadMockchain m where
   modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
+
+instance MonadMockchain m => MonadMockchain (ResultT m) where
+  modifySlot = lift . modifySlot
+  modifyUtxo = lift . modifyUtxo
+
+instance MonadMockchain m => MonadMockchain (ExceptT e m) where
+  modifySlot = lift . modifySlot
+  modifyUtxo = lift . modifyUtxo
 
 {-| Get the current slot number
 -}

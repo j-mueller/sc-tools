@@ -73,4 +73,5 @@ library
       plutus-tx,
       serialise,
       bytestring,
-      dlist
+      dlist,
+      either-result
