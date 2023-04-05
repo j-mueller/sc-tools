@@ -1,4 +1,6 @@
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-| Simple logging
 -}
 module Convex.MonadLog(
@@ -15,10 +17,12 @@ module Convex.MonadLog(
 
 import           Control.Monad              (unless)
 import           Control.Monad.Catch        (MonadCatch, MonadMask, MonadThrow)
+import           Control.Monad.Except       (MonadError)
 import           Control.Monad.IO.Class     (MonadIO (..))
-import           Control.Monad.Reader       (ReaderT (..), lift)
+import           Control.Monad.Reader       (ReaderT (..))
 import           Control.Monad.State        (StateT (..))
 import qualified Control.Monad.State.Strict as State.Strict
+import           Control.Monad.Trans.Class  (MonadTrans (..))
 import           Control.Monad.Trans.Except (ExceptT (..))
 import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import           Data.String                (IsString (..))
@@ -68,12 +72,22 @@ logWarnS = logWarn' . fromString
 newtype MonadLogIgnoreT m a = MonadLogIgnoreT { runMonadLogIgnoreT :: m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
 
+deriving newtype instance MonadError e m => MonadError e (MonadLogIgnoreT m)
+
+instance MonadTrans MonadLogIgnoreT where
+  lift = MonadLogIgnoreT
+
 instance Monad m => MonadLog (MonadLogIgnoreT m) where
   logInfo' _ = pure ()
   logWarn' _ = pure ()
 
 newtype MonadLogKatipT m a = MonadLogKatipT { runMonadLogKatipT :: m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
+
+deriving newtype instance MonadError e m => MonadError e (MonadLogKatipT m)
+
+instance MonadTrans MonadLogKatipT where
+  lift = MonadLogKatipT
 
 instance KatipContext m => MonadLog (MonadLogKatipT m) where
     logInfo' s =

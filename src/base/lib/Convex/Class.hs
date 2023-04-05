@@ -1,5 +1,7 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-| Typeclass for blockchain operations
 -}
 module Convex.Class(
@@ -29,6 +31,7 @@ import           Cardano.Api.Shelley                               (BabbageEra,
 import           Cardano.Ledger.Shelley.API                        (UTxO)
 import           Cardano.Slotting.Time                             (SystemStart)
 import           Control.Lens                                      (_1, view)
+import           Control.Monad.Except                              (MonadError)
 import           Control.Monad.IO.Class                            (MonadIO (..))
 import           Control.Monad.Reader                              (MonadTrans,
                                                                     ReaderT (..),
@@ -121,7 +124,9 @@ nextSlot = modifySlot (\s -> (succ s, ()))
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
 newtype MonadBlockchainCardanoNodeT m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT (LocalNodeConnectInfo CardanoMode) m a }
-  deriving newtype (Functor, Applicative, Monad, MonadTrans)
+  deriving newtype (Functor, Applicative, Monad, MonadTrans, MonadIO)
+
+deriving newtype instance MonadError e m => MonadError e (MonadBlockchainCardanoNodeT m)
 
 runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo CardanoMode -> MonadBlockchainCardanoNodeT m a -> m a
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runReaderT action info
