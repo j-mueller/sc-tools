@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE TupleSections    #-}
 {-# LANGUAGE TypeApplications #-}
 {-| Translating between cardano-api/cardano-ledger and plutus representations
 -}
@@ -44,7 +45,11 @@ module Convex.PlutusLedger(
 
   -- * POSIX Time
   unTransPOSIXTime,
-  transPOSIXTime
+  transPOSIXTime,
+
+  -- * Value
+  unTransTxOutValue,
+  unTransValue
 ) where
 
 import qualified Cardano.Api.Shelley       as C
@@ -53,6 +58,7 @@ import           Cardano.Ledger.Credential (Ptr (..))
 import qualified Cardano.Ledger.Mary.Value as Mary (AssetName (..))
 import           Data.ByteString.Short     (fromShort)
 import qualified Data.ByteString.Short     as Short
+import           Data.Functor              ((<&>))
 import           Data.Time.Clock.POSIX     (POSIXTime)
 import qualified Plutus.V1.Ledger.Api      as PV1
 import qualified Plutus.V1.Ledger.Value    as Value
@@ -167,3 +173,13 @@ transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToF
 
 unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
 unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
+
+unTransTxOutValue :: PV1.Value -> Maybe (C.TxOutValue C.BabbageEra)
+unTransTxOutValue value = C.TxOutValue C.MultiAssetInBabbageEra <$> unTransValue value
+
+unTransValue :: PV1.Value -> Maybe C.Value
+unTransValue =
+    fmap C.valueFromList . traverse toSingleton . Value.flattenValue
+  where
+    toSingleton (cs, tn, q) =
+        unTransAssetId (Value.assetClass cs tn) <&> (, C.Quantity q)
