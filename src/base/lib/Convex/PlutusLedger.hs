@@ -49,18 +49,25 @@ module Convex.PlutusLedger(
 
   -- * Value
   unTransTxOutValue,
-  unTransValue
+  unTransValue,
+
+  -- * Scripts
+  unTransPlutusScript
+
 ) where
 
 import qualified Cardano.Api.Shelley       as C
 import           Cardano.Ledger.BaseTypes  (CertIx (..), TxIx (..))
 import           Cardano.Ledger.Credential (Ptr (..))
 import qualified Cardano.Ledger.Mary.Value as Mary (AssetName (..))
+import qualified Codec.Serialise           as Codec
+import qualified Data.ByteString.Lazy      as BSL
 import           Data.ByteString.Short     (fromShort)
 import qualified Data.ByteString.Short     as Short
 import           Data.Functor              ((<&>))
 import           Data.Time.Clock.POSIX     (POSIXTime)
 import qualified Plutus.V1.Ledger.Api      as PV1
+import qualified Plutus.V1.Ledger.Scripts  as P
 import qualified Plutus.V1.Ledger.Value    as Value
 import qualified PlutusTx.Prelude          as PlutusTx
 
@@ -183,3 +190,11 @@ unTransValue =
   where
     toSingleton (cs, tn, q) =
         unTransAssetId (Value.assetClass cs tn) <&> (, C.Quantity q)
+
+unTransPlutusScript
+    :: C.SerialiseAsRawBytes plutusScript
+    => C.AsType plutusScript
+    -> P.Script
+    -> Maybe plutusScript
+unTransPlutusScript asPlutusScriptType =
+    C.deserialiseFromRawBytes asPlutusScriptType . BSL.toStrict . Codec.serialise
