@@ -8,6 +8,8 @@ module Convex.PlutusLedger(
   -- * Script hashes
   transScriptHash,
   unTransScriptHash,
+  unTransScriptDataHash,
+  unTransTxOutDatumHash,
 
   -- * Key hashes
   transPubKeyHash,
@@ -197,4 +199,11 @@ unTransPlutusScript
     -> P.Script
     -> Maybe plutusScript
 unTransPlutusScript asPlutusScriptType =
-    C.deserialiseFromRawBytes asPlutusScriptType . BSL.toStrict . Codec.serialise
+  C.deserialiseFromRawBytes asPlutusScriptType . BSL.toStrict . Codec.serialise
+
+unTransScriptDataHash :: P.DatumHash -> Maybe (C.Hash C.ScriptData)
+unTransScriptDataHash (P.DatumHash bs) =
+  C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) (PlutusTx.fromBuiltin bs)
+
+unTransTxOutDatumHash :: P.DatumHash -> Maybe (C.TxOutDatum ctx C.BabbageEra)
+unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.ScriptDataInBabbageEra <$> unTransScriptDataHash datumHash
