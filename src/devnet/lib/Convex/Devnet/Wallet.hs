@@ -110,3 +110,7 @@ instance Monad m => MonadLog (TracerMonadLogT m) where
     tr <- ask
     let rendered = Render.renderStrict (layoutPretty defaultLayoutOptions msg)
     lift (traceWith tr (WalletLogWarn rendered))
+  logDebug' msg = TracerMonadLogT $ do
+    tr <- ask
+    let rendered = Render.renderStrict (layoutPretty defaultLayoutOptions msg)
+    lift (traceWith tr (WalletLogWarn rendered))

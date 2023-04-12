@@ -184,6 +184,7 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
 instance MonadLog m => MonadLog (MonadBlockchainCardanoNodeT m) where
   logInfo' = lift . logInfo'
   logWarn' = lift . logWarn'
+  logDebug' = lift . logDebug'
 
 instance (MonadLog m, MonadFail m) => MonadFail (MonadBlockchainCardanoNodeT m) where
   fail s = MonadBlockchainCardanoNodeT $ do
