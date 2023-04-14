@@ -38,8 +38,13 @@ import           UnAda.OnChain.Types            (BuiltinData (FiniteExtended, Fi
 
 tests :: TestTree
 tests = testGroup "unit tests"
-  [ testCase "mint some un-Ada" canMintUnAda
-  , testCase "burn some un-Ada" canBurnUnAda
+  [ testGroup "Happy path"
+    [testCase "mint some un-Ada" canMintUnAda
+    , testCase "burn some un-Ada" canBurnUnAda
+    ]
+  , testGroup "attacks"
+    [ testCase "don't put enough Ada" (mochainFails $ attack NotEnoughAda)
+    ]
   , testGroup "ToData / FromData"
       [ testCaseSteps "toData UnAdaState" toDataUnAdaState
       , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
@@ -65,7 +70,7 @@ canBurnUnAda :: Assertion
 canBurnUnAda = mockchainSucceeds $ do
   (txi, (txo, st)) <- mintSomeUnAda
 
-  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 3_000_000
+  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 5_000_000
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput

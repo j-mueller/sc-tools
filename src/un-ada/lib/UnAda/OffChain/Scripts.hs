@@ -18,7 +18,7 @@ import           Cardano.Api.Shelley         (AssetId (..), AssetName,
                                               PaymentCredential, PlutusScriptV2,
                                               PolicyId, Script)
 import qualified Cardano.Api.Shelley         as C
-import           Convex.PlutusLedger         (toMaryAssetName, transAssetName,
+import           Convex.PlutusLedger         (toMaryAssetName, transAssetName, transScriptHash,
                                               transPolicyId)
 import           Convex.Scripts              (compiledCodeToScript)
 import qualified Plutus.V1.Ledger.Api        as PV1
@@ -57,7 +57,8 @@ unAdaPaymentCredential = C.PaymentCredentialByScript $ C.hashScript $ C.PlutusSc
 {-| The UnAda mps script
 -}
 mintingPolicyScript :: C.PlutusScript C.PlutusScriptV2
-mintingPolicyScript = compiledCodeToScript validatorScriptCompiled
+mintingPolicyScript =
+  compiledCodeToScript (mintingPolicyCompiled $ transScriptHash $ C.hashScript $ C.PlutusScript C.PlutusScriptV2 validatorScript)
 
 mintingPolicyId :: PolicyId
 mintingPolicyId = C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV2 mintingPolicyScript

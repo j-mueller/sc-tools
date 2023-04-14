@@ -27,7 +27,7 @@ unAdaMintingPolicy _validator (TokenName . unsafeDataAsB -> tokenName) _redeemer
       if totalValMinted currencySymbol tokenName (unsafeFromBuiltinData mint) ==
             (totalValLocked currencySymbol tokenName (unsafeFromBuiltinData outputs))
             - (totalValUnlocked currencySymbol tokenName (unsafeFromBuiltinData inputs))
-      then traceError "unAdaMintingPolicy: Success" ()
+      then ()
       else traceError "unAdaMintingPolicy: total value locked must equal total value minted" ()
     _ -> traceError "unAdaMintingPolicy: pattern match failure on TxInfoV2" ()
 unAdaMintingPolicy _ _ _ _ = traceError "unAdaMintingPolicy: pattern match failure on unAdaMintingPolicy" ()
