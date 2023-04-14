@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE ViewPatterns       #-}
@@ -8,20 +9,24 @@ tests
 ) where
 
 import qualified Cardano.Api.Shelley            as C
-import           Control.Lens                   (mapped, over)
+import           Control.Lens                   (_2, _Just, at, element, mapped,
+                                                 over)
 import           Control.Monad                  (void)
 import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
 import           Convex.Lenses                  (emptyTx)
 import qualified Convex.Lenses                  as L
+import           Convex.MockChain               (Mockchain, MockchainError (..))
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
-import           Convex.MockChain.Utils         (mockchainSucceeds)
+import           Convex.MockChain.Utils         (mockchainFails,
+                                                 mockchainSucceeds)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import           Data.Function                  ((&))
+import           Data.List                      (isPrefixOf)
 import           Plutus.V1.Ledger.Interval      (Extended (..), LowerBound (..),
                                                  interval)
 import           Plutus.V1.Ledger.Time          (POSIXTime (..), POSIXTimeRange)
@@ -43,7 +48,7 @@ tests = testGroup "unit tests"
     , testCase "burn some un-Ada" canBurnUnAda
     ]
   , testGroup "attacks"
-    [ testCase "don't put enough Ada" (mochainFails $ attack NotEnoughAda)
+    [ testCase "don't put enough Ada" (mockchainFails (attack NotEnoughAda) failWithTxBodyScriptExecutionError)
     ]
   , testGroup "ToData / FromData"
       [ testCaseSteps "toData UnAdaState" toDataUnAdaState
@@ -143,3 +148,24 @@ builtinPatternRange step = do
     x -> do
       step (show x)
       fail "unexpected format"
+
+data Attack = NotEnoughAda
+
+modTx :: Attack -> C.TxBodyContent v C.BabbageEra -> C.TxBodyContent v C.BabbageEra
+modTx = \case
+  NotEnoughAda ->
+    over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n - 1_000)
+
+attack :: Attack -> Mockchain ()
+attack att = do
+  let tx = modTx att (mintUnAda Defaults.networkId 1 10_000_000 emptyTx)
+  _ <- Wallet.w2 `paymentTo` Wallet.w1
+  void (balanceAndSubmit Wallet.w1 tx)
+
+failWithTxBodyScriptExecutionError :: MockchainError -> Assertion
+failWithTxBodyScriptExecutionError = \case
+  FailWith err
+    | "BalancingError (TxBodyScriptExecutionError" `isPrefixOf` err -> pure ()
+    | otherwise -> fail ("Wrong error: " <> err)
+  MockchainValidationFailed _err ->
+    fail "Unexpected MockchainValidationFailed"

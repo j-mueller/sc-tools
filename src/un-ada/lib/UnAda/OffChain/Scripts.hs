@@ -18,8 +18,8 @@ import           Cardano.Api.Shelley         (AssetId (..), AssetName,
                                               PaymentCredential, PlutusScriptV2,
                                               PolicyId, Script)
 import qualified Cardano.Api.Shelley         as C
-import           Convex.PlutusLedger         (toMaryAssetName, transAssetName, transScriptHash,
-                                              transPolicyId)
+import           Convex.PlutusLedger         (toMaryAssetName, transAssetName,
+                                              transPolicyId, transScriptHash)
 import           Convex.Scripts              (compiledCodeToScript)
 import qualified Plutus.V1.Ledger.Api        as PV1
 import           Plutus.V1.Ledger.Scripts    (ValidatorHash)
