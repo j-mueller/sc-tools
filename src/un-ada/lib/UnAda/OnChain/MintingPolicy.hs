@@ -10,28 +10,34 @@ module UnAda.OnChain.MintingPolicy (
 
 import           Plutus.V1.Ledger.Address    (Address (..))
 import           Plutus.V1.Ledger.Credential (Credential (..))
-import           Plutus.V1.Ledger.Scripts    (ValidatorHash (..))
+import           Plutus.V1.Ledger.Scripts    (Datum (..), MintingPolicyHash,
+                                              ValidatorHash (..))
 import           Plutus.V1.Ledger.Value      (CurrencySymbol (..),
                                               TokenName (..), Value, adaSymbol,
-                                              adaToken, valueOf)
+                                              adaToken, currencyMPSHash,
+                                              valueOf)
 import           Plutus.V2.Ledger.Contexts   (TxInInfo (..))
-import           Plutus.V2.Ledger.Tx         (TxOut (..))
+import           Plutus.V2.Ledger.Tx         (OutputDatum (..), TxOut (..))
 import           PlutusTx.Builtins           (unsafeDataAsB)
-import           PlutusTx.IsData.Class       (unsafeFromBuiltinData)
+import           PlutusTx.IsData.Class       (fromBuiltinData,
+                                              unsafeFromBuiltinData)
 import           PlutusTx.Prelude
 import           UnAda.OnChain.Types         (BuiltinData (ScriptContext, TxInfoV2, inputs, outputs, purpose, rest8, txInfo),
                                               TxInfoRest8 (TxInfoPartTwo, mint, validRange),
+                                              UnAdaState (..),
                                               scriptPurposeMinting, validRange)
 {-# INLINABLE unAdaMintingPolicy #-}
 unAdaMintingPolicy :: BuiltinData -> BuiltinData -> BuiltinData -> BuiltinData -> ()
 unAdaMintingPolicy (ValidatorHash . unsafeDataAsB -> validator) (TokenName . unsafeDataAsB -> tokenName) _redeemer ScriptContext{purpose, txInfo} = scriptPurposeMinting purpose $ \(unsafeFromBuiltinData -> currencySymbol) ->
   case txInfo of
     TxInfoV2{inputs, outputs, rest8=TxInfoPartTwo{validRange, mint}} ->
-      if totalValMinted currencySymbol tokenName (unsafeFromBuiltinData mint) ==
-            (adaLockedByScript validator (unsafeFromBuiltinData outputs))
-            - (adaUnlockedFromScript validator (unsafeFromBuiltinData inputs))
-      then ()
-      else traceError "unAdaMintingPolicy: total value locked must equal total value minted" ()
+      let hsh = currencyMPSHash currencySymbol
+      in
+        if totalValMinted currencySymbol tokenName (unsafeFromBuiltinData mint) ==
+            (adaLockedByScript hsh validator (unsafeFromBuiltinData outputs))
+            - (adaUnlockedFromScript hsh validator (unsafeFromBuiltinData inputs))
+        then ()
+        else traceError "unAdaMintingPolicy: total value locked must equal total value minted" ()
     _ -> traceError "unAdaMintingPolicy: pattern match failure on TxInfoV2" ()
 unAdaMintingPolicy _ _ _ _ = traceError "unAdaMintingPolicy: pattern match failure on unAdaMintingPolicy" ()
 
@@ -41,11 +47,16 @@ totalValMinted bs tn valueMinted =
   valueOf valueMinted bs tn
 
 {-# INLINEABLE adaLockedByScript #-}
-adaLockedByScript :: ValidatorHash -> [TxOut] -> Integer
-adaLockedByScript vali outputs = foldl (\s o -> s + getVl o) 0 outputs where
-  getVl TxOut{txOutAddress=Address (ScriptCredential s) _, txOutValue} | s == vali = valueOf txOutValue adaSymbol adaToken
+adaLockedByScript :: MintingPolicyHash -> ValidatorHash -> [TxOut] -> Integer
+adaLockedByScript ownHash vali outputs = foldl (\s o -> s + getVl o) 0 outputs where
+  getVl TxOut{txOutAddress=Address (ScriptCredential s) _, txOutValue, txOutDatum}
+    | s == vali =
+      case txOutDatum of
+        OutputDatum (Datum (fromBuiltinData -> Just UnAdaState{mps}))
+          | mps == ownHash -> valueOf txOutValue adaSymbol adaToken
+        _ -> 0
   getVl _ = 0
 
 {-# INLINEABLE adaUnlockedFromScript #-}
-adaUnlockedFromScript :: ValidatorHash -> [TxInInfo] -> Integer
-adaUnlockedFromScript vali inputs = adaLockedByScript vali (fmap txInInfoResolved inputs)
+adaUnlockedFromScript :: MintingPolicyHash -> ValidatorHash -> [TxInInfo] -> Integer
+adaUnlockedFromScript ownHash vali inputs = adaLockedByScript ownHash vali (fmap txInInfoResolved inputs)

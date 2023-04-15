@@ -15,8 +15,9 @@ import           Cardano.Api            (BabbageEra, CtxTx, NetworkId, Quantity,
 import qualified Cardano.Api.Shelley    as C
 import           Control.Lens           (_1, _2, _3, preview, set, to, view,
                                          (^.))
-import           Convex.BuildTx         (TxBuild, mintPlutusV2, payToPlutusV2,
-                                         spendPlutusV2)
+import           Convex.BuildTx         (TxBuild, mintPlutusV2,
+                                         payToPlutusV2InlineDatum,
+                                         spendPlutusV2InlineDatum)
 import qualified Convex.Lenses          as L
 import           Convex.Scripts         (fromScriptData)
 import           Convex.Utils           (txnUtxos)
@@ -42,16 +43,16 @@ addOutputFor ::
 addOutputFor n spendAfter q =
   let vl = lovelaceToValue (quantityToLovelace q)
       dt = UnAdaState{spendAfter, mps = mintingPolicyHash}
-  in payToPlutusV2 n validatorScript dt vl
+  in payToPlutusV2InlineDatum n validatorScript dt vl
 
-burnUnAda :: NetworkId -> POSIXTime -> TxIn -> TxOut CtxTx BabbageEra -> UnAdaState -> Quantity -> TxBuild
-burnUnAda n currentTime txi txOut oldState q =
+burnUnAda :: NetworkId -> POSIXTime -> TxIn -> TxOut CtxTx BabbageEra -> Quantity -> TxBuild
+burnUnAda n currentTime txi txOut q =
   let unlockedVl = view (L._TxOut . _2 . L._TxOutValue) txOut
       unlockedQuantity = lovelaceToQuantity (selectLovelace unlockedVl)
       remainingQuantity = max 0 (unlockedQuantity - q)
       dummyRange = (C.TxValidityLowerBound C.ValidityLowerBoundInBabbageEra 0, C.TxValidityUpperBound C.ValidityUpperBoundInBabbageEra 200)
   in
-    spendPlutusV2 txi validatorScript oldState ()
+    spendPlutusV2InlineDatum txi validatorScript ()
     . mintPlutusV2 mintingPolicyScript () assetName (negate q)
     . set L.txValidityRange dummyRange
     . if remainingQuantity > 0
@@ -62,8 +63,8 @@ extract :: TxOut CtxTx BabbageEra -> Maybe UnAdaState
 extract txOut
   | preview (L._TxOut . _1 . L._AddressInEra . L._Address . _2 . to C.fromShelleyPaymentCredential) txOut == Just unAdaPaymentCredential =
     case txOut ^. L._TxOut . _3 of
-      C.TxOutDatumInTx _ (fromScriptData -> Just st) -> Just st
-      _                                              -> Nothing
+      C.TxOutDatumInline _ (fromScriptData -> Just st) -> Just st
+      _                                                -> Nothing
   | otherwise = Nothing
 
 findUnAdaOutputs :: Tx BabbageEra -> [(TxIn, (TxOut CtxTx BabbageEra, UnAdaState))]

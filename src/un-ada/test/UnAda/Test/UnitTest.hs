@@ -77,9 +77,9 @@ mintSomeUnAda = do
 
 canBurnUnAda :: Assertion
 canBurnUnAda = mockchainSucceeds $ do
-  (txi, (txo, st)) <- mintSomeUnAda
+  (txi, (txo, _)) <- mintSomeUnAda
 
-  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 5_000_000
+  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo 5_000_000
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
