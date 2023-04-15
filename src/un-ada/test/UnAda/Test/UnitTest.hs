@@ -27,6 +27,7 @@ import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import           Data.Function                  ((&))
 import           Data.List                      (isPrefixOf)
+import           Data.String                    (IsString (..))
 import           Plutus.V1.Ledger.Interval      (Extended (..), LowerBound (..),
                                                  interval)
 import           Plutus.V1.Ledger.Time          (POSIXTime (..), POSIXTimeRange)
@@ -48,8 +49,7 @@ tests = testGroup "unit tests"
     , testCase "burn some un-Ada" canBurnUnAda
     ]
   , testGroup "attacks"
-    [ testCase "don't put enough Ada" (mockchainFails (attack NotEnoughAda) failWithTxBodyScriptExecutionError)
-    ]
+    (testAttack <$> [NotEnoughAda, TooMuchAda])
   , testGroup "ToData / FromData"
       [ testCaseSteps "toData UnAdaState" toDataUnAdaState
       , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
@@ -58,6 +58,10 @@ tests = testGroup "unit tests"
       , testCaseSteps "builtin pattern POSIXTimeRange" builtinPatternRange
       ]
   ]
+
+testAttack :: Attack -> TestTree
+testAttack att =
+  testCase (fromString $ attackName att) (mockchainFails (attack att) failWithTxBodyScriptExecutionError)
 
 canMintUnAda :: Assertion
 canMintUnAda = mockchainSucceeds mintSomeUnAda
@@ -149,12 +153,21 @@ builtinPatternRange step = do
       step (show x)
       fail "unexpected format"
 
-data Attack = NotEnoughAda
+data Attack =
+  NotEnoughAda
+  | TooMuchAda
+
+attackName :: Attack -> String
+attackName = \case
+  NotEnoughAda -> "not enough Ada"
+  TooMuchAda   -> "too much Ada"
 
 modTx :: Attack -> C.TxBodyContent v C.BabbageEra -> C.TxBodyContent v C.BabbageEra
 modTx = \case
   NotEnoughAda ->
     over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n - 1_000)
+  TooMuchAda ->
+    over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n + 1_000)
 
 attack :: Attack -> Mockchain ()
 attack att = do
