@@ -10,7 +10,7 @@ tests
 
 import qualified Cardano.Api.Shelley            as C
 import           Control.Lens                   (_2, _Just, at, element, mapped,
-                                                 over)
+                                                 over, preview)
 import           Control.Monad                  (void)
 import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
 import           Convex.Class                   (MonadBlockchain (..),
@@ -45,11 +45,11 @@ import           UnAda.OnChain.Types            (BuiltinData (FiniteExtended, Fi
 tests :: TestTree
 tests = testGroup "unit tests"
   [ testGroup "Happy path"
-    [testCase "mint some un-Ada" canMintUnAda
+    [ testCase "mint some un-Ada" canMintUnAda
     , testCase "burn some un-Ada" canBurnUnAda
     ]
   , testGroup "attacks"
-    (testAttack <$> [NotEnoughAda, TooMuchAda])
+    (testAttack <$> [NotEnoughAda, TooMuchAda, DuplicateOutput, DeleteOutput])
   , testGroup "ToData / FromData"
       [ testCaseSteps "toData UnAdaState" toDataUnAdaState
       , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
@@ -156,11 +156,15 @@ builtinPatternRange step = do
 data Attack =
   NotEnoughAda
   | TooMuchAda
+  | DuplicateOutput
+  | DeleteOutput
 
 attackName :: Attack -> String
 attackName = \case
-  NotEnoughAda -> "not enough Ada"
-  TooMuchAda   -> "too much Ada"
+  NotEnoughAda    -> "not enough Ada"
+  TooMuchAda      -> "too much Ada"
+  DuplicateOutput -> "duplicate output"
+  DeleteOutput    -> "delete output"
 
 modTx :: Attack -> C.TxBodyContent v C.BabbageEra -> C.TxBodyContent v C.BabbageEra
 modTx = \case
@@ -168,6 +172,12 @@ modTx = \case
     over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n - 1_000)
   TooMuchAda ->
     over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n + 1_000)
+  DuplicateOutput -> \tx ->
+    let first = preview (L.txOuts . element 0) tx
+    in case first of
+      Nothing -> tx
+      Just o  -> over L.txOuts ((:) o) tx
+  DeleteOutput -> over L.txOuts tail
 
 attack :: Attack -> Mockchain ()
 attack att = do
