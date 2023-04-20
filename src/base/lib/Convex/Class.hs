@@ -77,6 +77,15 @@ instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
   queryEraHistory = lift queryEraHistory
   networkId = lift networkId
 
+instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
+  sendTx = lift . sendTx
+  utxoByTxIn = lift . utxoByTxIn
+  queryProtocolParameters = lift queryProtocolParameters
+  queryStakePools = lift queryStakePools
+  querySystemStart = lift querySystemStart
+  queryEraHistory = lift queryEraHistory
+  networkId = lift networkId
+
 {-| Modify the mockchain internals
 -}
 class MonadBlockchain m => MonadMockchain m where
@@ -84,6 +93,10 @@ class MonadBlockchain m => MonadMockchain m where
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
 
 instance MonadMockchain m => MonadMockchain (ResultT m) where
+  modifySlot = lift . modifySlot
+  modifyUtxo = lift . modifyUtxo
+
+instance MonadMockchain m => MonadMockchain (ReaderT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
