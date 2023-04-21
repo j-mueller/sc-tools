@@ -39,6 +39,8 @@ import           Control.Monad.Reader                              (MonadTrans,
                                                                     ReaderT (..),
                                                                     ask, asks,
                                                                     lift)
+import qualified Control.Monad.State                               as LazyState
+import qualified Control.Monad.State.Strict                        as StrictState
 import           Control.Monad.Trans.Except                        (ExceptT)
 import           Control.Monad.Trans.Except.Result                 (ResultT)
 import           Convex.Era                                        (ERA)
@@ -88,6 +90,24 @@ instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
   queryEraHistory = lift queryEraHistory
   networkId = lift networkId
 
+instance MonadBlockchain m => MonadBlockchain (StrictState.StateT e m) where
+  sendTx = lift . sendTx
+  utxoByTxIn = lift . utxoByTxIn
+  queryProtocolParameters = lift queryProtocolParameters
+  queryStakePools = lift queryStakePools
+  querySystemStart = lift querySystemStart
+  queryEraHistory = lift queryEraHistory
+  networkId = lift networkId
+
+instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
+  sendTx = lift . sendTx
+  utxoByTxIn = lift . utxoByTxIn
+  queryProtocolParameters = lift queryProtocolParameters
+  queryStakePools = lift queryStakePools
+  querySystemStart = lift querySystemStart
+  queryEraHistory = lift queryEraHistory
+  networkId = lift networkId
+
 {-| Modify the mockchain internals
 -}
 class MonadBlockchain m => MonadMockchain m where
@@ -103,6 +123,14 @@ instance MonadMockchain m => MonadMockchain (ReaderT e m) where
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (ExceptT e m) where
+  modifySlot = lift . modifySlot
+  modifyUtxo = lift . modifyUtxo
+
+instance MonadMockchain m => MonadMockchain (StrictState.StateT e m) where
+  modifySlot = lift . modifySlot
+  modifyUtxo = lift . modifyUtxo
+
+instance MonadMockchain m => MonadMockchain (LazyState.StateT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
