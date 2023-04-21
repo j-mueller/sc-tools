@@ -12,6 +12,8 @@ module Convex.Class(
   setPOSIXTime,
   nextSlot,
   setTimeToValidRange,
+  getUtxo,
+  setUtxo,
 
   -- * Implementation
   MonadBlockchainCardanoNodeT(..),
@@ -113,6 +115,14 @@ getSlot = modifySlot (\s -> (s, s))
 -}
 setSlot :: MonadMockchain m => SlotNo -> m ()
 setSlot s = modifySlot (\_ -> (s, ()))
+
+{-| Get the UTxO set |-}
+getUtxo :: MonadMockchain m => m (UTxO ERA)
+getUtxo = modifyUtxo (\s -> (s, s))
+
+{-| Set the UTxO set |-}
+setUtxo :: MonadMockchain m => UTxO ERA -> m ()
+setUtxo u = modifyUtxo (const (u, ()))
 
 {-| Set the slot number to the slot that contains the given POSIX time.
 -}
