@@ -5,6 +5,7 @@ module Convex.MockChain.Defaults(
   epochSize,
   slotLength,
   protocolParameters,
+  ledgerProtocolParameters,
   networkId,
   systemStart,
   globals,
@@ -29,12 +30,10 @@ import           Cardano.Api.Shelley                  (AnyPlutusScriptVersion (.
                                                        ShelleyBasedEra (..),
                                                        shelleyGenesisDefaults,
                                                        toLedgerPParams)
-import           Cardano.Ledger.Babbage               (BabbageEra)
 import           Cardano.Ledger.Babbage.PParams       (retractPP)
 import           Cardano.Ledger.Babbage.Translation   (coinsPerUTxOWordToCoinsPerUTxOByte)
 import           Cardano.Ledger.BaseTypes             (boundRational)
 import           Cardano.Ledger.Core                  (PParams)
-import           Cardano.Ledger.Crypto                (StandardCrypto)
 import           Cardano.Ledger.Shelley.API           (Coin (..), Globals,
                                                        ShelleyGenesis (..),
                                                        mkShelleyGlobals)
@@ -44,6 +43,7 @@ import           Cardano.Slotting.EpochInfo           (fixedEpochInfo)
 import           Cardano.Slotting.Time                (SlotLength,
                                                        SystemStart (..),
                                                        mkSlotLength)
+import           Convex.Era                           (ERA)
 import           Convex.NodeParams                    (NodeParams (..))
 import           Data.Map                             (fromList)
 import           Data.Maybe                           (fromMaybe)
@@ -55,7 +55,7 @@ import qualified Ouroboros.Consensus.HardFork.History as Ouroboros
 import qualified Ouroboros.Consensus.Util.Counting    as Ouroboros
 import           PlutusCore                           (defaultCostModelParams)
 
-type MockchainEra = BabbageEra StandardCrypto
+type MockchainEra = ERA
 
 networkId :: NetworkId
 networkId = Testnet (NetworkMagic 0)
@@ -118,6 +118,9 @@ protocolParameters =
          in Just $ Lovelace coinsPerUTxOByte
     }
 
+ledgerProtocolParameters :: PParams MockchainEra
+ledgerProtocolParameters = toLedgerPParams ShelleyBasedEraBabbage protocolParameters
+
 globals :: NodeParams -> Globals
 globals params@NodeParams { npProtocolParameters, npSlotLength } = mkShelleyGlobals
   (genesisDefaultsFromParams params)
@@ -136,7 +139,7 @@ genesisDefaultsFromParams params@NodeParams { npNetworkId } = shelleyGenesisDefa
 
 -- | Convert `Params` to cardano-ledger `PParams`
 pParams :: NodeParams -> PParams MockchainEra
-pParams NodeParams { npProtocolParameters } = toLedgerPParams ShelleyBasedEraBabbage npProtocolParameters
+pParams NodeParams { npLedgerParams } = npLedgerParams
 
 {-| 'NodeParams' with default values for testing
 -}
@@ -145,6 +148,7 @@ nodeParams =
   NodeParams
     { npNetworkId = networkId
     , npProtocolParameters = protocolParameters
+    , npLedgerParams = ledgerProtocolParameters
     , npSystemStart = systemStart
     , npEraHistory = eraHistory
     , npStakePools = mempty

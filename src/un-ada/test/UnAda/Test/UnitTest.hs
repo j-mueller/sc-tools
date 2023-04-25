@@ -75,7 +75,7 @@ unAdaPaymentTo q wFrom wTo = do
   let vl = unLovelaceValue q
       tx = emptyTx
             & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.protocolParameters)
+            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom

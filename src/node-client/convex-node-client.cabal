@@ -50,7 +50,6 @@ library
       cardano-api >= 1.35.3,
       cardano-ledger-byron,
       cardano-ledger-alonzo,
-      cardano-ledger-babbage,
       cardano-ledger-shelley,
       cardano-ledger-core,
       cardano-crypto-wrapper,

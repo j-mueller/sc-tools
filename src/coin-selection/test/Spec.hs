@@ -77,7 +77,7 @@ putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
   let tx = emptyTx
             & payToPlutusV1Inline (Wallet.addressInEra Defaults.networkId wallet) txInscript (C.lovelaceToValue 1_000_000)
-            & setMinAdaDepositAll Defaults.protocolParameters
+            & setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   pure (C.TxIn txId (C.TxIx 0))
 
@@ -106,7 +106,7 @@ nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
       tx = emptyTx
             & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.protocolParameters)
+            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom

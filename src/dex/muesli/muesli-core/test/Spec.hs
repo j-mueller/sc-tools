@@ -63,7 +63,7 @@ putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
   let tx = emptyTx
             & payToPlutusV2Inline (Wallet.addressInEra Defaults.networkId wallet) Muesli.orderBookV3 (C.lovelaceToValue 1_000_000)
-            & setMinAdaDepositAll Defaults.protocolParameters
+            & setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   pure (C.TxIn txId (C.TxIx 0))
 

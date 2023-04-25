@@ -322,7 +322,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     Cardano.Api.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState . _1 . to (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage))
     let mp' = Map.restrictKeys mp txIns
     pure (Cardano.Api.UTxO mp')
-  queryProtocolParameters = MockchainT (asks npProtocolParameters)
+  queryProtocolParameters = MockchainT ((,) <$> asks npProtocolParameters <*> asks npLedgerParams)
   queryStakePools = MockchainT (asks npStakePools)
   networkId = MockchainT (asks npNetworkId)
   querySystemStart = MockchainT (asks npSystemStart)

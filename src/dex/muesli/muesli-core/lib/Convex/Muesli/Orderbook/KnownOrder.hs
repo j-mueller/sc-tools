@@ -77,7 +77,7 @@ orderTxOut :: C.ProtocolParameters -> KnownOrder -> C.TxOut C.CtxTx C.BabbageEra
 orderTxOut params KnownOrder{orderAsk, orderReturnAddress} =
   let value = C.valueFromList [orderAsk]
       addr = C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) orderReturnAddress
-  in BuildTx.setMinAdaDeposit params $ BuildTx.payToAddressTxOut addr value
+  in BuildTx.setMinAdaDeposit (C.toLedgerPParams C.ShelleyBasedEraBabbage params) $ BuildTx.payToAddressTxOut addr value
 
 mkOrder ::
   KeyHash 'Payment StandardCrypto ->

@@ -30,6 +30,7 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     ProtocolParameters,
                                                                     SlotNo, Tx,
                                                                     TxId)
+import qualified Cardano.Ledger.Core                               as Core
 import           Cardano.Ledger.Shelley.API                        (UTxO)
 import           Cardano.Slotting.Time                             (SystemStart)
 import           Control.Lens                                      (_1, view)
@@ -44,6 +45,7 @@ import qualified Control.Monad.State.Strict                        as StrictStat
 import           Control.Monad.Trans.Except                        (ExceptT)
 import           Control.Monad.Trans.Except.Result                 (ResultT)
 import           Convex.Era                                        (ERA)
+import qualified Convex.Era                                        as Ledger.Era
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     logInfoS,
                                                                     logWarnS)
@@ -57,7 +59,7 @@ import qualified Plutus.V1.Ledger.Time                             as PV1
 class Monad m => MonadBlockchain m where
   sendTx                  :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m ProtocolParameters -- ^ Get the protocol parameters
+  queryProtocolParameters :: m (ProtocolParameters, Core.PParams Ledger.Era.ERA) -- ^ Get the protocol parameters
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m (EraHistory CardanoMode)
@@ -220,8 +222,9 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
   utxoByTxIn txIns =
     runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
 
-  queryProtocolParameters =
-    runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
+  queryProtocolParameters = do
+    p <- runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
+    return (p, C.toLedgerPParams C.ShelleyBasedEraBabbage p)
 
   queryStakePools =
     runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))

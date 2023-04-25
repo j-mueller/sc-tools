@@ -32,16 +32,20 @@ module Convex.BuildTx(
   setMinAdaDepositAll
   ) where
 
-import           Cardano.Api.Shelley  (Hash, NetworkId, PaymentKey,
-                                       PlutusScript, PlutusScriptV1,
-                                       PlutusScriptV2, ScriptData, ScriptHash)
-import qualified Cardano.Api.Shelley  as C
-import           Control.Lens         (_1, _2, at, mapped, over, set, (&))
-import qualified Convex.Lenses        as L
-import           Convex.Scripts       (toScriptData)
-import qualified Data.Map             as Map
-import           Data.Maybe           (fromMaybe)
-import qualified Plutus.V1.Ledger.Api as Plutus
+import           Cardano.Api.Shelley             (Hash, NetworkId, PaymentKey,
+                                                  PlutusScript, PlutusScriptV1,
+                                                  PlutusScriptV2, ScriptData,
+                                                  ScriptHash)
+import qualified Cardano.Api.Shelley             as C
+import qualified Cardano.Ledger.Core             as CLedger
+import           Control.Lens                    (_1, _2, at, mapped, over, set,
+                                                  (&))
+import qualified Convex.CoinSelection.CardanoApi as CC
+import qualified Convex.Lenses                   as L
+import           Convex.Scripts                  (toScriptData)
+import qualified Data.Map                        as Map
+import           Data.Maybe                      (fromMaybe)
+import qualified Plutus.V1.Ledger.Api            as Plutus
 
 type TxBuild = C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
 
@@ -160,23 +164,23 @@ setScriptsValid = set L.txScriptValidity (C.TxScriptValidity C.TxScriptValidityS
 {-| Set the Ada component in an output's value to at least the amount needed to cover the
 minimum UTxO deposit for this output
 -}
-setMinAdaDeposit :: C.ProtocolParameters -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
+setMinAdaDeposit :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
 setMinAdaDeposit params txOut =
   let minUtxo = minAdaDeposit params txOut
   in txOut & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minUtxo) (Just . max minUtxo))
 
-minAdaDeposit :: C.ProtocolParameters -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
+minAdaDeposit :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
 minAdaDeposit params txOut =
   let txo = txOut
               -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
               -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
               & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just $ C.Quantity 3_000_000) Just)
   in fromMaybe (C.Quantity 0) $ do
-        k <- either (const Nothing) pure (C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txo params)
+        k <- either (const Nothing) pure (CC.calculateMinimumUTxO txo params)
         C.Lovelace l <- C.valueToLovelace k
         pure (C.Quantity l)
 
 {-| Apply 'setMinAdaDeposit' to all outputs
 -}
-setMinAdaDepositAll :: C.ProtocolParameters -> TxBuild
+setMinAdaDepositAll :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> TxBuild
 setMinAdaDepositAll params = over (L.txOuts . mapped) (setMinAdaDeposit params)
