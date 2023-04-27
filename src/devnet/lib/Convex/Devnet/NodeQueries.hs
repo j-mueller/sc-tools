@@ -1,5 +1,7 @@
 {-# LANGUAGE LambdaCase   #-}
 {-# LANGUAGE ViewPatterns #-}
+{-| Helper functions for querying a local @cardano-node@ using the socket interface
+-}
 module Convex.Devnet.NodeQueries(
   querySystemStart,
   queryEraHistory,
@@ -51,10 +53,22 @@ data QueryException
 
 instance Exception QueryException
 
-querySystemStart :: NetworkId -> FilePath -> IO SystemStart
+-- | Get the 'SystemStart' from the node
+querySystemStart ::
+  NetworkId ->
+    -- ^ network Id to use for node query
+  FilePath ->
+    -- ^ Node socket
+  IO SystemStart
 querySystemStart = queryLocalState C.QuerySystemStart
 
-queryEraHistory :: NetworkId -> FilePath -> IO (EraHistory CardanoMode)
+-- | Get the 'EraHistory' from the node
+queryEraHistory ::
+  NetworkId ->
+    -- ^ network Id to use for node query
+  FilePath ->
+    -- ^ Node socket
+  IO (EraHistory CardanoMode)
 queryEraHistory = queryLocalState (C.QueryEraHistory C.CardanoModeIsMultiEra)
 
 queryLocalState :: QueryInMode CardanoMode b -> NetworkId -> FilePath -> IO b
@@ -78,12 +92,24 @@ cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots
 queryTipBlock :: NetworkId -> FilePath -> IO (WithOrigin BlockNo)
 queryTipBlock = queryLocalState C.QueryChainBlockNo
 
-queryTip :: NetworkId -> FilePath -> IO (SlotNo, C.Hash C.BlockHeader)
+-- | Get the tip (slot no. and block hash) from the node
+queryTip ::
+  NetworkId ->
+    -- ^ network Id to use for node query
+  FilePath ->
+    -- ^ Node socket
+  IO (SlotNo, C.Hash C.BlockHeader)
 queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) networkId socket >>= \case
   C.ChainPointAtGenesis -> failure "queryTip: chain point at genesis"
   C.ChainPoint slot hsh -> pure (slot, hsh)
 
-queryTipSlotNo :: NetworkId -> FilePath -> IO SlotNo
+-- | Get the slot no of the current tip from the node
+queryTipSlotNo ::
+  NetworkId ->
+    -- ^ network Id to use for node query
+  FilePath ->
+    -- ^ Node socket
+  IO SlotNo
 queryTipSlotNo networkId socket = fst <$> queryTip networkId socket
 
 -- | Query UTxO for all given addresses at given point.

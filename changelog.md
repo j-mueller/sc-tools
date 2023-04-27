@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-* `convex-base`: Added `Convex.PlutusLedger.transAddressInEra`
+### Added
+
+* `convex-base`: `Convex.PlutusLedger.transAddressInEra`
+* `convex-devnet`: Some haddocks in `Convex.Devnet.NodeQueries`
 
 ## [0.0.1] - 2023-04-26
 
