@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs            #-}
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TupleSections    #-}
@@ -40,6 +41,7 @@ module Convex.PlutusLedger(
   unTransStakeAddressReference,
 
   unTransAddressInEra,
+  transAddressInEra,
 
   -- * Tx IDs
   unTransTxOutRef,
@@ -166,6 +168,16 @@ unTransAddressInEra networkId (PV1.Address cred staking) =
       <$> unTransCredential cred
       <*> unTransStakeAddressReference staking
       )
+
+-- | @cardano-api@ address to @plutus@ address. Returns 'Nothing' for
+-- | byron addresses.
+transAddressInEra :: C.AddressInEra C.BabbageEra -> Maybe PV1.Address
+transAddressInEra = \case
+  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) (C.ShelleyAddress _ p s) ->
+    Just $ PV1.Address
+      (transCredential $ C.fromShelleyPaymentCredential p)
+      (transStakeAddressReference $ C.fromShelleyStakeReference s)
+  C.AddressInEra C.ByronAddressInAnyEra _ -> Nothing
 
 unTransTxOutRef :: PV1.TxOutRef -> Maybe C.TxIn
 unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId=PV1.TxId bs, PV1.txOutRefIdx} =
