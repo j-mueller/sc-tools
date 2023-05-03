@@ -55,38 +55,43 @@ module Convex.Utxos(
   changeForAddress
   ) where
 
-import           Cardano.Api                   (AddressInEra, BabbageEra,
-                                                Block (..), BlockInMode (..),
-                                                CardanoMode, EraInMode (..),
-                                                PaymentCredential,
-                                                StakeCredential, Tx (..), TxId,
-                                                TxIn (..), TxIx (..), UTxO (..),
-                                                Value)
-import qualified Cardano.Api                   as C
-import           Cardano.Api.Shelley           (TxBody (..))
-import qualified Cardano.Api.Shelley           as CS
-import qualified Cardano.Ledger.Babbage.TxBody as Babbage.TxBody
-import qualified Cardano.Ledger.BaseTypes      as CT
-import qualified Cardano.Ledger.Credential     as Shelley
-import           Cardano.Ledger.Crypto         (StandardCrypto)
-import qualified Cardano.Ledger.TxIn           as CT
-import           Control.Lens                  (_1, _2, _3, makeLenses,
-                                                makePrisms, over, preview, view)
-import qualified Convex.Lenses                 as L
-import           Data.Aeson                    (FromJSON, ToJSON)
-import           Data.Bifunctor                (Bifunctor (..))
-import           Data.DList                    (DList)
-import qualified Data.DList                    as DList
-import           Data.Map.Strict               (Map)
-import qualified Data.Map.Strict               as Map
-import           Data.Maybe                    (isJust, isNothing, listToMaybe,
-                                                mapMaybe)
-import qualified Data.Set                      as Set
-import           Data.Text                     (Text)
-import qualified Data.Text                     as Text
-import           Prelude                       hiding (null)
-import           Prettyprinter                 (Doc, Pretty (..), hang, parens,
-                                                viaShow, vsep, (<+>))
+import           Cardano.Api                     (AddressInEra, BabbageEra,
+                                                  Block (..), BlockInMode (..),
+                                                  CardanoMode, EraInMode (..),
+                                                  PaymentCredential, ScriptData,
+                                                  StakeCredential, Tx (..),
+                                                  TxId, TxIn (..), TxIx (..),
+                                                  UTxO (..), Value)
+import qualified Cardano.Api                     as C
+import           Cardano.Api.Shelley             (ExecutionUnits, TxBody (..))
+import qualified Cardano.Api.Shelley             as CS
+import qualified Cardano.Ledger.Alonzo.Scripts   as Scripts
+import           Cardano.Ledger.Alonzo.TxWitness (unRedeemers)
+import qualified Cardano.Ledger.Alonzo.TxWitness as TxWitness
+import qualified Cardano.Ledger.Babbage.TxBody   as Babbage.TxBody
+import qualified Cardano.Ledger.BaseTypes        as CT
+import qualified Cardano.Ledger.Credential       as Shelley
+import           Cardano.Ledger.Crypto           (StandardCrypto)
+import qualified Cardano.Ledger.TxIn             as CT
+import           Control.Lens                    (_1, _2, _3, makeLenses,
+                                                  makePrisms, over, preview,
+                                                  view)
+import qualified Convex.Lenses                   as L
+import           Data.Aeson                      (FromJSON, ToJSON)
+import           Data.Bifunctor                  (Bifunctor (..))
+import           Data.DList                      (DList)
+import qualified Data.DList                      as DList
+import           Data.Map.Strict                 (Map)
+import qualified Data.Map.Strict                 as Map
+import           Data.Maybe                      (isJust, isNothing,
+                                                  listToMaybe, mapMaybe)
+import qualified Data.Set                        as Set
+import           Data.Text                       (Text)
+import qualified Data.Text                       as Text
+import           GHC.Word                        (Word64)
+import           Prelude                         hiding (null)
+import           Prettyprinter                   (Doc, Pretty (..), hang,
+                                                  parens, viaShow, vsep, (<+>))
 import qualified Prettyprinter
 
 type AddressCredential = Shelley.PaymentCredential StandardCrypto
@@ -232,13 +237,14 @@ data AddUtxoEvent a =
 -}
 data RemoveUtxoEvent a =
   RemoveUtxoEvent
-    { rueEvent :: !a
-    , rueTxOut :: !(C.TxOut C.CtxTx C.BabbageEra)
-    , rueTxIn  :: !TxIn
-    , rueTxId  :: !TxId
+    { rueEvent    :: !a
+    , rueTxOut    :: !(C.TxOut C.CtxTx C.BabbageEra)
+    , rueTxIn     :: !TxIn
+    , rueTxId     :: !TxId
     -- ^ Id of the transaction that spent the output
-    , rueTx    :: C.Tx BabbageEra
+    , rueTx       :: C.Tx BabbageEra
     -- ^ The transaction that spent the output
+    , rueRedeemer :: Maybe (ScriptData, ExecutionUnits) -- fromAlonzoData
     }
 
 {-| The 'UtxoChange' represented by the event.
@@ -384,8 +390,15 @@ extractBabbageTxn ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
 
       allOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody' scriptData
 
-      checkInput :: TxIn -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))
-      checkInput txIn = fmap (txIn,) $ Map.lookup txIn _utxos
+      txReds = case scriptData of
+              C.TxBodyScriptData C.ScriptDataInBabbageEra _ r -> unRedeemers r
+              _                                               -> mempty
+
+      checkInput :: (Word64, TxIn) -> Maybe (TxIn, ((C.TxOut C.CtxTx C.BabbageEra, a), Maybe (ScriptData, ExecutionUnits)))
+      checkInput (idx, txIn) = fmap (txIn,) $ do
+        o <- Map.lookup txIn _utxos
+        let redeemer = fmap (bimap CS.fromAlonzoData CS.fromAlonzoExUnits) (Map.lookup (TxWitness.RdmrPtr Scripts.Spend idx) txReds)
+        pure (o, redeemer)
 
       checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))
       checkOutput txIx_ txOut
@@ -396,7 +409,7 @@ extractBabbageTxn ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
 
       mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTxId = txid, aueTx = theTx}
 
-      mkO (rueTxIn, (rueTxOut, rueEvent)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = theTx}
+      mkO (rueTxIn, ((rueTxOut, rueEvent), rueRedeemer)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = theTx, rueRedeemer}
 
       _outputsAdded =
         DList.fromList
@@ -408,6 +421,7 @@ extractBabbageTxn ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
         DList.fromList
         $ fmap (Right . mkO)
         $ mapMaybe checkInput
+        $ zip [0..] -- for redeemer pointers
         $ fmap (uncurry TxIn . bimap CS.fromShelleyTxId txIx . (\(CT.TxIn i n) -> (i, n)))
         $ Set.toList inputs
 

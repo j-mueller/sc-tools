@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `convex-base`
   - `Convex.PlutusLedger.transAddressInEra`
   - `Convex.Utxos.singleton`
+  - `Convex.Utxos`: Added redeemer and ex units to `RemoveUtxoEvent`
 * `convex-devnet`: Some haddocks in `Convex.Devnet.NodeQueries`
 
 ## [0.0.1] - 2023-04-26
