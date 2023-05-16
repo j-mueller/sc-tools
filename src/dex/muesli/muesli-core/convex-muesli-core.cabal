@@ -54,7 +54,7 @@ library
 
     -- cardano dependencies
     build-depends:
-      cardano-api >= 1.35.3,
+      cardano-api,
       cardano-ledger-core -any,
       cardano-ledger-shelley -any,
       cardano-ledger-babbage -any,
@@ -81,7 +81,7 @@ test-suite convex-muesli-core-test
     convex-mockchain,
     convex-base,
     convex-wallet,
-    cardano-api >= 1.35.3,
+    cardano-api,
     plutus-ledger-api,
     plutus-tx,
     hex-text

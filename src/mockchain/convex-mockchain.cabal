@@ -44,16 +44,18 @@ library
       data-default,
       mtl,
       strict-containers,
-      HUnit
+      HUnit,
+      bytestring
 
     -- cardano dependencies
     build-depends:
-      cardano-api >= 1.35.3,
+      cardano-api,
       cardano-slotting -any,
       ouroboros-consensus -any,
       cardano-ledger-core -any,
       cardano-ledger-shelley -any,
       cardano-ledger-babbage -any,
       plutus-core -any,
+      plutus-ledger-api -any,
       cardano-ledger-alonzo -any,
       cardano-ledger-shelley-ma -any

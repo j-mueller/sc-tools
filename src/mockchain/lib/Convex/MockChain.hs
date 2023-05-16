@@ -29,8 +29,11 @@ module Convex.MockChain(
   _PredicateFailures,
   _ApplyTxFailure,
   getTxExUnits,
-  hasValidationErrors,
+  evaluateTx,
   applyTransaction,
+  -- * Plutus scripts
+  ScriptContext,
+  fullyAppliedScript,
   -- * Mockchain implementation
   MockchainError(..),
   MockchainT,
@@ -50,17 +53,22 @@ import           Cardano.Api.Shelley                   (AddressInEra,
                                                         ShelleyLedgerEra,
                                                         SlotNo)
 import qualified Cardano.Api.Shelley                   as Cardano.Api
+import           Cardano.Ledger.Alonzo.Data            (Data)
+import qualified Cardano.Ledger.Alonzo.Data            as Ledger
+import           Cardano.Ledger.Alonzo.Language        (Language (..))
 import           Cardano.Ledger.Alonzo.PlutusScriptApi (CollectError,
                                                         collectTwoPhaseScriptInputs,
                                                         evalScripts)
-import           Cardano.Ledger.Alonzo.Scripts         (CostModels, ExUnits,
-                                                        Script, unCostModels)
+import           Cardano.Ledger.Alonzo.Scripts         (CostModel, CostModels,
+                                                        ExUnits, Script,
+                                                        unCostModels)
 import           Cardano.Ledger.Alonzo.Tools           (TransactionScriptFailure)
 import qualified Cardano.Ledger.Alonzo.Tools
 import           Cardano.Ledger.Alonzo.Tx              (ValidatedTx (..))
 import           Cardano.Ledger.Alonzo.TxInfo          (ExtendedUTxO,
                                                         ScriptResult (..),
                                                         TranslationError)
+import qualified Cardano.Ledger.Alonzo.TxInfo          as Ledger
 import           Cardano.Ledger.Alonzo.TxWitness       (RdmrPtr)
 import qualified Cardano.Ledger.Alonzo.TxWitness       as Alonzo
 import           Cardano.Ledger.Babbage.PParams        (PParams' (..))
@@ -114,6 +122,7 @@ import           Convex.Wallet                         (Wallet, addressInEra,
                                                         paymentCredential)
 import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))
+import           Data.ByteString.Short                 (ShortByteString)
 import           Data.Default                          (Default (def))
 import           Data.Functor.Identity                 (Identity (..))
 import qualified Data.Map                              as Map
@@ -121,12 +130,39 @@ import           Data.Proxy                            (Proxy (..))
 import           Data.Sequence.Strict                  (StrictSeq)
 import           Data.Set                              (Set)
 import           GHC.Records                           (HasField (..))
+import           Plutus.ApiCommon                      (mkTermToEvaluate)
+import qualified Plutus.ApiCommon                      as Plutus
+import qualified PlutusCore                            as PLC
+import qualified UntypedPlutusCore                     as UPLC
+
+{-| All the information needed to evaluate a Plutus script: The script itself, the
+script language, redeemers and datums, execution units required, and the cost model.
+-}
+type ScriptContext era = (ShortByteString, Language, [Data era], ExUnits, CostModel)
+
+    -- let pv = Ledger.transProtocolVersion (_protocolVersion pp)
+    --     pArgs = Ledger.getPlutusData <$> arguments
+    -- appliedTerm <- left show $ mkTermToEvaluate Plutus.PlutusV2 pv script pArgs
+    -- pure $ UPLC.Program () (PLC.defaultVersion ()) appliedTerm
+
+{-| Apply the plutus script to all its arguments and return a plutus
+program
+-}
+fullyAppliedScript :: NodeParams -> ScriptContext ERA -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+fullyAppliedScript params (script, lang, arguments, _, _) = do
+  let pv = Ledger.transProtocolVersion (_protocolVersion $ Defaults.pParams params)
+      pArgs = Ledger.getPlutusData <$> arguments
+      lng = case lang of
+              PlutusV1 -> Plutus.PlutusV1
+              PlutusV2 -> Plutus.PlutusV2
+  appliedTerm <- first show $ mkTermToEvaluate lng pv script pArgs
+  pure $ UPLC.Program () (PLC.defaultVersion ()) appliedTerm
 
 data MockChainState =
   MockChainState
     { mcsEnv          :: MempoolEnv ERA
     , mcsPoolState    :: MempoolState ERA
-    , mcsTransactions :: [Validated (Core.Tx ERA)]
+    , mcsTransactions :: [(Validated (Core.Tx ERA), [ScriptContext ERA])]
     }
 
 makeLensesFor
@@ -218,29 +254,26 @@ applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
   let currentSlot = state ^. env . L.slot
       utxoState_ = state ^. poolState . L.utxoState
       utxo = utxoState_ ^. L._UTxOState . _1
-  vtx <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
-  result <- applyTx params state vtx
+  (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
+  result <- applyTx params state vtx scripts
 
   -- Not sure if this step is needed.
   _ <- first VExUnits (getTxExUnits params utxo tx')
 
   pure result
 
-hasValidationErrors :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Maybe ValidationError
-hasValidationErrors params slotNo utxo tx'@(Cardano.Api.ShelleyTx _ tx) =
-  case res of
-    Left e  -> Just e
-    Right _ -> case getTxExUnits params utxo tx' of
-      (Left e) -> Just (VExUnits e)
-      _        -> Nothing
+{-| Evaluate a transaction, returning all of its script contexts.
+-}
+evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [ScriptContext ERA]
+evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
+    (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
+    _ <- applyTx params state vtx scripts
+    pure scripts
   where
     state =
       initialState params
         & env . L.slot .~ slotNo
         & poolState . L.utxoState . L._UTxOState . _1 .~ utxo
-    res = do
-      vtx <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
-      applyTx params state vtx
 
 -- | Construct a 'ValidatedTx' from a 'Core.Tx' by setting the `IsValid`
 -- flag.
@@ -269,7 +302,7 @@ constructValidated ::
   UtxoEnv era ->
   UTxOState era ->
   Core.Tx era ->
-  m (ValidatedTx era)
+  m (ValidatedTx era, [ScriptContext era])
 constructValidated globals (UtxoEnv _ pp _ _) st tx =
   case collectTwoPhaseScriptInputs ei sysS pp tx utxo of
     Left errs -> throwError errs
@@ -281,7 +314,7 @@ constructValidated globals (UtxoEnv _ pp _ _) st tx =
               (getField @"wits" tx)
               (IsValid (lift scriptEvalResult))
               (getField @"auxiliaryData" tx)
-       in pure vTx
+       in pure (vTx, sLst)
   where
     utxo = _utxo st
     sysS = systemStart globals
@@ -293,10 +326,11 @@ applyTx ::
   NodeParams ->
   MockChainState ->
   Core.Tx ERA ->
+  [ScriptContext ERA] ->
   Either ValidationError (MockChainState, Validated (Core.Tx ERA))
-applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx = do
+applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
-  return (oldState & poolState .~ newMempool & over transactions ((:) vtx), vtx)
+  return (oldState & poolState .~ newMempool & over transactions ((:) (vtx, context)), vtx)
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
   deriving newtype (Functor, Applicative, Monad)
