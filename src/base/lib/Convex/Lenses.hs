@@ -59,7 +59,12 @@ module Convex.Lenses(
   _ScriptHash,
   _KeyHash,
   _PlutusPubKeyHash,
-  _PaymentCredential
+  _PaymentCredential,
+
+  -- * Datums
+  _TxOutDatumInline,
+  _TxOutDatumInTx,
+  _ScriptData
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
@@ -87,10 +92,12 @@ import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
 import           Control.Lens                       (Iso', Lens', Prism', iso,
                                                      lens, prism')
 import           Control.State.Transition           (STS (State))
+import qualified Convex.Scripts                     as Scripts
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
 import           Data.Proxy                         (Proxy (..))
 import           Data.Word                          (Word64)
+import qualified Plutus.V1.Ledger.Api               as PV1
 import           Plutus.V1.Ledger.Crypto            (PubKeyHash (..))
 import qualified PlutusTx.Prelude                   as PlutusTx
 
@@ -247,6 +254,22 @@ _TxOut = iso from to where
   from (C.TxOut addr vl dt rs) = (addr, vl, dt, rs)
   to (addr, vl, dt, rs) = C.TxOut addr vl dt rs
 
+_TxOutDatumInTx :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.ScriptData
+_TxOutDatumInTx = prism' from to where
+  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.ScriptData
+  to (C.TxOutDatumInTx _ k) = Just k
+  to _                      = Nothing
+  from :: C.ScriptData -> TxOutDatum CtxTx C.BabbageEra
+  from cd = C.TxOutDatumInTx C.ScriptDataInBabbageEra cd
+
+_TxOutDatumInline :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.ScriptData
+_TxOutDatumInline = prism' from to where
+  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.ScriptData
+  to (C.TxOutDatumInline _ k) = Just k
+  to _                        = Nothing
+  from :: C.ScriptData -> TxOutDatum CtxTx C.BabbageEra
+  from cd = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra cd
+
 _ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
 _ShelleyAddressInBabbageEra = prism' from to where
   to :: C.AddressInEra C.BabbageEra -> Maybe (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
@@ -374,3 +397,11 @@ _PaymentCredential = iso from to where
   from (C.PaymentCredentialByScript sh)                 = Credential.ScriptHashObj (C.toShelleyScriptHash sh)
 
   to = C.fromShelleyPaymentCredential
+
+_ScriptData :: forall a. (PV1.FromData a, PV1.ToData a) => Prism' C.ScriptData a
+_ScriptData = prism' from to where
+  to :: C.ScriptData -> Maybe a
+  to = Scripts.fromScriptData
+
+  from :: a -> C.ScriptData
+  from = Scripts.toScriptData
