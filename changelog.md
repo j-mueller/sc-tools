@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Convex.PlutusLedger.transAddressInEra`
   - `Convex.Utxos.singleton`
   - `Convex.Utxos`: Added redeemer and ex units to `RemoveUtxoEvent`
-  - `Convex.Lenses`: Added `_TxOutDatumInline`, `_TxOutDatumInTx`, `_ScriptData`
+  - `Convex.Lenses`: Added `_TxOutDatumInline`, `_TxOutDatumInTx`, `_ScriptData`, `_PlutusScriptWitness`
 * `convex-devnet`: Some haddocks in `Convex.Devnet.NodeQueries`
 * `convex-mockchain`: 
   - `Convex.MockChain`: Support for profiling plutus scripts. `evaluateTx` returns the script contexts for a transaction. These can be turned into a fully applied script with `fullyAppliedScript`
