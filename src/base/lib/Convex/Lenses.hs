@@ -38,6 +38,7 @@ module Convex.Lenses(
   _TxInsCollateral,
   _TxMetadata,
   _TxAuxScripts,
+  _TxExtraKeyWitnesses,
 
   -- ** Witnesses
   _KeyWitness,
@@ -190,6 +191,15 @@ txExtraKeyWits :: Lens' (C.TxBodyContent v BabbageEra) (C.TxExtraKeyWitnesses Ba
 txExtraKeyWits = lens get set_ where
   get = C.txExtraKeyWits
   set_ body k = body{C.txExtraKeyWits = k}
+
+_TxExtraKeyWitnesses :: Iso' (C.TxExtraKeyWitnesses BabbageEra) [C.Hash C.PaymentKey]
+_TxExtraKeyWitnesses = iso from to where
+  from :: C.TxExtraKeyWitnesses BabbageEra -> [C.Hash C.PaymentKey]
+  from C.TxExtraKeyWitnessesNone      = []
+  from (C.TxExtraKeyWitnesses _ keys) = keys
+
+  to []   = C.TxExtraKeyWitnessesNone
+  to keys = C.TxExtraKeyWitnesses C.ExtraKeyWitnessesInBabbageEra keys
 
 txAuxScripts :: Lens' (C.TxBodyContent v BabbageEra) (C.TxAuxScripts BabbageEra)
 txAuxScripts = lens get set_ where
