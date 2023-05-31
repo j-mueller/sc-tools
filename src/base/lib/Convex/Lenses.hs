@@ -40,6 +40,12 @@ module Convex.Lenses(
   _TxAuxScripts,
   _TxExtraKeyWitnesses,
 
+  -- ** Validity intervals
+  _TxValidityNoLowerBound,
+  _TxValidityLowerBound,
+  _TxValidityNoUpperBound,
+  _TxValidityUpperBound,
+
   -- ** Witnesses
   _KeyWitness,
   _ScriptWitness,
@@ -426,3 +432,31 @@ _PlutusScriptWitness = prism' from to where
   to :: C.ScriptWitness witctx era -> Maybe (C.ScriptLanguageInEra C.PlutusScriptV1 era, C.PlutusScriptVersion C.PlutusScriptV1, C.PlutusScriptOrReferenceInput C.PlutusScriptV1, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits)
   to (C.PlutusScriptWitness C.PlutusScriptV1InBabbage v i dtr red ex) = Just (C.PlutusScriptV1InBabbage, v, i, dtr, red, ex)
   to _ = Nothing
+
+_TxValidityNoLowerBound :: forall era. Prism' (C.TxValidityLowerBound era) ()
+_TxValidityNoLowerBound = prism' from to where
+  from () = C.TxValidityNoLowerBound
+  to = \case
+    C.TxValidityNoLowerBound -> Just ()
+    _                        -> Nothing
+
+_TxValidityLowerBound :: forall era. Prism' (C.TxValidityLowerBound era) (C.ValidityLowerBoundSupportedInEra era, C.SlotNo)
+_TxValidityLowerBound = prism' from to where
+  from (s, e) = C.TxValidityLowerBound s e
+  to = \case
+    C.TxValidityLowerBound s e -> Just (s, e)
+    _                          -> Nothing
+
+_TxValidityNoUpperBound :: forall era. Prism' (C.TxValidityUpperBound era) (C.ValidityNoUpperBoundSupportedInEra era)
+_TxValidityNoUpperBound = prism' from to where
+  from = C.TxValidityNoUpperBound
+  to = \case
+    C.TxValidityNoUpperBound k -> Just k
+    _                          -> Nothing
+
+_TxValidityUpperBound :: forall era. Prism' (C.TxValidityUpperBound era) (C.ValidityUpperBoundSupportedInEra era, SlotNo)
+_TxValidityUpperBound = prism' from to where
+  from (k, s) = C.TxValidityUpperBound k s
+  to = \case
+    C.TxValidityUpperBound k s -> Just (k, s)
+    _                          -> Nothing
