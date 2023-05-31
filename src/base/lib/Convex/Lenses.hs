@@ -45,6 +45,7 @@ module Convex.Lenses(
   _TxValidityLowerBound,
   _TxValidityNoUpperBound,
   _TxValidityUpperBound,
+  _TxValidityFiniteRange,
 
   -- ** Witnesses
   _KeyWitness,
@@ -460,3 +461,10 @@ _TxValidityUpperBound = prism' from to where
   to = \case
     C.TxValidityUpperBound k s -> Just (k, s)
     _                          -> Nothing
+
+_TxValidityFiniteRange :: Prism' (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra) (SlotNo, SlotNo)
+_TxValidityFiniteRange = prism' from to where
+  from (l, u) = (C.TxValidityLowerBound C.ValidityLowerBoundInBabbageEra l, C.TxValidityUpperBound C.ValidityUpperBoundInBabbageEra u)
+  to = \case
+    (C.TxValidityLowerBound _ l, C.TxValidityUpperBound _ u) -> Just (l, u)
+    _                                                        -> Nothing
