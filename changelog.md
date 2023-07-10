@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Update `queryTip` and `queryTipSlotNo` in `Convex.Devnet.NodeQueries` to also return `SlotLength`.
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
+* Add `utcTimeToPosixTime` in `Convex.Utils`.
 
 ### Added
 
