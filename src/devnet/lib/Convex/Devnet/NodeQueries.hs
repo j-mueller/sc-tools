@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs        #-}
 {-# LANGUAGE LambdaCase   #-}
 {-# LANGUAGE ViewPatterns #-}
 {-| Helper functions for querying a local @cardano-node@ using the socket interface
@@ -20,7 +21,7 @@ import           Cardano.Api                                        (Address,
                                                                      BabbageEra,
                                                                      BlockNo,
                                                                      CardanoMode,
-                                                                     EraHistory,
+                                                                     EraHistory (..),
                                                                      NetworkId,
                                                                      QueryInMode,
                                                                      ShelleyAddr,
@@ -28,7 +29,8 @@ import           Cardano.Api                                        (Address,
                                                                      TxIn, UTxO)
 import qualified Cardano.Api                                        as C
 import           Cardano.Slotting.Slot                              (WithOrigin)
-import           Cardano.Slotting.Time                              (SystemStart)
+import           Cardano.Slotting.Time                              (SystemStart,
+                                                                     slotLengthToMillisec)
 import           Control.Concurrent                                 (threadDelay)
 import           Control.Exception                                  (Exception,
                                                                      throwIO)
@@ -43,7 +45,8 @@ import qualified Convex.Utxos                                       as Utxos
 import qualified Data.Set                                           as Set
 import           Data.Word                                          (Word64)
 import           Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
-
+import           Ouroboros.Consensus.HardFork.History               (interpretQuery,
+                                                                     slotToSlotLength)
 import           Prelude
 
 data QueryException
@@ -52,6 +55,9 @@ data QueryException
   deriving (Eq, Show)
 
 instance Exception QueryException
+
+newtype SlotLength = SlotLength Integer
+  deriving (Eq, Show)
 
 -- | Get the 'SystemStart' from the node
 querySystemStart ::
@@ -98,10 +104,18 @@ queryTip ::
     -- ^ network Id to use for node query
   FilePath ->
     -- ^ Node socket
-  IO (SlotNo, C.Hash C.BlockHeader)
+  IO (SlotNo, SlotLength, C.Hash C.BlockHeader)
 queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) networkId socket >>= \case
   C.ChainPointAtGenesis -> failure "queryTip: chain point at genesis"
-  C.ChainPoint slot hsh -> pure (slot, hsh)
+  C.ChainPoint slot hsh -> getSlotLength slot >>= (\i -> pure (slot, i, hsh))
+
+  where
+    getSlotLength :: SlotNo -> IO SlotLength
+    getSlotLength slotNo = do
+      (EraHistory _ interpreter) <- queryEraHistory networkId socket
+      case interpretQuery interpreter (slotToSlotLength slotNo) of
+        Left err      -> failure $ "queryTip: Failed with " <> show err
+        Right slength -> pure $ SlotLength $ slotLengthToMillisec slength
 
 -- | Get the slot no of the current tip from the node
 queryTipSlotNo ::
@@ -109,8 +123,8 @@ queryTipSlotNo ::
     -- ^ network Id to use for node query
   FilePath ->
     -- ^ Node socket
-  IO SlotNo
-queryTipSlotNo networkId socket = fst <$> queryTip networkId socket
+  IO (SlotNo, SlotLength)
+queryTipSlotNo networkId socket = queryTip networkId socket >>= (\(s, l, _) -> pure (s, l))
 
 -- | Query UTxO for all given addresses at given point.
 --
