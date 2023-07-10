@@ -361,6 +361,9 @@ instance Monad m => MonadBlockchain (MockchainT m) where
   networkId = MockchainT (asks npNetworkId)
   querySystemStart = MockchainT (asks npSystemStart)
   queryEraHistory = MockchainT (asks npEraHistory)
+  querySlotNo = MockchainT $ do
+    st <- get
+    pure $ st ^. env . L.slot
 
 instance Monad m => MonadMockchain (MockchainT m) where
   modifySlot f = MockchainT $ do

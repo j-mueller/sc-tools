@@ -63,6 +63,7 @@ class Monad m => MonadBlockchain m where
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m (EraHistory CardanoMode)
+  querySlotNo             :: m SlotNo -- ^ returns the current slot number. Slot 0 is returned when at genesis.
   networkId               :: m NetworkId -- ^ Get the network id
 
 instance MonadBlockchain m => MonadBlockchain (ResultT m) where
@@ -72,6 +73,7 @@ instance MonadBlockchain m => MonadBlockchain (ResultT m) where
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
+  querySlotNo = lift querySlotNo
   networkId = lift networkId
 
 instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
@@ -81,6 +83,7 @@ instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
+  querySlotNo = lift querySlotNo
   networkId = lift networkId
 
 instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
@@ -90,6 +93,7 @@ instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
+  querySlotNo = lift querySlotNo
   networkId = lift networkId
 
 instance MonadBlockchain m => MonadBlockchain (StrictState.StateT e m) where
@@ -99,6 +103,7 @@ instance MonadBlockchain m => MonadBlockchain (StrictState.StateT e m) where
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
+  querySlotNo = lift querySlotNo
   networkId = lift networkId
 
 instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
@@ -108,6 +113,7 @@ instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
+  querySlotNo = lift querySlotNo
   networkId = lift networkId
 
 {-| Modify the mockchain internals
@@ -232,6 +238,10 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
   querySystemStart = runQuery C.QuerySystemStart
 
   queryEraHistory = runQuery (C.QueryEraHistory C.CardanoModeIsMultiEra)
+
+  querySlotNo = runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
+    C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
+    C.ChainPoint slot _hsh -> pure slot
 
   networkId = MonadBlockchainCardanoNodeT (asks C.localNodeNetworkId)
 
