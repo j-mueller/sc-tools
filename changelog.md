@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
+
 *  Update `queryTip` and `queryTipSlotNo` in `Convex.Devnet.NodeQueries` to also return `SlotLength`.
+
+### Added
 
 * `convex-base`
   - `Convex.PlutusLedger`: `transAddressInEra`, prisms and isos for the `Interval` type
