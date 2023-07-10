@@ -29,8 +29,8 @@ import           Cardano.Api                                        (Address,
                                                                      TxIn, UTxO)
 import qualified Cardano.Api                                        as C
 import           Cardano.Slotting.Slot                              (WithOrigin)
-import           Cardano.Slotting.Time                              (SystemStart,
-                                                                     slotLengthToMillisec)
+import           Cardano.Slotting.Time                              (SlotLength,
+                                                                     SystemStart)
 import           Control.Concurrent                                 (threadDelay)
 import           Control.Exception                                  (Exception,
                                                                      throwIO)
@@ -55,9 +55,6 @@ data QueryException
   deriving (Eq, Show)
 
 instance Exception QueryException
-
-newtype SlotLength = SlotLength Integer
-  deriving (Eq, Show)
 
 -- | Get the 'SystemStart' from the node
 querySystemStart ::
@@ -115,7 +112,7 @@ queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) ne
       (EraHistory _ interpreter) <- queryEraHistory networkId socket
       case interpretQuery interpreter (slotToSlotLength slotNo) of
         Left err      -> failure $ "queryTip: Failed with " <> show err
-        Right slength -> pure $ SlotLength $ slotLengthToMillisec slength
+        Right slength -> pure $ slength
 
 -- | Get the slot no of the current tip from the node
 queryTipSlotNo ::
