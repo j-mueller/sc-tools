@@ -240,7 +240,7 @@ waitForFullySynchronized tracer RunningNode{rnNodeSocket, rnNetworkId} = do
   check systemStart = do
     targetTime <- toRelativeTime systemStart <$> getCurrentTime
     eraHistory <- Q.queryEraHistory rnNetworkId rnNodeSocket
-    tipSlotNo <- Q.queryTipSlotNo rnNetworkId rnNodeSocket
+    (tipSlotNo, _slotLength) <- Q.queryTipSlotNo rnNetworkId rnNodeSocket
     (tipTime, _slotLength) <- either throwIO pure $ C.getProgress tipSlotNo eraHistory
     let timeDifference = diffRelativeTime targetTime tipTime
     let percentDone = realToFrac (100.0 * getRelativeTime tipTime / getRelativeTime targetTime)

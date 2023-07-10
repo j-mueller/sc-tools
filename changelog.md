@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+*  Update `queryTip` and `queryTipSlotNo` in `Convex.Devnet.NodeQueries` to also return `SlotLength`.
+
 ### Added
 
 * `convex-base`
@@ -15,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Convex.Utxos`: Added redeemer and ex units to `RemoveUtxoEvent`
   - `Convex.Lenses`: Added `_TxOutDatumInline`, `_TxOutDatumInTx`, `_ScriptData`, `_PlutusScriptWitness`, `_TxExtraKeyWitnesses`, prisms for validity intervals
 * `convex-devnet`: Some haddocks in `Convex.Devnet.NodeQueries`
-* `convex-mockchain`: 
+* `convex-mockchain`:
   - `Convex.MockChain`: Support for profiling plutus scripts. `evaluateTx` returns the script contexts for a transaction. These can be turned into a fully applied script with `fullyAppliedScript`
 
 ## [0.0.1] - 2023-04-26
