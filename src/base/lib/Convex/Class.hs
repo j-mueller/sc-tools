@@ -51,8 +51,10 @@ import qualified Convex.Era                                        as Ledger.Era
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     logInfoS,
                                                                     logWarnS)
-import           Convex.Utils                                      (posixTimeToSlotUnsafe)
+import           Convex.Utils                                      (posixTimeToSlotUnsafe,
+                                                                    slotToUtcTime)
 import           Data.Set                                          (Set)
+import           Data.Time.Clock                                   (UTCTime)
 import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
                                                                     slotToSlotLength)
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
@@ -67,8 +69,8 @@ class Monad m => MonadBlockchain m where
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m (EraHistory CardanoMode)
-  querySlotNo             :: m (SlotNo, SlotLength)
-                          -- ^ returns the current slot number and slot length.
+  querySlotNo             :: m (SlotNo, SlotLength, UTCTime)
+                          -- ^ returns the current slot number, slot length and begin utc time for slot.
                           -- Slot 0 is returned when at genesis.
   networkId               :: m NetworkId -- ^ Get the network id
 
@@ -246,17 +248,16 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
   queryEraHistory = runQuery (C.QueryEraHistory C.CardanoModeIsMultiEra)
 
   querySlotNo = do
-    (EraHistory _ interpreter) <- queryEraHistory
+    let logErr err = do
+          let msg = "querySlotNo: Failed with " <> err
+          logWarnS msg
+          fail msg
+    (eraHistory@(EraHistory _ interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
     slotNo <- runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
                 C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
                 C.ChainPoint slot _hsh -> pure slot
-    case interpretQuery interpreter (slotToSlotLength slotNo) of
-      Left err -> do
-        let msg = "querySlotNo: Failed with " <> show err
-        logWarnS msg
-        fail msg
-      Right slength -> return (slotNo, slength)
-
+    utctime <- either logErr pure (slotToUtcTime eraHistory systemStart slotNo)
+    either (logErr . show) (\l -> pure (slotNo, l, utctime)) (interpretQuery interpreter $ slotToSlotLength slotNo)
 
   networkId = MonadBlockchainCardanoNodeT (asks C.localNodeNetworkId)
 

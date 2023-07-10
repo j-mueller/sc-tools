@@ -115,6 +115,7 @@ import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.NodeParams                     (NodeParams (..))
+import           Convex.Utils                          (slotToUtcTime)
 import           Convex.Utxos                          (UtxoSet (..),
                                                         fromApiUtxo,
                                                         onlyCredential)
@@ -363,8 +364,10 @@ instance Monad m => MonadBlockchain (MockchainT m) where
   queryEraHistory = MockchainT (asks npEraHistory)
   querySlotNo = MockchainT $ do
     st <- get
-    slength <- asks npSlotLength
-    return (st ^. env . L.slot, slength)
+    NodeParams{npSystemStart, npEraHistory, npSlotLength} <- ask
+    let slotNo = st ^. env . L.slot
+    utime <- either (throwError . FailWith) pure (slotToUtcTime npEraHistory npSystemStart slotNo)
+    return (slotNo, npSlotLength, utime)
 
 instance Monad m => MonadMockchain (MockchainT m) where
   modifySlot f = MockchainT $ do
