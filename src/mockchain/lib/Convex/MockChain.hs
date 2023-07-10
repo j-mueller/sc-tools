@@ -363,7 +363,8 @@ instance Monad m => MonadBlockchain (MockchainT m) where
   queryEraHistory = MockchainT (asks npEraHistory)
   querySlotNo = MockchainT $ do
     st <- get
-    pure $ st ^. env . L.slot
+    slength <- asks npSlotLength
+    return (st ^. env . L.slot, slength)
 
 instance Monad m => MonadMockchain (MockchainT m) where
   modifySlot f = MockchainT $ do

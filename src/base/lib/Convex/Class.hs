@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Typeclass for blockchain operations
@@ -23,7 +24,7 @@ module Convex.Class(
 import qualified Cardano.Api                                       as C
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     CardanoMode,
-                                                                    EraHistory,
+                                                                    EraHistory (..),
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
                                                                     PoolId,
@@ -32,7 +33,8 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     TxId)
 import qualified Cardano.Ledger.Core                               as Core
 import           Cardano.Ledger.Shelley.API                        (UTxO)
-import           Cardano.Slotting.Time                             (SystemStart)
+import           Cardano.Slotting.Time                             (SystemStart,
+                                                                    SlotLength)
 import           Control.Lens                                      (_1, view)
 import           Control.Monad.Except                              (MonadError)
 import           Control.Monad.IO.Class                            (MonadIO (..))
@@ -51,6 +53,8 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe)
 import           Data.Set                                          (Set)
+import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
+                                                                    slotToSlotLength)
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
 import qualified Plutus.V1.Ledger.Time                             as PV1
 
@@ -63,7 +67,9 @@ class Monad m => MonadBlockchain m where
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m (EraHistory CardanoMode)
-  querySlotNo             :: m SlotNo -- ^ returns the current slot number. Slot 0 is returned when at genesis.
+  querySlotNo             :: m (SlotNo, SlotLength)
+                          -- ^ returns the current slot number and slot length.
+                          -- Slot 0 is returned when at genesis.
   networkId               :: m NetworkId -- ^ Get the network id
 
 instance MonadBlockchain m => MonadBlockchain (ResultT m) where
@@ -239,9 +245,18 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
 
   queryEraHistory = runQuery (C.QueryEraHistory C.CardanoModeIsMultiEra)
 
-  querySlotNo = runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
-    C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
-    C.ChainPoint slot _hsh -> pure slot
+  querySlotNo = do
+    (EraHistory _ interpreter) <- queryEraHistory
+    slotNo <- runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
+                C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
+                C.ChainPoint slot _hsh -> pure slot
+    case interpretQuery interpreter (slotToSlotLength slotNo) of
+      Left err -> do
+        let msg = "querySlotNo: Failed with " <> show err
+        logWarnS msg
+        fail msg
+      Right slength -> return (slotNo, slength)
+
 
   networkId = MonadBlockchainCardanoNodeT (asks C.localNodeNetworkId)
 
