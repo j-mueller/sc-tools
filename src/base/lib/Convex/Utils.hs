@@ -23,6 +23,7 @@ module Convex.Utils(
   slotToUtcTime,
   utcTimeToSlot,
   utcTimeToSlotUnsafe,
+  utcTimeToPosixTime,
   posixTimeToSlot,
   posixTimeToSlotUnsafe
 ) where
@@ -44,7 +45,8 @@ import qualified Cardano.Slotting.Time                    as Time
 import           Control.Monad                            (void, when)
 import           Control.Monad.Except                     (runExcept)
 import           Control.Monad.IO.Class                   (MonadIO (..))
-import           Convex.PlutusLedger                      (unTransPOSIXTime)
+import           Convex.PlutusLedger                      (transPOSIXTime,
+                                                           unTransPOSIXTime)
 import           Data.Aeson                               (Result (..),
                                                            fromJSON, object,
                                                            (.=))
@@ -56,7 +58,8 @@ import           Data.Set                                 (Set)
 import qualified Data.Set                                 as Set
 import           Data.Time.Clock                          (NominalDiffTime,
                                                            UTCTime)
-import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime)
+import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime,
+                                                           utcTimeToPOSIXSeconds)
 import qualified Ouroboros.Consensus.HardFork.History     as Consensus
 import qualified Ouroboros.Consensus.HardFork.History.Qry as Qry
 import qualified Plutus.V1.Ledger.Time                    as PV1
@@ -137,6 +140,9 @@ slotToUtcTime (toLedgerEpochInfo -> info) systemStart slot = epochInfoSlotToUTCT
 utcTimeToSlot :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
 utcTimeToSlot (C.EraHistory _ interpreter) systemStart t = first show $
   Qry.interpretQuery interpreter (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
+
+utcTimeToPosixTime :: UTCTime -> PV1.POSIXTime
+utcTimeToPosixTime =  transPOSIXTime . utcTimeToPOSIXSeconds
 
 {-| Convert a 'PV1.POSIXTime' to slot no. Returns the time spent and time left in this slot.
 -}
