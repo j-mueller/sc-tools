@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-| A wallet client for executing buy and sell orders
 -}
@@ -14,7 +16,8 @@ import           Cardano.Api                  (BlockInMode, CardanoMode, Env,
 import qualified Cardano.Api                  as C
 import           Control.Applicative          (Alternative (..))
 import           Control.Lens                 (_3, preview, set, (&))
-import           Control.Monad                (void, when)
+import           Control.Monad                (when)
+import           Control.Monad.Except         (runExceptT)
 import           Control.Monad.Trans.Maybe    (runMaybeT)
 import           Convex.Class                 (runMonadBlockchainCardanoNodeT,
                                                sendTx)
@@ -66,13 +69,17 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
       newState = apply state change
 
   when (not isCatchingUp) $ do
-    void $ runMonadBlockchainCardanoNodeT info $ do
-      (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
-      logInfoS (show tx_)
-      logInfoS (show change_)
-      sendTx tx_
+    let action =
+          runExceptT @String $ do
+            runMonadBlockchainCardanoNodeT info $ do
+              (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
+              logInfoS (show tx_)
+              logInfoS (show change_)
+              sendTx tx_
+    action >>= \case
+      Left err -> fail err
+      Right _ -> pure ()
     empty
-
   pure newState
 
 convBuyOrder :: Order 'Typed -> T.BuyOrder

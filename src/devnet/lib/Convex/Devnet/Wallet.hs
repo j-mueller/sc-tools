@@ -1,7 +1,10 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE NamedFieldPuns       #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-| Glue code
 -}
 module Convex.Devnet.Wallet(
@@ -20,6 +23,8 @@ module Convex.Devnet.Wallet(
 import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
                                             Lovelace, Tx, TxBodyContent)
 import qualified Cardano.Api               as C
+import           Control.Monad.Except      (MonadError,
+                                            runExceptT)
 import           Control.Monad.IO.Class    (MonadIO (..))
 import           Control.Monad.Reader      (ReaderT (..), ask, lift)
 import           Control.Tracer            (Tracer, traceWith)
@@ -73,10 +78,17 @@ createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} amount = d
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the
 @RunningNode@ for blockchain stuff
 -}
-runningNodeBlockchain :: Tracer IO WalletLog -> RunningNode -> (forall m. (MonadFail m, MonadLog m, MonadBlockchain m) => m a) -> IO a
-runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} =
+runningNodeBlockchain ::
+  Tracer IO WalletLog
+  -> RunningNode
+  -> (forall m. (MonadFail m, MonadLog m, MonadError String m, MonadBlockchain m) => m a)
+  -> IO a
+runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
   let info = NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket
-  in runTracerMonadLogT tracer . runMonadBlockchainCardanoNodeT info
+  in runTracerMonadLogT tracer $ do
+    (runExceptT $ runMonadBlockchainCardanoNodeT info h) >>= \case
+      Left err -> fail err
+      Right a -> pure a
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
