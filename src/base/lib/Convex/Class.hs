@@ -229,9 +229,11 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
     case result of
       SubmitSuccess -> do
         logInfoS ("sendTx: Submitted " <> show txId)
+        pure txId
       SubmitFail reason -> do
-        logWarnS $ "sendTx: Submission failed: " <> show reason
-    pure txId
+        let msg = "sendTx: Submission failed: " <> show reason
+        logWarnS msg
+        fail msg
 
   utxoByTxIn txIns =
     runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
