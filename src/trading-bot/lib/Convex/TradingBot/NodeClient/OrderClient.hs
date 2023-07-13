@@ -17,7 +17,6 @@ import qualified Cardano.Api                  as C
 import           Control.Applicative          (Alternative (..))
 import           Control.Lens                 (_3, preview, set, (&))
 import           Control.Monad                (void, when)
-import           Control.Monad.Except         (runExceptT)
 import           Control.Monad.Trans.Maybe    (runMaybeT)
 import           Convex.Class                 (runMonadBlockchainCardanoNodeT,
                                                sendTx)
@@ -70,12 +69,11 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
 
   when (not isCatchingUp) $ do
     let action =
-          runExceptT @String $ do
-            runMonadBlockchainCardanoNodeT info $ do
-              (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
-              logInfoS (show tx_)
-              logInfoS (show change_)
-              sendTx tx_
+          runMonadBlockchainCardanoNodeT info $ do
+           (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
+           logInfoS (show tx_)
+           logInfoS (show change_)
+           sendTx tx_
     void $ action >>= either fail pure
     empty
   pure newState

@@ -23,8 +23,6 @@ module Convex.Devnet.Wallet(
 import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
                                             Lovelace, Tx, TxBodyContent)
 import qualified Cardano.Api               as C
-import           Control.Monad.Except      (MonadError,
-                                            runExceptT)
 import           Control.Monad.IO.Class    (MonadIO (..))
 import           Control.Monad.Reader      (ReaderT (..), ask, lift)
 import           Control.Tracer            (Tracer, traceWith)
@@ -81,12 +79,12 @@ createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} amount = d
 runningNodeBlockchain ::
   Tracer IO WalletLog
   -> RunningNode
-  -> (forall m. (MonadFail m, MonadLog m, MonadError String m, MonadBlockchain m) => m a)
+  -> (forall m. (MonadFail m, MonadLog m, MonadBlockchain m) => m a)
   -> IO a
 runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
   let info = NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket
   in runTracerMonadLogT tracer $ do
-    (runExceptT $ runMonadBlockchainCardanoNodeT info h) >>= either fail pure
+      runMonadBlockchainCardanoNodeT info h >>= either fail pure
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
