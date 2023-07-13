@@ -86,9 +86,7 @@ runningNodeBlockchain ::
 runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
   let info = NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket
   in runTracerMonadLogT tracer $ do
-    (runExceptT $ runMonadBlockchainCardanoNodeT info h) >>= \case
-      Left err -> fail err
-      Right a -> pure a
+    (runExceptT $ runMonadBlockchainCardanoNodeT info h) >>= either fail pure
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
