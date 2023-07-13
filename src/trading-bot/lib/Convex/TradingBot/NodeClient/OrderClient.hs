@@ -16,7 +16,7 @@ import           Cardano.Api                  (BlockInMode, CardanoMode, Env,
 import qualified Cardano.Api                  as C
 import           Control.Applicative          (Alternative (..))
 import           Control.Lens                 (_3, preview, set, (&))
-import           Control.Monad                (when)
+import           Control.Monad                (void, when)
 import           Control.Monad.Except         (runExceptT)
 import           Control.Monad.Trans.Maybe    (runMaybeT)
 import           Convex.Class                 (runMonadBlockchainCardanoNodeT,
@@ -76,9 +76,7 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
               logInfoS (show tx_)
               logInfoS (show change_)
               sendTx tx_
-    action >>= \case
-      Left err -> fail err
-      Right _ -> pure ()
+    void $ action >>= either fail pure
     empty
   pure newState
 
