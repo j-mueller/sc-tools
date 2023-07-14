@@ -8,6 +8,7 @@
 module Convex.Class(
   MonadBlockchain(..),
   MonadMockchain(..),
+  MonadBlockchainError(..),
   getSlot,
   setSlot,
   setPOSIXTime,
