@@ -69,12 +69,12 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
 
   when (not isCatchingUp) $ do
     let action =
-          runMonadBlockchainCardanoNodeT info $ do
+          runMonadBlockchainCardanoNodeT @String info $ do
            (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
            logInfoS (show tx_)
            logInfoS (show change_)
            sendTx tx_
-    void $ action >>= either fail pure
+    void $ action >>= either (fail . show) pure
     empty
   pure newState
 

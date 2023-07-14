@@ -67,6 +67,7 @@ library
       , convex-coin-selection
       , mtl
       , prettyprinter
+      , transformers
 
       -- cardano-node deps.
       , cardano-api

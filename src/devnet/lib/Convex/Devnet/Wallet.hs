@@ -1,9 +1,11 @@
+{-# LANGUAGE AllowAmbiguousTypes  #-}
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Glue code
 -}
@@ -20,31 +22,31 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
-                                            Lovelace, Tx, TxBodyContent)
-import qualified Cardano.Api               as C
-import           Control.Monad.IO.Class    (MonadIO (..))
-import           Control.Monad.Reader      (ReaderT (..), ask, lift)
-import           Control.Tracer            (Tracer, traceWith)
-import qualified Convex.BuildTx            as BuildTx
-import           Convex.Class              (MonadBlockchain,
-                                            runMonadBlockchainCardanoNodeT,
-                                            sendTx)
-import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.Devnet.CardanoNode (RunningNode (..))
-import qualified Convex.Devnet.NodeQueries as NodeQueries
-import           Convex.Devnet.Utils       (keysFor)
-import           Convex.Lenses             (emptyTx)
-import           Convex.MonadLog           (MonadLog (..))
-import           Convex.Utxos              (UtxoSet)
-import qualified Convex.Utxos              as Utxos
-import           Convex.Wallet             (Wallet (..), address)
-import qualified Convex.Wallet             as Wallet
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Function             ((&))
-import           Data.Text                 (Text)
-import           GHC.Generics              (Generic)
-import           Prettyprinter             (defaultLayoutOptions, layoutPretty)
+import           Cardano.Api                (AddressInEra, BabbageEra, BuildTx,
+                                             Lovelace, Tx, TxBodyContent)
+import qualified Cardano.Api                as C
+import           Control.Monad.IO.Class     (MonadIO (..))
+import           Control.Monad.Reader       (ReaderT (..), ask, lift)
+import           Control.Tracer             (Tracer, traceWith)
+import qualified Convex.BuildTx             as BuildTx
+import           Convex.Class               (MonadBlockchain,
+                                             runMonadBlockchainCardanoNodeT,
+                                             sendTx)
+import qualified Convex.CoinSelection       as CoinSelection
+import           Convex.Devnet.CardanoNode  (RunningNode (..))
+import qualified Convex.Devnet.NodeQueries  as NodeQueries
+import           Convex.Devnet.Utils        (keysFor)
+import           Convex.Lenses              (emptyTx)
+import           Convex.MonadLog            (MonadLog (..))
+import           Convex.Utxos               (UtxoSet)
+import qualified Convex.Utxos               as Utxos
+import           Convex.Wallet              (Wallet (..), address)
+import qualified Convex.Wallet              as Wallet
+import           Data.Aeson                 (FromJSON, ToJSON)
+import           Data.Function              ((&))
+import           Data.Text                  (Text)
+import           GHC.Generics               (Generic)
+import           Prettyprinter              (defaultLayoutOptions, layoutPretty)
 import qualified Prettyprinter.Render.Text as Render
 
 faucet :: IO Wallet
@@ -77,21 +79,22 @@ createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} amount = d
 @RunningNode@ for blockchain stuff
 -}
 runningNodeBlockchain ::
-  Tracer IO WalletLog
+ forall e a. (Show e)
+  => Tracer IO WalletLog
   -> RunningNode
   -> (forall m. (MonadFail m, MonadLog m, MonadBlockchain m) => m a)
   -> IO a
 runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
   let info = NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket
   in runTracerMonadLogT tracer $ do
-      runMonadBlockchainCardanoNodeT info h >>= either fail pure
+      runMonadBlockchainCardanoNodeT @e info h >>= either (fail . show) pure
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
 balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBodyContent BuildTx BabbageEra -> IO (Tx BabbageEra)
 balanceAndSubmit tracer node wallet tx = do
   utxos <- walletUtxos node wallet
-  runningNodeBlockchain tracer node $ do
+  runningNodeBlockchain @String tracer node $ do
     (tx', _) <- CoinSelection.balanceForWallet wallet utxos tx
     _ <- sendTx tx'
     pure tx'
