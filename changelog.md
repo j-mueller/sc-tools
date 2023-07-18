@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 * Update `queryTip` and `queryTipSlotNo` in `Convex.Devnet.NodeQueries` to also return `SlotLength`.
+* Add generic return type to `withCardanoNode` and `withCardanoNodeDevnet` in `Convex.Devnet.CardanoNode`.
 
 ### Added
 
