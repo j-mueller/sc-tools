@@ -37,7 +37,9 @@ import           Cardano.Ledger.Shelley.API                        (UTxO)
 import           Cardano.Slotting.Time                             (SystemStart,
                                                                     SlotLength)
 import           Control.Lens                                      (_1, view)
-import           Control.Monad.Except                              (runExceptT,
+import           Control.Monad.Except                              (MonadError,
+                                                                    catchError,
+                                                                    runExceptT,
                                                                     throwError)
 import           Control.Monad.IO.Class                            (MonadIO (..))
 import           Control.Monad.Reader                              (MonadTrans,
@@ -203,6 +205,10 @@ instance Show e => Show (MonadBlockchainError e) where
 -}
 newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT (LocalNodeConnectInfo CardanoMode) (ExceptT (MonadBlockchainError e) m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO)
+
+instance MonadError e m => MonadError e (MonadBlockchainCardanoNodeT e m) where
+  throwError = lift . throwError
+  catchError m _ = m
 
 
 runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo CardanoMode -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
