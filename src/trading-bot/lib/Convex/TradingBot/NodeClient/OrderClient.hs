@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-| A wallet client for executing buy and sell orders
 -}
@@ -72,7 +74,6 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
       logInfoS (show change_)
       sendTx tx_
     empty
-
   pure newState
 
 convBuyOrder :: Order 'Typed -> T.BuyOrder
