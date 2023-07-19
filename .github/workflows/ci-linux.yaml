@@ -95,6 +95,7 @@ jobs:
 
       - name: build & test
         run: |
+          cabal update
           cabal build -j all
           cabal test all
 
