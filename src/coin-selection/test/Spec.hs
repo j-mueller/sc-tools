@@ -4,7 +4,7 @@
 module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
-import           Control.Lens                   (mapped, over, (&))
+import           Control.Lens                   (_4, mapped, over, view, (&))
 import           Control.Monad                  (void)
 import           Convex.BuildTx                 (assetValue, mintPlutusV1,
                                                  payToAddress, payToPlutusV1,
@@ -24,6 +24,8 @@ import           Convex.MockChain.Utils         (mockchainSucceeds)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
+import qualified Data.Map                       as Map
+import qualified Data.Set                       as Set
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
 import           Test.Tasty.HUnit               (Assertion, testCase)
@@ -40,6 +42,7 @@ tests = testGroup "unit tests"
   , testGroup "scripts"
     [ testCase "paying to a plutus script" (mockchainSucceeds payToPlutusScript)
     , testCase "spending a plutus script output" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScript))
+    , testCase "creating a reference script output" (mockchainSucceeds $ putReferenceScript Wallet.w1)
     , testCase "using a reference script" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds mintingPlutus)
     , testCase "making payments with tokens" (mockchainSucceeds (mintingPlutus >>= spendTokens))
@@ -75,11 +78,22 @@ spendPlutusScript ref = do
 
 putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
+  let s = C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV1 txInscript
   let tx = emptyTx
-            & payToPlutusV1Inline (Wallet.addressInEra Defaults.networkId wallet) txInscript (C.lovelaceToValue 1_000_000)
+            & payToPlutusV1Inline (Wallet.addressInEra Defaults.networkId wallet) txInscript (C.lovelaceToValue 10_000_000)
             & setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
-  pure (C.TxIn txId (C.TxIx 0))
+  let outRef = C.TxIn txId (C.TxIx 0)
+  case C.toScriptInEra C.BabbageEra s of
+    Nothing -> fail "toScriptInEra: Nothing"
+    _       -> pure ()
+  C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
+  case Map.lookup outRef utxo of
+    Nothing  -> fail "Utxo not found"
+    Just out -> case view (L._TxOut . _4) out of
+      C.ReferenceScript{} -> pure ()
+      _                   -> fail "No reference script found"
+  pure outRef
 
 spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
 spendPlutusScriptReference txIn = do

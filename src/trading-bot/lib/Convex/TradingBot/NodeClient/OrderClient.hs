@@ -30,7 +30,7 @@ import           Convex.NodeClient.Fold       (CatchingUp (..), catchingUp,
 import           Convex.NodeClient.Resuming   (resumingClient)
 import           Convex.NodeClient.Types      (PipelinedLedgerStateClient)
 import           Convex.TradingBot.Cli.Config (Order (..))
-import           Convex.Utxos                 (UtxoSet, apply, toUtxoTx)
+import           Convex.Utxos                 (UtxoSet, apply, fromUtxoTx)
 import qualified Convex.Utxos                 as Utxos
 import           Convex.Wallet                (Wallet)
 import qualified Convex.Wallet                as Wallet
@@ -67,7 +67,7 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
 
   when (not isCatchingUp) $ do
     void $ runMonadBlockchainCardanoNodeT info $ do
-      (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
+      (tx_, change_) <- balanceForWallet wallet (fromUtxoTx state) tx
       logInfoS (show tx_)
       logInfoS (show change_)
       sendTx tx_

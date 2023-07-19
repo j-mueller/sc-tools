@@ -70,4 +70,5 @@ test-suite convex-coin-selection-test
     convex-mockchain,
     convex-base,
     convex-wallet,
-    cardano-api
+    cardano-api,
+    containers

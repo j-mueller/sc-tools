@@ -33,8 +33,8 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     TxId)
 import qualified Cardano.Ledger.Core                               as Core
 import           Cardano.Ledger.Shelley.API                        (UTxO)
-import           Cardano.Slotting.Time                             (SystemStart,
-                                                                    SlotLength)
+import           Cardano.Slotting.Time                             (SlotLength,
+                                                                    SystemStart)
 import           Control.Lens                                      (_1, view)
 import           Control.Monad.Except                              (MonadError)
 import           Control.Monad.IO.Class                            (MonadIO (..))
@@ -254,7 +254,7 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
           fail msg
     (eraHistory@(EraHistory _ interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
     slotNo <- runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
-                C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
+                C.ChainPointAtGenesis  -> pure $ fromIntegral (0 :: Integer)
                 C.ChainPoint slot _hsh -> pure slot
     utctime <- either logErr pure (slotToUtcTime eraHistory systemStart slotNo)
     either (logErr . show) (\l -> pure (slotNo, l, utctime)) (interpretQuery interpreter $ slotToSlotLength slotNo)

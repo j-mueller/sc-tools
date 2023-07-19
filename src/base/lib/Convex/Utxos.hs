@@ -11,7 +11,7 @@
 module Convex.Utxos(
   -- * Utxo sets
   UtxoSet(..),
-  toUtxoTx,
+  fromUtxoTx,
   singleton,
   PrettyBalance(..),
   _UtxoSet,
@@ -110,10 +110,10 @@ deriving instance (ToJSON a, ToJSON (C.TxOut ctx C.BabbageEra)) => ToJSON (UtxoS
 singleton :: TxIn -> (C.TxOut ctx C.BabbageEra, a) -> UtxoSet ctx a
 singleton txi = UtxoSet . Map.singleton txi
 
-{-| Change the context of the outputs in this utxo set
+{-| Change the context of the outputs in this utxo set to 'CtxUTxO'
 -}
-toUtxoTx :: UtxoSet C.CtxTx a -> UtxoSet C.CtxUTxO a
-toUtxoTx = UtxoSet . fmap (first C.toCtxUTxOTxOut) . _utxos
+fromUtxoTx :: UtxoSet C.CtxTx a -> UtxoSet C.CtxUTxO a
+fromUtxoTx = UtxoSet . fmap (first C.toCtxUTxOTxOut) . _utxos
 
 makePrisms ''UtxoSet
 
