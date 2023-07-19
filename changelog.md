@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Add `utcTimeToPosixTime` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.
 
+### Deleted
+
+* Deleted the `trading-bot` package.
+
 ## [0.0.1] - 2023-04-26
 
 * Initial release

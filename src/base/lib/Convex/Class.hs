@@ -199,7 +199,7 @@ data MonadBlockchainError e =
 
 instance Show e => Show (MonadBlockchainError e) where
   show (MonadBlockchainError e) = show e
-  show (FailWith str) = str
+  show (FailWith str)           = str
 
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
