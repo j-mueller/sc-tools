@@ -28,13 +28,14 @@ import           Cardano.Slotting.Slot     (withOriginToMaybe)
 import           Cardano.Slotting.Time     (diffRelativeTime, getRelativeTime,
                                             toRelativeTime)
 import           Control.Concurrent        (threadDelay)
-import           Control.Concurrent.Async  (race_)
+import           Control.Concurrent.Async  (race)
 import           Control.Exception         (finally, throwIO)
 import           Control.Monad             (unless, when, (>=>))
 import           Control.Tracer            (Tracer, traceWith)
 import qualified Convex.Devnet.NodeQueries as Q
 import           Convex.Devnet.Utils       (checkProcessHasNotDied,
-                                            defaultNetworkId, readConfigFile,
+                                            defaultNetworkId, failure,
+                                            readConfigFile,
                                             withLogFile)
 import           Data.Aeson                (FromJSON, ToJSON (toJSON), (.=))
 import qualified Data.Aeson                as Aeson
@@ -151,24 +152,25 @@ withCardanoNode ::
   NetworkId ->
   FilePath ->
   CardanoNodeArgs ->
-  (RunningNode -> IO ()) ->
-  IO ()
+  (RunningNode -> IO a) ->
+  IO a
 withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nodeConfigFile} action = do
   traceWith tr $ MsgNodeCmdSpec (Text.pack $ show $ cmdspec process)
   traceWith tr $ MsgNodeStarting{stateDirectory}
   withLogFile logFilePath $ \out -> do
     hSetBuffering out NoBuffering
     withCreateProcess process{std_out = UseHandle out, std_err = UseHandle out} $
-      \_stdin _stdout _stderr processHandle ->
-        race_
+      \_stdin _stdout _stderr processHandle -> do
+        race
           (checkProcessHasNotDied "cardano-node" processHandle)
           waitForNode
-          `finally` cleanupSocketFile
+          `finally` cleanupSocketFile >>= \case
+          Left _ -> failure "withCardanoNode: unexpected termination"
+          Right res -> pure res
+
  where
   process = cardanoNodeProcess (Just stateDirectory) args
-
   logFilePath = stateDirectory </> "logs" </> "cardano-node.log"
-
   socketPath = stateDirectory </> nodeSocket
 
   waitForNode = do
@@ -265,8 +267,8 @@ withCardanoNodeDevnet ::
   Tracer IO NodeLog ->
   -- | State directory in which credentials, db & logs are persisted.
   FilePath ->
-  (RunningNode -> IO ()) ->
-  IO ()
+  (RunningNode -> IO a) ->
+  IO a
 withCardanoNodeDevnet tracer stateDirectory action = do
   createDirectoryIfMissing True stateDirectory
   [dlgCert, signKey, vrfKey, kesKey, opCert] <-

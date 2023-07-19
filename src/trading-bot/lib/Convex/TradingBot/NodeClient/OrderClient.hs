@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-| A wallet client for executing buy and sell orders
 -}
@@ -66,13 +68,14 @@ applyBlock info logEnv ns wallet tx (catchingUp -> isCatchingUp) state block = K
       newState = apply state change
 
   when (not isCatchingUp) $ do
-    void $ runMonadBlockchainCardanoNodeT info $ do
-      (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
-      logInfoS (show tx_)
-      logInfoS (show change_)
-      sendTx tx_
+    let action =
+          runMonadBlockchainCardanoNodeT @String info $ do
+           (tx_, change_) <- balanceForWallet wallet (toUtxoTx state) tx
+           logInfoS (show tx_)
+           logInfoS (show change_)
+           sendTx tx_
+    void $ action >>= either (fail . show) pure
     empty
-
   pure newState
 
 convBuyOrder :: Order 'Typed -> T.BuyOrder

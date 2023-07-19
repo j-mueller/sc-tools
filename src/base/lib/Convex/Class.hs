@@ -8,6 +8,7 @@
 module Convex.Class(
   MonadBlockchain(..),
   MonadMockchain(..),
+  MonadBlockchainError(..),
   getSlot,
   setSlot,
   setPOSIXTime,
@@ -36,7 +37,10 @@ import           Cardano.Ledger.Shelley.API                        (UTxO)
 import           Cardano.Slotting.Time                             (SystemStart,
                                                                     SlotLength)
 import           Control.Lens                                      (_1, view)
-import           Control.Monad.Except                              (MonadError)
+import           Control.Monad.Except                              (MonadError,
+                                                                    catchError,
+                                                                    runExceptT,
+                                                                    throwError)
 import           Control.Monad.IO.Class                            (MonadIO (..))
 import           Control.Monad.Reader                              (MonadTrans,
                                                                     ReaderT (..),
@@ -188,17 +192,29 @@ setTimeToValidRange = \case
 nextSlot :: MonadMockchain m => m ()
 nextSlot = modifySlot (\s -> (succ s, ()))
 
+data MonadBlockchainError e =
+  MonadBlockchainError e
+  | FailWith String
+  deriving (Eq)
+
+instance Show e => Show (MonadBlockchainError e) where
+  show (MonadBlockchainError e) = show e
+  show (FailWith str) = str
+
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
-newtype MonadBlockchainCardanoNodeT m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT (LocalNodeConnectInfo CardanoMode) m a }
-  deriving newtype (Functor, Applicative, Monad, MonadTrans, MonadIO)
+newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT (LocalNodeConnectInfo CardanoMode) (ExceptT (MonadBlockchainError e) m) a }
+  deriving newtype (Functor, Applicative, Monad, MonadIO)
 
-deriving newtype instance MonadError e m => MonadError e (MonadBlockchainCardanoNodeT m)
+instance MonadError e m => MonadError e (MonadBlockchainCardanoNodeT e m) where
+  throwError = lift . throwError
+  catchError m _ = m
 
-runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo CardanoMode -> MonadBlockchainCardanoNodeT m a -> m a
-runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runReaderT action info
 
-runQuery :: (MonadIO m, MonadLog m, MonadFail m) => C.QueryInMode CardanoMode a -> MonadBlockchainCardanoNodeT m a
+runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo CardanoMode -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
+runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runExceptT (runReaderT action info)
+
+runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode CardanoMode a -> MonadBlockchainCardanoNodeT e m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
   result <- liftIO (C.queryNodeLocalState info Nothing qry)
@@ -206,21 +222,21 @@ runQuery qry = MonadBlockchainCardanoNodeT $ do
     Left err -> do
       let msg = "runQuery: Query failed: " <> show err
       logWarnS msg
-      fail msg
+      throwError $ FailWith msg
     Right result' -> do
       pure result'
 
-runQuery' :: (MonadIO m, MonadLog m, Show err, MonadFail m) => C.QueryInMode CardanoMode (Either err a) -> MonadBlockchainCardanoNodeT m a
+runQuery' :: (MonadIO m, MonadLog m, Show e1) => C.QueryInMode CardanoMode (Either e1 a) -> MonadBlockchainCardanoNodeT e2 m a
 runQuery' qry = runQuery qry >>= \case
   Left err -> MonadBlockchainCardanoNodeT $ do
     let msg = "runQuery': Era mismatch: " <> show err
     logWarnS msg
-    fail msg
+    throwError $ FailWith msg
   Right result' -> MonadBlockchainCardanoNodeT $ do
     logInfoS "runQuery': Success"
     pure result'
 
-instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT m) where
+instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT e m) where
   sendTx tx = MonadBlockchainCardanoNodeT $ do
     let txId = C.getTxId (C.getTxBody tx)
     info <- ask
@@ -229,9 +245,11 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
     case result of
       SubmitSuccess -> do
         logInfoS ("sendTx: Submitted " <> show txId)
+        pure txId
       SubmitFail reason -> do
-        logWarnS $ "sendTx: Submission failed: " <> show reason
-    pure txId
+        let msg = "sendTx: Submission failed: " <> show reason
+        logWarnS msg
+        throwError $ FailWith msg
 
   utxoByTxIn txIns =
     runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
@@ -248,25 +266,27 @@ instance (MonadFail m, MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchai
   queryEraHistory = runQuery (C.QueryEraHistory C.CardanoModeIsMultiEra)
 
   querySlotNo = do
-    let logErr err = do
-          let msg = "querySlotNo: Failed with " <> err
-          logWarnS msg
-          fail msg
     (eraHistory@(EraHistory _ interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
     slotNo <- runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
                 C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
                 C.ChainPoint slot _hsh -> pure slot
-    utctime <- either logErr pure (slotToUtcTime eraHistory systemStart slotNo)
-    either (logErr . show) (\l -> pure (slotNo, l, utctime)) (interpretQuery interpreter $ slotToSlotLength slotNo)
+    MonadBlockchainCardanoNodeT $ do
+      let logErr err = do
+            let msg = "querySlotNo: Failed with " <> err
+            logWarnS msg
+            throwError $ FailWith msg
+      utctime <- either logErr pure (slotToUtcTime eraHistory systemStart slotNo)
+      either (logErr . show) (\l -> pure (slotNo, l, utctime)) (interpretQuery interpreter $ slotToSlotLength slotNo)
 
   networkId = MonadBlockchainCardanoNodeT (asks C.localNodeNetworkId)
 
-instance MonadLog m => MonadLog (MonadBlockchainCardanoNodeT m) where
+instance MonadTrans (MonadBlockchainCardanoNodeT e) where
+  lift = MonadBlockchainCardanoNodeT . lift .lift
+
+instance (MonadLog m) => MonadLog (MonadBlockchainCardanoNodeT e m) where
   logInfo' = lift . logInfo'
   logWarn' = lift . logWarn'
   logDebug' = lift . logDebug'
 
-instance (MonadLog m, MonadFail m) => MonadFail (MonadBlockchainCardanoNodeT m) where
-  fail s = MonadBlockchainCardanoNodeT $ do
-    logWarnS s
-    lift (fail s)
+instance (MonadLog m) => MonadFail (MonadBlockchainCardanoNodeT e m) where
+  fail = MonadBlockchainCardanoNodeT . throwError . FailWith
