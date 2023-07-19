@@ -56,7 +56,6 @@ library
     build-depends:
       cardano-api,
       cardano-ledger-shelley,
-      cardano-ledger-babbage,
       cardano-ledger-core
 
 executable convex-wallet

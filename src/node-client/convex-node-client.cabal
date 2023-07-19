@@ -48,15 +48,8 @@ library
     -- cardano dependencies
     build-depends:
       cardano-api,
-      cardano-ledger-byron,
-      cardano-ledger-alonzo,
-      cardano-ledger-shelley,
-      cardano-ledger-core,
-      cardano-crypto-wrapper,
       cardano-slotting,
       ouroboros-consensus,
-      ouroboros-consensus-cardano,
-      ouroboros-consensus-shelley,
       ouroboros-network,
       typed-protocols
 

@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deleted
 
-* Deleted the `trading-bot` package.
+* Deleted the `trading-bot` and `muesli` packages.
+* Deleted `spendPlutusV1Ref` and `spendPlutusV2Ref` as they don't make sense.
 
 ## [0.0.1] - 2023-04-26
 
