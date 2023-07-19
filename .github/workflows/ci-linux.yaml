@@ -84,7 +84,7 @@ jobs:
         with:
           path: |
             ~/.cabal
-          key: cabal
+          key: cabal-${{ hashFiles('cabal.project', '**/*.cabal') }}
 
       - uses: haskell/actions/setup@v1
         with:
