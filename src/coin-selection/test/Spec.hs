@@ -9,7 +9,7 @@ import           Control.Monad                  (void)
 import           Convex.BuildTx                 (assetValue, mintPlutusV1,
                                                  payToAddress, payToPlutusV1,
                                                  payToPlutusV2,
-                                                 payToPlutusV2Inline,
+                                                 payToPlutusV2InlineScript,
                                                  setMinAdaDeposit,
                                                  setMinAdaDepositAll,
                                                  spendPlutusV1,
@@ -89,7 +89,7 @@ putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
       addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
   let tx = emptyTx
-            & payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
+            & payToPlutusV2InlineScript addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
             & setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   let outRef = C.TxIn txId (C.TxIx 0)
