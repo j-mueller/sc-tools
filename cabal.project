@@ -24,10 +24,7 @@ packages:
   src/coin-selection
   src/devnet
   src/mockchain
-  src/dex/muesli/muesli-core
-  src/dex/muesli/muesli-node-client
   src/node-client
-  src/trading-bot
   src/wallet
   src/un-ada
 

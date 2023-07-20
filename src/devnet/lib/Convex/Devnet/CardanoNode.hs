@@ -35,8 +35,7 @@ import           Control.Tracer            (Tracer, traceWith)
 import qualified Convex.Devnet.NodeQueries as Q
 import           Convex.Devnet.Utils       (checkProcessHasNotDied,
                                             defaultNetworkId, failure,
-                                            readConfigFile,
-                                            withLogFile)
+                                            readConfigFile, withLogFile)
 import           Data.Aeson                (FromJSON, ToJSON (toJSON), (.=))
 import qualified Data.Aeson                as Aeson
 import qualified Data.Aeson.KeyMap         as Aeson.KeyMap
@@ -165,7 +164,7 @@ withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nod
           (checkProcessHasNotDied "cardano-node" processHandle)
           waitForNode
           `finally` cleanupSocketFile >>= \case
-          Left _ -> failure "withCardanoNode: unexpected termination"
+          Left _    -> failure "withCardanoNode: unexpected termination"
           Right res -> pure res
 
  where

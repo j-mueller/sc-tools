@@ -8,11 +8,12 @@ import           Control.Lens                   (_4, mapped, over, view, (&))
 import           Control.Monad                  (void)
 import           Convex.BuildTx                 (assetValue, mintPlutusV1,
                                                  payToAddress, payToPlutusV1,
-                                                 payToPlutusV1Inline,
+                                                 payToPlutusV2,
+                                                 payToPlutusV2Inline,
                                                  setMinAdaDeposit,
                                                  setMinAdaDepositAll,
                                                  spendPlutusV1,
-                                                 spendPlutusV1Ref)
+                                                 spendPlutusV2Ref)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
 import           Convex.Lenses                  (emptyTx)
@@ -26,6 +27,7 @@ import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
+import qualified Scripts
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
 import           Test.Tasty.HUnit               (Assertion, testCase)
@@ -43,7 +45,7 @@ tests = testGroup "unit tests"
     [ testCase "paying to a plutus script" (mockchainSucceeds payToPlutusScript)
     , testCase "spending a plutus script output" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScript))
     , testCase "creating a reference script output" (mockchainSucceeds $ putReferenceScript Wallet.w1)
-    , testCase "using a reference script" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScriptReference))
+    , testCase "using a reference script" (mockchainSucceeds (payToPlutusV2Script >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds mintingPlutus)
     , testCase "making payments with tokens" (mockchainSucceeds (mintingPlutus >>= spendTokens))
     ]
@@ -71,6 +73,12 @@ payToPlutusScript = do
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
+payToPlutusV2Script :: Mockchain C.TxIn
+payToPlutusV2Script = do
+  let tx = emptyTx & payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () (C.lovelaceToValue 10_000_000)
+  i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  pure (C.TxIn i (C.TxIx 0))
+
 spendPlutusScript :: C.TxIn -> Mockchain C.TxId
 spendPlutusScript ref = do
   let tx = emptyTx & spendPlutusV1 ref txInscript () ()
@@ -78,15 +86,13 @@ spendPlutusScript ref = do
 
 putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
-  let s = C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV1 txInscript
+  let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
+      addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
   let tx = emptyTx
-            & payToPlutusV1Inline (Wallet.addressInEra Defaults.networkId wallet) txInscript (C.lovelaceToValue 10_000_000)
+            & payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
             & setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   let outRef = C.TxIn txId (C.TxIx 0)
-  case C.toScriptInEra C.BabbageEra s of
-    Nothing -> fail "toScriptInEra: Nothing"
-    _       -> pure ()
   C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
   case Map.lookup outRef utxo of
     Nothing  -> fail "Utxo not found"
@@ -99,7 +105,7 @@ spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = emptyTx
-            & spendPlutusV1Ref txIn refTxIn (Just $ C.hashScript $ C.PlutusScript C.PlutusScriptV1 txInscript) () ()
+            & spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ()
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 mintingPlutus :: Mockchain C.TxId

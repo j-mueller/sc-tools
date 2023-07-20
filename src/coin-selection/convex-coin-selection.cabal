@@ -59,8 +59,11 @@ test-suite convex-coin-selection-test
   import: lang
   type: exitcode-stdio-1.0
   hs-source-dirs:     test
-  ghc-options: -threaded -rtsopts
-  main-is: Spec.hs
+  ghc-options: -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fno-specialise
+  main-is:
+    Spec.hs
+  other-modules:
+    Scripts
   build-depends:
     base >= 4.14.0,
     tasty,
@@ -71,4 +74,6 @@ test-suite convex-coin-selection-test
     convex-base,
     convex-wallet,
     cardano-api,
-    containers
+    containers,
+    plutus-tx,
+    plutus-tx-plugin
