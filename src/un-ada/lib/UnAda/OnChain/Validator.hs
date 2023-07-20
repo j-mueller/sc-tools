@@ -28,14 +28,10 @@ unAdaValidator (TokenName . unsafeDataAsB -> tokenName) (UnAdaStateBuiltin spend
     TxInfoV2{inputs, outputs, rest8=TxInfoPartTwo{validRange, mint}} ->
       let !itvl = unsafeFromBuiltinData validRange
           !minted = totalValMinted mps tokenName (unsafeFromBuiltinData mint)
-          !locked = totalValLocked mps tokenName (unsafeFromBuiltinData outputs)
-          !prod   = totalValUnlocked mps tokenName (unsafeFromBuiltinData inputs)
       in if spendAfter `Interval.before` itvl
           then
-            if minted == locked - prod
-            then if minted == 0
-              then traceError "must mint non-zero amount of tokens" ()
-              else ()
+            if minted /= 0
+            then ()
             else traceError "total value locked must equal total value minted" ()
           else traceError "spendAfter must be before validity interval" ()
 

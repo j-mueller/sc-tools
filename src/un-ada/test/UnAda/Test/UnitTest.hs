@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE ViewPatterns       #-}
@@ -8,20 +9,25 @@ tests
 ) where
 
 import qualified Cardano.Api.Shelley            as C
-import           Control.Lens                   (mapped, over)
+import           Control.Lens                   (_2, _Just, at, element, mapped,
+                                                 over, preview)
 import           Control.Monad                  (void)
 import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
 import           Convex.Lenses                  (emptyTx)
 import qualified Convex.Lenses                  as L
+import           Convex.MockChain               (Mockchain, MockchainError (..))
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
-import           Convex.MockChain.Utils         (mockchainSucceeds)
+import           Convex.MockChain.Utils         (mockchainFails,
+                                                 mockchainSucceeds)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import           Data.Function                  ((&))
+import           Data.List                      (isPrefixOf)
+import           Data.String                    (IsString (..))
 import           Plutus.V1.Ledger.Interval      (Extended (..), LowerBound (..),
                                                  interval)
 import           Plutus.V1.Ledger.Time          (POSIXTime (..), POSIXTimeRange)
@@ -38,8 +44,12 @@ import           UnAda.OnChain.Types            (BuiltinData (FiniteExtended, Fi
 
 tests :: TestTree
 tests = testGroup "unit tests"
-  [ testCase "mint some un-Ada" canMintUnAda
-  , testCase "burn some un-Ada" canBurnUnAda
+  [ testGroup "Happy path"
+    [ testCase "mint some un-Ada" canMintUnAda
+    , testCase "burn some un-Ada" canBurnUnAda
+    ]
+  , testGroup "attacks"
+    (testAttack <$> [NotEnoughAda, TooMuchAda, DuplicateOutput, DeleteOutput])
   , testGroup "ToData / FromData"
       [ testCaseSteps "toData UnAdaState" toDataUnAdaState
       , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
@@ -48,6 +58,10 @@ tests = testGroup "unit tests"
       , testCaseSteps "builtin pattern POSIXTimeRange" builtinPatternRange
       ]
   ]
+
+testAttack :: Attack -> TestTree
+testAttack att =
+  testCase (fromString $ attackName att) (mockchainFails (attack att) failWithTxBodyScriptExecutionError)
 
 canMintUnAda :: Assertion
 canMintUnAda = mockchainSucceeds mintSomeUnAda
@@ -63,9 +77,9 @@ mintSomeUnAda = do
 
 canBurnUnAda :: Assertion
 canBurnUnAda = mockchainSucceeds $ do
-  (txi, (txo, st)) <- mintSomeUnAda
+  (txi, (txo, _)) <- mintSomeUnAda
 
-  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 3_000_000
+  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo 5_000_000
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
@@ -138,3 +152,43 @@ builtinPatternRange step = do
     x -> do
       step (show x)
       fail "unexpected format"
+
+data Attack =
+  NotEnoughAda
+  | TooMuchAda
+  | DuplicateOutput
+  | DeleteOutput
+
+attackName :: Attack -> String
+attackName = \case
+  NotEnoughAda    -> "not enough Ada"
+  TooMuchAda      -> "too much Ada"
+  DuplicateOutput -> "duplicate output"
+  DeleteOutput    -> "delete output"
+
+modTx :: Attack -> C.TxBodyContent v C.BabbageEra -> C.TxBodyContent v C.BabbageEra
+modTx = \case
+  NotEnoughAda ->
+    over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n - 1_000)
+  TooMuchAda ->
+    over (L.txOuts . element 0 . L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId . _Just) (\n -> n + 1_000)
+  DuplicateOutput -> \tx ->
+    let first = preview (L.txOuts . element 0) tx
+    in case first of
+      Nothing -> tx
+      Just o  -> over L.txOuts ((:) o) tx
+  DeleteOutput -> over L.txOuts tail
+
+attack :: Attack -> Mockchain ()
+attack att = do
+  let tx = modTx att (mintUnAda Defaults.networkId 1 10_000_000 emptyTx)
+  _ <- Wallet.w2 `paymentTo` Wallet.w1
+  void (balanceAndSubmit Wallet.w1 tx)
+
+failWithTxBodyScriptExecutionError :: MockchainError -> Assertion
+failWithTxBodyScriptExecutionError = \case
+  FailWith err
+    | "BalancingError (TxBodyScriptExecutionError" `isPrefixOf` err -> pure ()
+    | otherwise -> fail ("Wrong error: " <> err)
+  MockchainValidationFailed _err ->
+    fail "Unexpected MockchainValidationFailed"

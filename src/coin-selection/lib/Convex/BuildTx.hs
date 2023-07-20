@@ -16,9 +16,11 @@ module Convex.BuildTx(
   spendPlutusV1,
   spendPlutusV2,
   spendPlutusV2Ref,
+  spendPlutusV2InlineDatum,
   mintPlutusV1,
   mintPlutusV2,
-  payToPlutusV2Inline,
+  payToPlutusV2InlineScript,
+  payToPlutusV2InlineDatum,
   addReference,
   addCollateral,
   addAuxScript,
@@ -63,6 +65,12 @@ spendPlutusV1 txIn s (toScriptData -> dat) (toScriptData -> red) =
 spendPlutusV2 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> TxBuild
 spendPlutusV2 txIn s (toScriptData -> dat) (toScriptData -> red) =
   let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
+  in over L.txIns ((txIn, wit') :) . setScriptsValid
+
+spendPlutusV2InlineDatum :: forall redeemer. Plutus.ToData redeemer => C.TxIn -> PlutusScript PlutusScriptV2 -> redeemer -> TxBuild
+spendPlutusV2InlineDatum txIn s (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) C.InlineScriptDatum red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
 
@@ -138,8 +146,16 @@ payToPlutusV2 network s datum vl =
       dt = C.fromPlutusData (Plutus.toData datum)
   in payToScriptHash network sh dt vl
 
-payToPlutusV2Inline :: C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> TxBuild
-payToPlutusV2Inline addr script vl =
+payToPlutusV2InlineDatum :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.Value -> TxBuild
+payToPlutusV2InlineDatum network s datum vl =
+  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 s)
+      dt = C.fromPlutusData (Plutus.toData datum)
+      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript sh) C.NoStakeAddress
+      txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) (C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra dt) C.ReferenceScriptNone
+  in over L.txOuts ((:) txo)
+
+payToPlutusV2InlineScript :: C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> TxBuild
+payToPlutusV2InlineScript addr script vl =
   let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone (C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script))
   in over L.txOuts ((:) txo)
 
