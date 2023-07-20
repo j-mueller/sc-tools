@@ -179,3 +179,6 @@ constraints:
   , plutus-ghc-stub == 8.6.5
   , word-array == 0.1.0.0
   , word-array == 0.1.0.0
+
+package cardano-crypto-praos
+  flags: -external-libsodium-vrf
