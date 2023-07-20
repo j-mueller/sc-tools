@@ -93,9 +93,14 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - name: build & test
+      - name: Build dependencies for integration test
         run: |
           cabal update
+          cabal install -j cardano-node cardano-cli --overwrite-policy=always
+          echo "/home/runner/.cabal/bin" >> $GITHUB_PATH
+
+      - name: build & test
+        run: |
           cabal build -j all
           cabal test all
 
