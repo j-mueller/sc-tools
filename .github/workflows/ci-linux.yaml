@@ -93,6 +93,11 @@ jobs:
 
       - uses: actions/checkout@v2
 
+      - name: Set up cabal.project.local
+        run: |
+          echo "package cardano-crypto-praos" > cabal.project.local
+          echo "  flags: -external-libsodium-vrf" >> cabal.project.local
+
       - name: Build dependencies for integration test
         run: |
           cabal update
