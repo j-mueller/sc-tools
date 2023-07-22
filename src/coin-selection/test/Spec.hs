@@ -4,15 +4,20 @@
 module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
+import           Cardano.Ledger.Alonzo.Scripts  (AlonzoScript (..),
+                                                 transProtocolVersion,
+                                                 validScript)
+import           Cardano.Ledger.Language        (Language (..))
 import           Control.Lens                   (_4, mapped, over, view, (&))
 import           Control.Monad                  (void)
+import           Control.Monad.Except           (runExcept)
 import           Convex.BuildTx                 (assetValue, mintPlutusV1,
                                                  payToAddress, payToPlutusV1,
                                                  payToPlutusV2,
                                                  payToPlutusV2Inline,
                                                  setMinAdaDeposit,
                                                  setMinAdaDepositAll,
-                                                 spendPlutusV1,
+                                                 spendPlutusV1, spendPlutusV2,
                                                  spendPlutusV2Ref)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
@@ -27,10 +32,12 @@ import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
+import qualified PlutusLedgerApi.V2             as PV2
 import qualified Scripts
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
-import           Test.Tasty.HUnit               (Assertion, testCase)
+import           Test.Tasty.HUnit               (Assertion, assertBool,
+                                                 testCase)
 
 main :: IO ()
 main = defaultMain tests
@@ -44,6 +51,8 @@ tests = testGroup "unit tests"
   , testGroup "scripts"
     [ testCase "paying to a plutus script" (mockchainSucceeds payToPlutusScript)
     , testCase "spending a plutus script output" (mockchainSucceeds (payToPlutusScript >>= spendPlutusScript))
+    , testCase "spending a plutus script (V2) output" (mockchainSucceeds (payToPlutusV2Script >>= spendPlutusV2Script))
+    , testCase "well-formed scripts" wellFormedScripts
     , testCase "creating a reference script output" (mockchainSucceeds $ putReferenceScript Wallet.w1)
     , testCase "using a reference script" (mockchainSucceeds (payToPlutusV2Script >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds mintingPlutus)
@@ -53,6 +62,13 @@ tests = testGroup "unit tests"
 
 spendPublicKeyOutput :: Assertion
 spendPublicKeyOutput = mockchainSucceeds (Wallet.w2 `paymentTo` Wallet.w1)
+
+wellFormedScripts :: Assertion
+wellFormedScripts = do
+  let protVer = Defaults.protVer Defaults.nodeParams
+      s = Cardano.Ledger.Alonzo.Scripts.PlutusScript PlutusV2 Scripts.v2SpendingScriptSerialised
+  either (fail . show) pure (runExcept (PV2.assertScriptWellFormed (transProtocolVersion protVer) Scripts.v2SpendingScriptSerialised))
+  assertBool "validScript" (validScript protVer s)
 
 makeSeveralPayments :: Assertion
 makeSeveralPayments = mockchainSucceeds $ do
@@ -84,13 +100,18 @@ spendPlutusScript ref = do
   let tx = emptyTx & spendPlutusV1 ref txInscript () ()
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
+spendPlutusV2Script :: C.TxIn -> Mockchain C.TxId
+spendPlutusV2Script ref = do
+  let tx = emptyTx & spendPlutusV2 ref Scripts.v2SpendingScript () ()
+  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+
 putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
       addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
-  let tx = emptyTx
+      tx = emptyTx
             & payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
-            & setMinAdaDepositAll Defaults.ledgerProtocolParameters
+            & setMinAdaDepositAll Defaults.bundledProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   let outRef = C.TxIn txId (C.TxIx 0)
   C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
@@ -121,12 +142,12 @@ spendTokens _ = do
   _ <- nativeAssetPaymentTo 100 Wallet.w2 Wallet.w3
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
 
-nativeAssetPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
+nativeAssetPaymentTo :: (MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
       tx = emptyTx
             & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
+            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.bundledProtocolParameters)
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom

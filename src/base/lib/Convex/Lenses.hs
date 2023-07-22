@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-| Lenses for @cardano-api@ types
@@ -93,23 +94,22 @@ import qualified Cardano.Ledger.BaseTypes           as Shelley
 import qualified Cardano.Ledger.Core                as Core
 import qualified Cardano.Ledger.Credential          as Credential
 import           Cardano.Ledger.Crypto              (StandardCrypto)
-import           Cardano.Ledger.Era                 (Era)
 import qualified Cardano.Ledger.Hashes              as Hashes
 import qualified Cardano.Ledger.Keys                as Keys
 import           Cardano.Ledger.Shelley.API         (Coin, LedgerEnv (..), UTxO,
                                                      UTxOState (..))
+import           Cardano.Ledger.Shelley.Governance  (EraGovernance (GovernanceState))
 import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
-                                                     smartUTxOState)
+                                                     updateStakeDistribution)
 import           Control.Lens                       (Iso', Lens', Prism', iso,
                                                      lens, prism')
-import           Control.State.Transition           (STS (State))
 import qualified Convex.Scripts                     as Scripts
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
 import           Data.Proxy                         (Proxy (..))
 import           Data.Word                          (Word64)
-import qualified Plutus.V1.Ledger.Api               as PV1
-import           Plutus.V1.Ledger.Crypto            (PubKeyHash (..))
+import           PlutusLedgerApi.V1                 (PubKeyHash (..))
+import qualified PlutusLedgerApi.V1                 as PV1
 import qualified PlutusTx.Prelude                   as PlutusTx
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
@@ -134,6 +134,8 @@ emptyTx =
     , C.txUpdateProposal = C.TxUpdateProposalNone
     , C.txMintValue = C.TxMintNone
     , C.txScriptValidity = C.TxScriptValidityNone
+    , C.txGovernanceActions = C.TxGovernanceActionsNone
+    , C.txVotes = C.TxVotesNone
     }
 
 type TxIn v = (C.TxIn, BuildTxWith v (C.Witness C.WitCtxTxIn BabbageEra))
@@ -282,20 +284,20 @@ _TxOutDatumHash = prism' from to where
   from :: C.Hash C.ScriptData -> TxOutDatum ctx C.BabbageEra
   from h = C.TxOutDatumHash C.ScriptDataInBabbageEra h
 
-_TxOutDatumInTx :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.ScriptData
+_TxOutDatumInTx :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.HashableScriptData
 _TxOutDatumInTx = prism' from to where
-  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.ScriptData
+  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.HashableScriptData
   to (C.TxOutDatumInTx _ k) = Just k
   to _                      = Nothing
-  from :: C.ScriptData -> TxOutDatum CtxTx C.BabbageEra
+  from :: C.HashableScriptData -> TxOutDatum CtxTx C.BabbageEra
   from cd = C.TxOutDatumInTx C.ScriptDataInBabbageEra cd
 
-_TxOutDatumInline :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.ScriptData
+_TxOutDatumInline :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.HashableScriptData
 _TxOutDatumInline = prism' from to where
-  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.ScriptData
+  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.HashableScriptData
   to (C.TxOutDatumInline _ k) = Just k
   to _                        = Nothing
-  from :: C.ScriptData -> TxOutDatum CtxTx C.BabbageEra
+  from :: C.HashableScriptData -> TxOutDatum CtxTx C.BabbageEra
   from cd = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra cd
 
 _ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
@@ -373,10 +375,11 @@ slot = lens get set_ where
 {-| 'UTxOState' iso. Note that this doesn't touch the '_stakeDistro' field. This is because the
 stake distro is a function of @utxo :: UTxO era@ and can be computed by @updateStakeDistribution mempty mempty utxo@.
 -}
-_UTxOState :: forall era. Era era => Iso' (UTxOState era) (UTxO era, Coin, Coin, State (Core.EraRule "PPUP" era))
-_UTxOState = iso from to where
-  from UTxOState{_utxo, _deposited, _fees, _ppups} = (_utxo, _deposited, _fees, _ppups)
-  to (utxo, deposited, fees, pups) = smartUTxOState @era utxo deposited fees pups
+_UTxOState :: forall era. (Core.EraTxOut era) => Core.PParams era -> Iso' (UTxOState era) (UTxO era, Coin, Coin, GovernanceState era)
+_UTxOState pp = iso from to where
+  from UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovernance} = (utxosUtxo, utxosDeposited, utxosFees, utxosGovernance)
+  to (utxosUtxo, utxosDeposited, utxosFees, utxosGovernance) = UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovernance, utxosStakeDistr = updateStakeDistribution pp mempty mempty utxosUtxo}
+
 
 utxoState :: Lens' (LedgerState era) (UTxOState era)
 utxoState = lens get set_ where
@@ -416,7 +419,7 @@ _PlutusPubKeyHash = prism' from to where
   from = PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
 
   to :: PubKeyHash -> Maybe (C.Hash C.PaymentKey)
-  to (PubKeyHash h) = C.deserialiseFromRawBytes (C.proxyToAsType $ Proxy @(C.Hash C.PaymentKey)) $ PlutusTx.fromBuiltin h
+  to (PubKeyHash h) = either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType $ Proxy @(C.Hash C.PaymentKey)) $ PlutusTx.fromBuiltin h
 
 _PaymentCredential :: Iso' C.PaymentCredential (Credential.PaymentCredential StandardCrypto)
 _PaymentCredential = iso from to where

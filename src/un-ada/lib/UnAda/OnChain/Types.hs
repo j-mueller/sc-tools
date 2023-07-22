@@ -45,12 +45,11 @@ module UnAda.OnChain.Types(
   UnAdaRedeemer
 ) where
 
-import           GHC.Generics          (Generic)
-import           Plutus.V1.Ledger.Api  (MintingPolicyHash)
-import           Plutus.V1.Ledger.Time (POSIXTime)
+import           GHC.Generics       (Generic)
+import           PlutusLedgerApi.V1 (MintingPolicyHash, POSIXTime)
 import qualified PlutusTx
-import           PlutusTx.Builtins     (unsafeDataAsB, unsafeDataAsConstr,
-                                        unsafeDataAsI)
+import           PlutusTx.Builtins  (unsafeDataAsB, unsafeDataAsConstr,
+                                     unsafeDataAsI)
 import           PlutusTx.Prelude
 
 {-| The time after which the output can be spent, and the

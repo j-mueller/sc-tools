@@ -1,6 +1,7 @@
-{-# LANGUAGE GADTs        #-}
-{-# LANGUAGE LambdaCase   #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GADTs          #-}
+{-# LANGUAGE LambdaCase     #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ViewPatterns   #-}
 {-| Helper functions for querying a local @cardano-node@ using the socket interface
 -}
 module Convex.Devnet.NodeQueries(
@@ -22,6 +23,7 @@ import           Cardano.Api                                        (Address,
                                                                      BlockNo,
                                                                      CardanoMode,
                                                                      EraHistory (..),
+                                                                     LocalNodeConnectInfo (..),
                                                                      NetworkId,
                                                                      QueryInMode,
                                                                      ShelleyAddr,
@@ -83,7 +85,12 @@ queryLocalState query networkId socket = do
 
 
 localNodeConnectInfo :: NetworkId -> FilePath -> C.LocalNodeConnectInfo C.CardanoMode
-localNodeConnectInfo = C.LocalNodeConnectInfo cardanoModeParams
+localNodeConnectInfo localNodeNetworkId (C.File -> localNodeSocketPath) =
+  C.LocalNodeConnectInfo
+    { localConsensusModeParams = cardanoModeParams
+    , localNodeNetworkId
+    , localNodeSocketPath
+    }
 
 cardanoModeParams :: C.ConsensusModeParams C.CardanoMode
 cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots

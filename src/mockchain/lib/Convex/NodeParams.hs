@@ -4,27 +4,23 @@ module Convex.NodeParams(
   NodeParams(..),
   networkId,
   protocolParameters,
-  ledgerProtocolParameters,
   systemStart,
   eraHistory,
   stakePools,
   slotLength
 ) where
 
-import           Cardano.Api.Shelley            (CardanoMode, EraHistory,
-                                                 NetworkId (..), PoolId,
-                                                 ProtocolParameters (..))
-import           Cardano.Ledger.Babbage.PParams (PParams)
-import           Cardano.Slotting.Time          (SlotLength, SystemStart)
-import           Control.Lens.TH                (makeLensesFor)
-import           Convex.Era                     (ERA)
-import           Data.Set                       as Set (Set)
+import           Cardano.Api           (BabbageEra, BundledProtocolParameters)
+import           Cardano.Api.Shelley   (CardanoMode, EraHistory, NetworkId (..),
+                                        PoolId)
+import           Cardano.Slotting.Time (SlotLength, SystemStart)
+import           Control.Lens.TH       (makeLensesFor)
+import           Data.Set              as Set (Set)
 
 data NodeParams =
   NodeParams
     { npNetworkId          :: NetworkId
-    , npProtocolParameters :: ProtocolParameters
-    , npLedgerParams       :: PParams ERA
+    , npProtocolParameters :: BundledProtocolParameters BabbageEra
     , npSystemStart        :: SystemStart
     , npEraHistory         :: EraHistory CardanoMode
     , npStakePools         :: Set PoolId
@@ -38,5 +34,4 @@ makeLensesFor
   , ("npEraHistory", "eraHistory")
   , ("npStakePools", "stakePools")
   , ("npSlotLength", "slotLength")
-  , ("npLedgerParams", "ledgerProtocolParameters")
   ] ''NodeParams

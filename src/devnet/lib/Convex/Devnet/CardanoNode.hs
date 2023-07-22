@@ -90,6 +90,7 @@ data CardanoNodeArgs = CardanoNodeArgs
   , nodeByronGenesisFile   :: FilePath
   , nodeShelleyGenesisFile :: FilePath
   , nodeAlonzoGenesisFile  :: FilePath
+  , nodeConwayGenesisFile  :: FilePath
   , nodeTopologyFile       :: FilePath
   , nodeDatabaseDir        :: FilePath
   , nodeDlgCertFile        :: Maybe FilePath
@@ -108,6 +109,7 @@ defaultCardanoNodeArgs =
     , nodeByronGenesisFile = "genesis-byron.json"
     , nodeShelleyGenesisFile = "genesis-shelley.json"
     , nodeAlonzoGenesisFile = "genesis-alonzo.json"
+    , nodeConwayGenesisFile = "genesis-conway.json"
     , nodeTopologyFile = "topology.json"
     , nodeDatabaseDir = "db"
     , nodeDlgCertFile = Nothing
@@ -320,6 +322,9 @@ withCardanoNodeDevnet tracer stateDirectory action = do
     readConfigFile ("devnet" </> "genesis-alonzo.json")
       >>= BS.writeFile
         (stateDirectory </> nodeAlonzoGenesisFile args)
+    readConfigFile ("devnet" </> "genesis-conway.json")
+      >>= BS.writeFile
+        (stateDirectory </> nodeConwayGenesisFile args)
 
   writeTopology peers args =
     Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
@@ -354,6 +359,7 @@ refreshSystemStart stateDirectory args = do
   byronGenesisHash <- computeGenesisHash (stateDirectory </> nodeByronGenesisFile args)
   shelleyGenesisHash <- computeGenesisHash (stateDirectory </> nodeShelleyGenesisFile args)
   alonzoGenesisHash <- computeGenesisHash (stateDirectory </> nodeAlonzoGenesisFile args)
+  conwayGenesisHash <- computeGenesisHash (stateDirectory </> nodeConwayGenesisFile args)
 
   config <-
     unsafeDecodeJsonFile (stateDirectory </> nodeConfigFile args)
@@ -362,6 +368,7 @@ refreshSystemStart stateDirectory args = do
       <&> addField "ShelleyGenesisFile" (nodeShelleyGenesisFile args)
       <&> addField "ShelleyGenesisHash" shelleyGenesisHash
       <&> addField "AlonzoGenesisHash" alonzoGenesisHash
+      <&> addField "ConwayGenesisHash" conwayGenesisHash
 
   Aeson.encodeFile (stateDirectory </> nodeConfigFile args) config
 

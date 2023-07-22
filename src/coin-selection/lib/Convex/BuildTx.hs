@@ -30,20 +30,16 @@ module Convex.BuildTx(
   setMinAdaDepositAll
   ) where
 
-import           Cardano.Api.Shelley             (Hash, NetworkId, PaymentKey,
-                                                  PlutusScript, PlutusScriptV1,
-                                                  PlutusScriptV2, ScriptData,
-                                                  ScriptHash)
-import qualified Cardano.Api.Shelley             as C
-import qualified Cardano.Ledger.Core             as CLedger
-import           Control.Lens                    (_1, _2, at, mapped, over, set,
-                                                  (&))
-import qualified Convex.CoinSelection.CardanoApi as CC
-import qualified Convex.Lenses                   as L
-import           Convex.Scripts                  (toScriptData)
-import qualified Data.Map                        as Map
-import           Data.Maybe                      (fromMaybe)
-import qualified Plutus.V1.Ledger.Api            as Plutus
+import           Cardano.Api.Shelley (Hash, HashableScriptData, NetworkId,
+                                      PaymentKey, PlutusScript, PlutusScriptV1,
+                                      PlutusScriptV2, ScriptHash)
+import qualified Cardano.Api.Shelley as C
+import           Control.Lens        (_1, _2, at, mapped, over, set, (&))
+import qualified Convex.Lenses       as L
+import           Convex.Scripts      (toHashableScriptData)
+import qualified Data.Map            as Map
+import           Data.Maybe          (fromMaybe)
+import qualified PlutusLedgerApi.V1  as Plutus
 
 type TxBuild = C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
 
@@ -55,25 +51,25 @@ spendPublicKeyOutput txIn =
   in over L.txIns ((txIn, wit) :)
 
 spendPlutusV1 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> TxBuild
-spendPlutusV1 txIn s (toScriptData -> dat) (toScriptData -> red) =
+spendPlutusV1 txIn s (toHashableScriptData -> dat) (toHashableScriptData -> red) =
   let wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
 
 spendPlutusV2 :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> TxBuild
-spendPlutusV2 txIn s (toScriptData -> dat) (toScriptData -> red) =
+spendPlutusV2 txIn s (toHashableScriptData -> dat) (toHashableScriptData -> red) =
   let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid
 
 spendPlutusV2Ref :: forall datum redeemer. (Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> TxBuild
-spendPlutusV2Ref txIn refTxIn sh (toScriptData -> dat) (toScriptData -> red) =
+spendPlutusV2Ref txIn refTxIn sh (toHashableScriptData -> dat) (toHashableScriptData -> red) =
   let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in over L.txIns ((txIn, wit') :) . setScriptsValid . addReference refTxIn
 
 mintPlutusV1 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> TxBuild
-mintPlutusV1 script (toScriptData -> red) assetName quantity =
+mintPlutusV1 script (toHashableScriptData -> red) assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
@@ -88,7 +84,7 @@ assetValue hsh assetName quantity =
   C.valueFromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
 
 mintPlutusV2 :: forall redeemer. (Plutus.ToData redeemer) => PlutusScript PlutusScriptV2 -> redeemer -> C.AssetName -> C.Quantity -> TxBuild
-mintPlutusV2 script (toScriptData -> red) assetName quantity =
+mintPlutusV2 script (toHashableScriptData -> red) assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
@@ -118,7 +114,7 @@ payToPublicKey network pk vl =
       txo = C.TxOut addr val C.TxOutDatumNone C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
 
-payToScriptHash :: NetworkId -> ScriptHash -> ScriptData -> C.Value -> TxBuild
+payToScriptHash :: NetworkId -> ScriptHash -> HashableScriptData -> C.Value -> TxBuild
 payToScriptHash network script datum vl =
   let val = C.TxOutValue C.MultiAssetInBabbageEra vl
       addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript script) C.NoStakeAddress
@@ -129,13 +125,13 @@ payToScriptHash network script datum vl =
 payToPlutusV1 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV1 -> a -> C.Value -> TxBuild
 payToPlutusV1 network s datum vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 s)
-      dt = C.fromPlutusData (Plutus.toData datum)
+      dt = toHashableScriptData datum
   in payToScriptHash network sh dt vl
 
 payToPlutusV2 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.Value -> TxBuild
 payToPlutusV2 network s datum vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 s)
-      dt = C.fromPlutusData (Plutus.toData datum)
+      dt = toHashableScriptData datum
   in payToScriptHash network sh dt vl
 
 payToPlutusV2Inline :: C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> TxBuild
@@ -151,23 +147,22 @@ setScriptsValid = set L.txScriptValidity (C.TxScriptValidity C.TxScriptValidityS
 {-| Set the Ada component in an output's value to at least the amount needed to cover the
 minimum UTxO deposit for this output
 -}
-setMinAdaDeposit :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
+setMinAdaDeposit :: C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
 setMinAdaDeposit params txOut =
   let minUtxo = minAdaDeposit params txOut
   in txOut & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minUtxo) (Just . max minUtxo))
 
-minAdaDeposit :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
+minAdaDeposit :: C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
 minAdaDeposit params txOut =
   let txo = txOut
               -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
               -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
               & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just $ C.Quantity 3_000_000) Just)
   in fromMaybe (C.Quantity 0) $ do
-        k <- either (const Nothing) pure (CC.calculateMinimumUTxO txo params)
-        C.Lovelace l <- C.valueToLovelace k
+        let C.Lovelace l = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txo params
         pure (C.Quantity l)
 
 {-| Apply 'setMinAdaDeposit' to all outputs
 -}
-setMinAdaDepositAll :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> TxBuild
+setMinAdaDepositAll :: C.BundledProtocolParameters C.BabbageEra -> TxBuild
 setMinAdaDepositAll params = over (L.txOuts . mapped) (setMinAdaDeposit params)
