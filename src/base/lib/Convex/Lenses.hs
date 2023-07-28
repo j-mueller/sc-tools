@@ -74,6 +74,7 @@ module Convex.Lenses(
   -- * Datums
   _TxOutDatumInline,
   _TxOutDatumInTx,
+  _TxOutDatumHash,
   _ScriptData
 ) where
 
@@ -272,6 +273,14 @@ _TxOut :: Iso' (TxOut ctx era) (AddressInEra era, TxOutValue era, TxOutDatum ctx
 _TxOut = iso from to where
   from (C.TxOut addr vl dt rs) = (addr, vl, dt, rs)
   to (addr, vl, dt, rs) = C.TxOut addr vl dt rs
+
+_TxOutDatumHash :: Prism' (TxOutDatum ctx C.BabbageEra) (C.Hash C.ScriptData)
+_TxOutDatumHash = prism' from to where
+  to :: TxOutDatum ctx C.BabbageEra -> Maybe (C.Hash C.ScriptData)
+  to (C.TxOutDatumHash _ h) = Just h
+  to _                      = Nothing
+  from :: C.Hash C.ScriptData -> TxOutDatum ctx C.BabbageEra
+  from h = C.TxOutDatumHash C.ScriptDataInBabbageEra h
 
 _TxOutDatumInTx :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.ScriptData
 _TxOutDatumInTx = prism' from to where
