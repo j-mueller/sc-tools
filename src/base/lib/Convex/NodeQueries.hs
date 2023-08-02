@@ -44,7 +44,7 @@ loadConnectInfo ::
   -- ^ Node socket
   -> m (LocalNodeConnectInfo CardanoMode, Env)
 loadConnectInfo nodeConfigFilePath socketPath = do
-  (env, _) <- liftIO (runExceptT (CAPI.initialLedgerState nodeConfigFilePath)) >>= either throwError pure
+  (env, _) <- liftIO (runExceptT (CAPI.initialLedgerState (CAPI.File nodeConfigFilePath))) >>= either throwError pure
 
   -- Derive the NetworkId as described in network-magic.md from the
   -- cardano-ledger-specs repo.
@@ -70,7 +70,7 @@ loadConnectInfo nodeConfigFilePath socketPath = do
           LocalNodeConnectInfo {
             localConsensusModeParams = cardanoModeParams,
             localNodeNetworkId       = networkId,
-            localNodeSocketPath      = socketPath
+            localNodeSocketPath      = CAPI.File socketPath
           }
   pure (connectInfo, env)
 

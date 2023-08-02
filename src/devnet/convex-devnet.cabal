@@ -22,6 +22,7 @@ data-files:
   config/devnet/cardano-node.json
   config/devnet/genesis-alonzo.json
   config/devnet/genesis-byron.json
+  config/devnet/genesis-conway.json
   config/devnet/genesis-shelley.json
   config/devnet/kes.skey
   config/devnet/opcert.cert
@@ -66,8 +67,9 @@ library
       , convex-base
       , convex-coin-selection
       , mtl
+      , stm
+      , si-timers
       , prettyprinter
-      , transformers
 
       -- cardano-node deps.
       , cardano-api

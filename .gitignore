@@ -24,3 +24,4 @@ cabal.project.local~
 result
 .vscode
 work/
+nohup.out

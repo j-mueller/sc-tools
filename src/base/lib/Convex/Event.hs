@@ -24,48 +24,50 @@ module Convex.Event(
     extractBabbageTxn
     ) where
 
-import           Cardano.Api                      (BabbageEra, Block (..),
-                                                   BlockHeader,
-                                                   BlockInMode (..), BlockNo,
-                                                   CardanoMode, EraInMode (..),
-                                                   ScriptHash, SlotNo, Tx (..),
-                                                   TxId, TxIn (..), TxIx (..))
-import qualified Cardano.Api                      as C
-import           Cardano.Api.Shelley              (TxBody (..))
-import qualified Cardano.Api.Shelley              as CS
-import qualified Cardano.Ledger.Address           as Address
-import           Cardano.Ledger.Alonzo.Data       (Data, DataHash)
-import qualified Cardano.Ledger.Alonzo.Data       as Alonzo.Data
-import qualified Cardano.Ledger.Alonzo.Scripts    as Scripts
-import qualified Cardano.Ledger.Alonzo.TxWitness  as TxWitness
-import qualified Cardano.Ledger.Babbage           as Babbage
-import qualified Cardano.Ledger.Babbage.TxBody    as Babbage.TxBody
-import qualified Cardano.Ledger.BaseTypes         as CT
-import qualified Cardano.Ledger.Credential        as Credential
-import           Cardano.Ledger.Crypto            (StandardCrypto)
-import qualified Cardano.Ledger.Era               as Era
-import           Cardano.Ledger.Keys              (KeyHash, KeyRole (Witness))
-import qualified Cardano.Ledger.Serialization
-import           Cardano.Ledger.Shelley.Metadata  (Metadatum)
-import           Cardano.Ledger.Shelley.TxBody    (witKeyHash)
-import qualified Cardano.Ledger.TxIn              as CT
-import           Control.Monad.State.Strict       (MonadState, get, put,
-                                                   runState)
-import           Convex.Era                       (ERA)
-import           Data.Bifunctor                   (Bifunctor (..))
-import           Data.Foldable                    (foldl', toList)
-import           Data.List                        (sortOn)
-import           Data.List.NonEmpty               (NonEmpty (..))
-import           Data.Map.Strict                  (Map)
-import qualified Data.Map.Strict                  as Map
-import           Data.Maybe                       (catMaybes, mapMaybe,
-                                                   maybeToList)
-import qualified Data.Set                         as Set
-import           Data.Word                        (Word64)
-import           GHC.Generics                     (Generic)
-import           Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
+import           Cardano.Api                        (BabbageEra, Block (..),
+                                                     BlockHeader,
+                                                     BlockInMode (..), BlockNo,
+                                                     CardanoMode,
+                                                     EraInMode (..), ScriptHash,
+                                                     SlotNo, Tx (..), TxId,
+                                                     TxIn (..), TxIx (..))
+import qualified Cardano.Api                        as C
+import           Cardano.Api.Shelley                (TxBody (..))
+import qualified Cardano.Api.Shelley                as CS
+import qualified Cardano.Ledger.Address             as Address
+import qualified Cardano.Ledger.Alonzo.Scripts      as Scripts
+import           Cardano.Ledger.Alonzo.Scripts.Data (Data, DataHash)
+import           Cardano.Ledger.Alonzo.TxAuxData    (AlonzoTxAuxData (..))
+import qualified Cardano.Ledger.Alonzo.TxWits       as TxWitness
+import qualified Cardano.Ledger.Babbage             as Babbage
+import qualified Cardano.Ledger.Babbage.TxBody      as Babbage.TxBody
+import qualified Cardano.Ledger.Babbage.TxOut
+import qualified Cardano.Ledger.BaseTypes           as CT
+import qualified Cardano.Ledger.Binary
+import qualified Cardano.Ledger.Credential          as Credential
+import           Cardano.Ledger.Crypto              (StandardCrypto)
+import qualified Cardano.Ledger.Era                 as Era
+import           Cardano.Ledger.Keys                (KeyHash, KeyRole (Witness))
+import           Cardano.Ledger.Shelley.TxAuxData   (Metadatum)
+import           Cardano.Ledger.Shelley.TxBody      (witVKeyHash)
+import qualified Cardano.Ledger.TxIn                as CT
+import           Control.Monad.State.Strict         (MonadState, get, put,
+                                                     runState)
+import           Convex.Era                         (ERA)
+import           Data.Bifunctor                     (Bifunctor (..))
+import           Data.Foldable                      (foldl', toList)
+import           Data.List                          (sortOn)
+import           Data.List.NonEmpty                 (NonEmpty (..))
+import           Data.Map.Strict                    (Map)
+import qualified Data.Map.Strict                    as Map
+import           Data.Maybe                         (catMaybes, mapMaybe,
+                                                     maybeToList)
+import qualified Data.Set                           as Set
+import           Data.Word                          (Word64)
+import           GHC.Generics                       (Generic)
+import           Ouroboros.Consensus.Shelley.Eras   (StandardBabbage)
 
-type ScriptOutDataHash = DataHash (Era.Crypto ERA)
+type ScriptOutDataHash = DataHash (Era.EraCrypto ERA)
 
 type Extract a = C.TxOut C.CtxTx C.BabbageEra -> ScriptHash -> Maybe a
 
@@ -135,7 +137,7 @@ extractBabbageBlock :: Extract a -> ResolvedInputs a -> Block BabbageEra -> ([Tx
 extractBabbageBlock ex resolvedInputs (Block blockHeader txns) =
   first catMaybes $ flip runState resolvedInputs $ traverse (extractBabbageTxn ex blockHeader) txns
 
-type ScriptOut = Babbage.TxBody.TxOut (Babbage.BabbageEra StandardCrypto)
+type ScriptOut = Babbage.TxBody.BabbageTxOut (Babbage.BabbageEra StandardCrypto)
 
 extractBabbageTxn' :: ResolvedInputs a -> Extract a -> BlockHeader -> Tx BabbageEra -> ([TxWithEvents a], ResolvedInputs a)
 extractBabbageTxn' resolvedInputs ex blockHeader tx =
@@ -146,7 +148,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
   ResolvedInputs resolvedInputs <- get
   let txId = C.getTxId txBody
       ShelleyTxBody _ txBody' _scripts scriptData auxiliaryData _ = txBody
-      Babbage.TxBody.TxBody{Babbage.TxBody.outputs, Babbage.TxBody.inputs} = txBody'
+      Babbage.TxBody.BabbageTxBody{Babbage.TxBody.btbOutputs, Babbage.TxBody.btbInputs} = txBody'
       TxWitness.TxDats' txDats = case scriptData of
         C.TxBodyScriptData C.ScriptDataInBabbageEra txDats' _ -> txDats'
         _                                                     -> mempty
@@ -157,7 +159,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
       capiTxOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody' scriptData
 
       mapOutput :: TxIx -> (ScriptOut, C.TxOut C.CtxTx C.BabbageEra) -> Maybe (ScriptHash, ScriptOut, TxIx, ScriptOutDataHash, a)
-      mapOutput ix (scriptOut@(Babbage.TxBody.TxOut address _value (Babbage.TxBody.DatumHash dataHash) _), capiOut) = case address of -- FIXME: Could also be Datum?
+      mapOutput ix (scriptOut@(Cardano.Ledger.Babbage.TxOut.BabbageTxOut address _value (Babbage.TxBody.DatumHash dataHash) _), capiOut) = case address of -- FIXME: Could also be Datum?
           Address.Addr _network paymentCredential _stakeReference -> case paymentCredential of
               Credential.ScriptHashObj hsh ->
                   let hsh' = CS.fromShelleyScriptHash hsh in
@@ -168,7 +170,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
           _ -> Nothing
       mapOutput _ _ = Nothing
 
-      relevantOutputs = mapMaybe (uncurry mapOutput) (zip (toEnum <$> [0..]) (fmap (first Cardano.Ledger.Serialization.sizedValue) $ zip (toList outputs) capiTxOuts))
+      relevantOutputs = mapMaybe (uncurry mapOutput) (zip (toEnum <$> [0..]) (fmap (first Cardano.Ledger.Binary.sizedValue) $ zip (toList btbOutputs) capiTxOuts))
 
       outputEvents :: [NewOutputEvent a]
       outputEvents = fmap mkEvent relevantOutputs where
@@ -185,7 +187,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
                 , neDatum
                 , neDataHash
                 , neSigners = mapMaybe getKeyWitness keyWitnesses
-                , neTxMetadata = maybe mempty (\(Alonzo.Data.AuxiliaryData meta _) -> meta) auxiliaryData
+                , neTxMetadata = maybe mempty (\(AlonzoTxAuxData meta _ _) -> meta) auxiliaryData
                 }
 
       outputSpentEvents :: [OutputSpentEvent a]
@@ -197,7 +199,7 @@ extractBabbageTxn ex (C.BlockHeader slotNo _ twBlock@(C.BlockNo blockNo)) twTx@(
         $ zip [0..]
         $ fmap (uncurry TxIn . first CS.fromShelleyTxId . second txIx . (\(CT.TxIn i n) -> (i, n)))
         $ sortOn id
-        $ Set.toList inputs
+        $ Set.toList btbInputs
 
       resolvedInputsDeleted = ResolvedInputs (foldl' (\inp OutputSpentEvent{oseTxIn} -> Map.delete oseTxIn inp) resolvedInputs outputSpentEvents)
 
@@ -215,7 +217,7 @@ convertScript = \case
 
 getKeyWitness :: C.KeyWitness BabbageEra -> Maybe (KeyHash 'Witness StandardCrypto)
 getKeyWitness = \case
-  CS.ShelleyKeyWitness _era withVKey -> Just $ witKeyHash withVKey
+  CS.ShelleyKeyWitness _era withVKey -> Just $ witVKeyHash withVKey
   _                                  -> Nothing
 
 txIx :: CT.TxIx -> TxIx

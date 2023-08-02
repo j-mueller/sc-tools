@@ -30,7 +30,6 @@ library
     exposed-modules:
       Convex.BuildTx
       Convex.CoinSelection
-      Convex.CoinSelection.CardanoApi
       Convex.MockChain.CoinSelection
     hs-source-dirs: lib
     build-depends:
@@ -40,20 +39,13 @@ library
       convex-base,
       convex-mockchain,
       convex-wallet,
-      array,
-      text,
-      mtl
 
     -- cardano dependencies
     build-depends:
       cardano-api,
       cardano-ledger-core -any,
-      cardano-ledger-shelley,
-      cardano-ledger-alonzo,
-      cardano-ledger-babbage,
       plutus-ledger-api,
-      cardano-slotting,
-      ouroboros-consensus
+      cardano-slotting
 
 test-suite convex-coin-selection-test
   import: lang
@@ -69,11 +61,14 @@ test-suite convex-coin-selection-test
     tasty,
     tasty-hunit,
     lens,
+    cardano-ledger-alonzo,
     convex-coin-selection,
     convex-mockchain,
     convex-base,
     convex-wallet,
     cardano-api,
     containers,
-    plutus-tx,
-    plutus-tx-plugin
+    plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib},
+    plutus-ledger-api,
+    cardano-ledger-core,
+    mtl

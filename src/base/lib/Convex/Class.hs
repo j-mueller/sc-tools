@@ -29,10 +29,8 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
                                                                     PoolId,
-                                                                    ProtocolParameters,
                                                                     SlotNo, Tx,
                                                                     TxId)
-import qualified Cardano.Ledger.Core                               as Core
 import           Cardano.Ledger.Shelley.API                        (UTxO)
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
@@ -51,7 +49,6 @@ import qualified Control.Monad.State.Strict                        as StrictStat
 import           Control.Monad.Trans.Except                        (ExceptT)
 import           Control.Monad.Trans.Except.Result                 (ResultT)
 import           Convex.Era                                        (ERA)
-import qualified Convex.Era                                        as Ledger.Era
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     logInfoS,
                                                                     logWarnS)
@@ -62,14 +59,14 @@ import           Data.Time.Clock                                   (UTCTime)
 import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
                                                                     slotToSlotLength)
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
-import qualified Plutus.V1.Ledger.Time                             as PV1
+import qualified PlutusLedgerApi.V1                                as PV1
 
 {-| Send transactions and resolve tx inputs.
 -}
 class Monad m => MonadBlockchain m where
   sendTx                  :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m (ProtocolParameters, Core.PParams Ledger.Era.ERA) -- ^ Get the protocol parameters
+  queryProtocolParameters :: m (C.BundledProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m (EraHistory CardanoMode)
@@ -194,12 +191,14 @@ nextSlot = modifySlot (\s -> (succ s, ()))
 
 data MonadBlockchainError e =
   MonadBlockchainError e
+  | ProtocolConversionError C.ProtocolParametersConversionError
   | FailWith String
   deriving (Eq)
 
 instance Show e => Show (MonadBlockchainError e) where
-  show (MonadBlockchainError e) = show e
-  show (FailWith str)           = str
+  show (MonadBlockchainError e)    = show e
+  show (FailWith str)              = str
+  show (ProtocolConversionError e) = show e
 
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
@@ -256,7 +255,9 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
 
   queryProtocolParameters = do
     p <- runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
-    return (p, C.toLedgerPParams C.ShelleyBasedEraBabbage p)
+    case C.bundleProtocolParams C.BabbageEra p of
+      Right x -> pure x
+      Left err -> MonadBlockchainCardanoNodeT $ throwError (ProtocolConversionError err)
 
   queryStakePools =
     runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))

@@ -35,7 +35,7 @@ main = do
 
 checkCardanoNode :: IO ()
 checkCardanoNode =
-  let expectedVersion = "1.35.4"
+  let expectedVersion = "8.1.1"
   in getCardanoNodeVersion >>= assertBool ("cardano-node version should be " <> expectedVersion) . isInfixOf expectedVersion
 
 startLocalNode :: IO ()

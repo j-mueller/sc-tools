@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Update `queryTip` and `queryTipSlotNo` in `Convex.Devnet.NodeQueries` to also return `SlotLength`.
 * Rename `toUtxoTx` to `fromUtxoTx` in `Convex.Utxos`
 * Add generic return type to `withCardanoNode` and `withCardanoNodeDevnet` in `Convex.Devnet.CardanoNode`.
+* Update dependencies to `cardano-api-8.8.0.0` and `cardano-node-8.1.1`. Simplified `cabal.project`
 
 ### Added
 

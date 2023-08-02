@@ -40,22 +40,22 @@ library
       lens,
       containers,
       time,
-      array,
       data-default,
       mtl,
-      strict-containers,
       HUnit,
       bytestring
 
     -- cardano dependencies
     build-depends:
       cardano-api,
+      cardano-ledger-babbage,
       cardano-slotting -any,
+      cardano-ledger-binary,
       ouroboros-consensus -any,
+      ouroboros-consensus-cardano -any,
       cardano-ledger-core -any,
       cardano-ledger-shelley -any,
+      cardano-ledger-alonzo -any,
       cardano-ledger-babbage -any,
       plutus-core -any,
       plutus-ledger-api -any,
-      cardano-ledger-alonzo -any,
-      cardano-ledger-shelley-ma -any

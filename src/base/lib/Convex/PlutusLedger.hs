@@ -69,30 +69,31 @@ module Convex.PlutusLedger(
 
 ) where
 
-import qualified Cardano.Api.Shelley       as C
-import           Cardano.Ledger.BaseTypes  (CertIx (..), TxIx (..))
-import           Cardano.Ledger.Credential (Ptr (..))
-import qualified Cardano.Ledger.Mary.Value as Mary (AssetName (..))
-import qualified Codec.Serialise           as Codec
-import           Control.Lens              (Iso', Prism', iso, prism')
-import qualified Data.ByteString.Lazy      as BSL
-import           Data.ByteString.Short     (fromShort)
-import qualified Data.ByteString.Short     as Short
-import           Data.Functor              ((<&>))
-import           Data.Time.Clock.POSIX     (POSIXTime)
-import qualified Plutus.V1.Ledger.Api      as PV1
-import           Plutus.V1.Ledger.Interval (Closure, Extended (..),
-                                            Interval (..), LowerBound (..),
-                                            UpperBound (..))
-import qualified Plutus.V1.Ledger.Scripts  as P
-import qualified Plutus.V1.Ledger.Value    as Value
-import qualified PlutusTx.Prelude          as PlutusTx
+import qualified Cardano.Api.Shelley         as C
+import           Cardano.Ledger.BaseTypes    (CertIx (..), TxIx (..))
+import           Cardano.Ledger.Credential   (Ptr (..))
+import qualified Cardano.Ledger.Mary.Value   as Mary (AssetName (..))
+import qualified Codec.Serialise             as Codec
+import           Control.Lens                (Iso', Prism', iso, prism')
+import qualified Data.ByteString.Lazy        as BSL
+import           Data.ByteString.Short       (fromShort)
+import qualified Data.ByteString.Short       as Short
+import           Data.Functor                ((<&>))
+import           Data.Time.Clock.POSIX       (POSIXTime)
+import           PlutusLedgerApi.Common      (SerialisedScript)
+import qualified PlutusLedgerApi.V1          as PV1
+import           PlutusLedgerApi.V1.Interval (Closure, Extended (..),
+                                              Interval (..), LowerBound (..),
+                                              UpperBound (..))
+import qualified PlutusLedgerApi.V1.Scripts  as P
+import qualified PlutusLedgerApi.V1.Value    as Value
+import qualified PlutusTx.Prelude            as PlutusTx
 
-transScriptHash :: C.ScriptHash -> PV1.ValidatorHash
-transScriptHash h = PV1.ValidatorHash (PV1.toBuiltin (C.serialiseToRawBytes h)) -- TODO: is serialiseToRawBytes the correct thing to do here?
+transScriptHash :: C.ScriptHash -> PV1.ScriptHash
+transScriptHash h = PV1.ScriptHash (PV1.toBuiltin (C.serialiseToRawBytes h)) -- TODO: is serialiseToRawBytes the correct thing to do here?
 
-unTransScriptHash :: PV1.ValidatorHash -> Maybe C.ScriptHash
-unTransScriptHash (PV1.ValidatorHash vh) =
+unTransScriptHash :: PV1.ScriptHash -> Either C.SerialiseAsRawBytesError C.ScriptHash
+unTransScriptHash (PV1.ScriptHash vh) =
   C.deserialiseFromRawBytes C.AsScriptHash $ PlutusTx.fromBuiltin vh
 
 transAssetName :: Mary.AssetName -> PV1.TokenName
@@ -101,33 +102,33 @@ transAssetName (Mary.AssetName bs) = PV1.TokenName (PV1.toBuiltin (fromShort bs)
 unTransAssetName :: PV1.TokenName -> C.AssetName
 unTransAssetName (PV1.TokenName bs) = C.AssetName $ PV1.fromBuiltin bs
 
-transPolicyId :: C.PolicyId -> PV1.MintingPolicyHash
-transPolicyId (C.PolicyId scriptHash) = PV1.MintingPolicyHash $ PlutusTx.toBuiltin (C.serialiseToRawBytes scriptHash)
+transPolicyId :: C.PolicyId -> PV1.CurrencySymbol
+transPolicyId (C.PolicyId scriptHash) = PV1.CurrencySymbol $ PlutusTx.toBuiltin (C.serialiseToRawBytes scriptHash)
 
-unTransPolicyId :: PV1.MintingPolicyHash -> Maybe C.PolicyId
-unTransPolicyId (PV1.MintingPolicyHash bs) =
+unTransPolicyId :: PV1.CurrencySymbol -> Either C.SerialiseAsRawBytesError C.PolicyId
+unTransPolicyId (PV1.CurrencySymbol bs) =
   C.deserialiseFromRawBytes C.AsPolicyId (PlutusTx.fromBuiltin bs)
 
 transAssetId :: C.AssetId -> Value.AssetClass
 transAssetId C.AdaAssetId = Value.assetClass PV1.adaSymbol PV1.adaToken
 transAssetId (C.AssetId policyId assetName) =
     Value.assetClass
-        (Value.mpsSymbol . transPolicyId $ policyId)
+        (transPolicyId $ policyId)
         (transAssetName $ toMaryAssetName assetName)
 
 toMaryAssetName :: C.AssetName -> Mary.AssetName
 toMaryAssetName (C.AssetName n) = Mary.AssetName $ Short.toShort n
 
-unTransAssetId :: Value.AssetClass -> Maybe C.AssetId
+unTransAssetId :: Value.AssetClass -> Either C.SerialiseAsRawBytesError C.AssetId
 unTransAssetId (Value.AssetClass (currencySymbol, tokenName))
     | currencySymbol == PV1.adaSymbol && tokenName == PV1.adaToken =
         pure C.AdaAssetId
     | otherwise =
         C.AssetId
-            <$> unTransPolicyId (Value.currencyMPSHash currencySymbol)
+            <$> unTransPolicyId currencySymbol
             <*> pure (unTransAssetName tokenName)
 
-unTransPubKeyHash :: PV1.PubKeyHash -> Maybe (C.Hash C.PaymentKey)
+unTransPubKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Hash C.PaymentKey)
 unTransPubKeyHash (PV1.PubKeyHash pkh) =
   let bsx = PlutusTx.fromBuiltin pkh
   in C.deserialiseFromRawBytes (C.AsHash C.AsPaymentKey) bsx
@@ -138,12 +139,12 @@ transPubKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
 transStakeKeyHash :: C.Hash C.StakeKey -> PV1.PubKeyHash
 transStakeKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
 
-unTransStakeKeyHash :: PV1.PubKeyHash -> Maybe (C.Hash C.StakeKey)
+unTransStakeKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Hash C.StakeKey)
 unTransStakeKeyHash (PV1.PubKeyHash pkh) =
   let bsx = PlutusTx.fromBuiltin pkh
   in C.deserialiseFromRawBytes (C.AsHash C.AsStakeKey) bsx
 
-unTransCredential :: PV1.Credential -> Maybe C.PaymentCredential
+unTransCredential :: PV1.Credential -> Either C.SerialiseAsRawBytesError C.PaymentCredential
 unTransCredential = \case
   PV1.PubKeyCredential c -> C.PaymentCredentialByKey <$> unTransPubKeyHash c
   PV1.ScriptCredential c -> C.PaymentCredentialByScript <$> unTransScriptHash c
@@ -163,18 +164,18 @@ transStakeCredential :: C.StakeCredential -> PV1.Credential
 transStakeCredential (C.StakeCredentialByKey stakeKeyHash) = PV1.PubKeyCredential (transStakeKeyHash stakeKeyHash)
 transStakeCredential (C.StakeCredentialByScript scriptHash) = PV1.ScriptCredential (transScriptHash scriptHash)
 
-unTransStakeCredential :: PV1.Credential -> Maybe C.StakeCredential
+unTransStakeCredential :: PV1.Credential -> Either C.SerialiseAsRawBytesError C.StakeCredential
 unTransStakeCredential (PV1.PubKeyCredential pubKeyHash) = C.StakeCredentialByKey <$> unTransStakeKeyHash pubKeyHash
-unTransStakeCredential (PV1.ScriptCredential validatorHash) = C.StakeCredentialByScript <$> unTransScriptHash validatorHash
+unTransStakeCredential (PV1.ScriptCredential scriptHash) = C.StakeCredentialByScript <$> unTransScriptHash scriptHash
 
-unTransStakeAddressReference :: Maybe PV1.StakingCredential -> Maybe C.StakeAddressReference
-unTransStakeAddressReference Nothing = Just C.NoStakeAddress
+unTransStakeAddressReference :: Maybe PV1.StakingCredential -> Either C.SerialiseAsRawBytesError C.StakeAddressReference
+unTransStakeAddressReference Nothing = Right C.NoStakeAddress
 unTransStakeAddressReference (Just (PV1.StakingHash credential)) =
   C.StakeAddressByValue <$> unTransStakeCredential credential
 unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
-  Just (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
+  Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
-unTransAddressInEra :: C.NetworkId -> PV1.Address -> Maybe (C.AddressInEra C.BabbageEra)
+unTransAddressInEra :: C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra C.BabbageEra)
 unTransAddressInEra networkId (PV1.Address cred staking) =
   C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) <$>
     (C.makeShelleyAddress networkId
@@ -192,7 +193,7 @@ transAddressInEra = \case
       (transStakeAddressReference $ C.fromShelleyStakeReference s)
   C.AddressInEra C.ByronAddressInAnyEra _ -> Nothing
 
-unTransTxOutRef :: PV1.TxOutRef -> Maybe C.TxIn
+unTransTxOutRef :: PV1.TxOutRef -> Either C.SerialiseAsRawBytesError C.TxIn
 unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId=PV1.TxId bs, PV1.txOutRefIdx} =
   let i = C.deserialiseFromRawBytes C.AsTxId $ PlutusTx.fromBuiltin bs
   in C.TxIn <$> i <*> pure (C.TxIx $ fromIntegral txOutRefIdx)
@@ -208,10 +209,10 @@ transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToF
 unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
 unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
 
-unTransTxOutValue :: PV1.Value -> Maybe (C.TxOutValue C.BabbageEra)
+unTransTxOutValue :: PV1.Value -> Either C.SerialiseAsRawBytesError (C.TxOutValue C.BabbageEra)
 unTransTxOutValue value = C.TxOutValue C.MultiAssetInBabbageEra <$> unTransValue value
 
-unTransValue :: PV1.Value -> Maybe C.Value
+unTransValue :: PV1.Value -> Either C.SerialiseAsRawBytesError C.Value
 unTransValue =
     fmap C.valueFromList . traverse toSingleton . Value.flattenValue
   where
@@ -221,16 +222,16 @@ unTransValue =
 unTransPlutusScript
     :: C.SerialiseAsRawBytes plutusScript
     => C.AsType plutusScript
-    -> P.Script
-    -> Maybe plutusScript
+    -> SerialisedScript
+    -> Either C.SerialiseAsRawBytesError plutusScript
 unTransPlutusScript asPlutusScriptType =
   C.deserialiseFromRawBytes asPlutusScriptType . BSL.toStrict . Codec.serialise
 
-unTransScriptDataHash :: P.DatumHash -> Maybe (C.Hash C.ScriptData)
+unTransScriptDataHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.Hash C.ScriptData)
 unTransScriptDataHash (P.DatumHash bs) =
   C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) (PlutusTx.fromBuiltin bs)
 
-unTransTxOutDatumHash :: P.DatumHash -> Maybe (C.TxOutDatum ctx C.BabbageEra)
+unTransTxOutDatumHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx C.BabbageEra)
 unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.ScriptDataInBabbageEra <$> unTransScriptDataHash datumHash
 
 _Interval :: Iso' (Interval a) (LowerBound a, UpperBound a)

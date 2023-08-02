@@ -42,7 +42,7 @@ library
       Convex.Utxos
     hs-source-dirs: lib
     build-depends:
-      base >= 4.14.0,
+      base >= 4.14 && < 4.19,
       lens,
       containers,
       aeson,
@@ -55,22 +55,23 @@ library
       time
       
     build-depends:
-      cardano-api,
-      cardano-ledger-shelley,
-      small-steps,
+      cardano-api == 8.8.0.0,
+      cardano-ledger-binary,
       cardano-ledger-core,
-      cardano-ledger-babbage,
-      cardano-ledger-byron,
-      cardano-ledger-alonzo,
-      cardano-ledger-shelley-ma,
-      ouroboros-consensus-shelley,
       cardano-crypto-wrapper,
+
+      cardano-ledger-byron,
+      cardano-ledger-mary,
+      cardano-ledger-shelley,
+      cardano-ledger-babbage,
+      cardano-ledger-alonzo,
+
       ouroboros-consensus,
       ouroboros-consensus-cardano,
-      plutus-ledger-api,
-      ouroboros-network,
+      ouroboros-network-protocols,
       cardano-slotting,
       plutus-tx,
+      plutus-ledger-api,
       serialise,
       bytestring,
       dlist,

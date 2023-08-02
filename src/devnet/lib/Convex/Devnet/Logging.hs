@@ -33,15 +33,15 @@ module Convex.Devnet.Logging (
 
 import           Cardano.BM.Tracing             (ToObject (..),
                                                  TracingVerbosity (..))
+import           Control.Concurrent.STM.TBQueue (flushTBQueue, newTBQueueIO,
+                                                 readTBQueue, writeTBQueue)
+import           Control.Concurrent.STM.TVar    (TVar, modifyTVar, newTVarIO,
+                                                 readTVarIO)
 import           Control.Monad                  (forM_, forever, (>=>))
 import           Control.Monad.Class.MonadAsync (withAsync)
 import           Control.Monad.Class.MonadFork  (MonadFork, myThreadId)
 import           Control.Monad.Class.MonadSay   (MonadSay, say)
-import           Control.Monad.Class.MonadSTM   (MonadSTM, TVar, atomically,
-                                                 flushTBQueue, modifyTVar,
-                                                 newTBQueueIO, newTVarIO,
-                                                 readTBQueue, readTVarIO,
-                                                 writeTBQueue)
+import           Control.Monad.Class.MonadSTM   (MonadSTM, atomically)
 import           Control.Monad.Class.MonadThrow (MonadCatch, finally,
                                                  onException)
 import           Control.Monad.Class.MonadTime  (MonadTime, getCurrentTime)
@@ -113,7 +113,7 @@ withTracerOutputTo ::
   (Tracer m msg -> IO a) ->
   IO a
 withTracerOutputTo hdl namespace action = do
-  msgQueue <- newTBQueueIO @_ @(Envelope msg) defaultQueueSize
+  msgQueue <- liftIO (newTBQueueIO @(Envelope msg) defaultQueueSize)
   withAsync (writeLogs msgQueue) $ \_ ->
     action (tracer msgQueue) `finally` flushLogs msgQueue
  where
@@ -137,21 +137,21 @@ withTracerOutputTo hdl namespace action = do
 -- given 'action'. This tracer is wrapping 'msg' into an 'Envelope' with
 -- metadata.
 showLogsOnFailure ::
-  (MonadSTM m, MonadCatch m, MonadFork m, MonadTime m, MonadSay m, ToJSON msg) =>
+  (MonadSTM m, MonadCatch m, MonadIO m, MonadFork m, MonadTime m, MonadSay m, ToJSON msg) =>
   (Tracer m msg -> m a) ->
   m a
 showLogsOnFailure action = do
-  tvar <- newTVarIO []
+  tvar <- liftIO (newTVarIO [])
   action (traceInTVar tvar)
-    `onException` (readTVarIO tvar >>= mapM_ (say . TL.unpack . decodeUtf8 . Aeson.encode) . reverse)
+    `onException` (liftIO (readTVarIO tvar) >>= mapM_ (say . TL.unpack . decodeUtf8 . Aeson.encode) . reverse)
 
 traceInTVar ::
-  (MonadFork m, MonadTime m, MonadSTM m) =>
-  TVar m [Envelope msg] ->
+  (MonadIO m, MonadTime m, MonadFork m) =>
+  TVar [Envelope msg] ->
   Tracer m msg
 traceInTVar tvar = Tracer $ \msg -> do
   envelope <- mkEnvelope "" msg
-  atomically $ modifyTVar tvar (envelope :)
+  liftIO $ atomically $ modifyTVar tvar (envelope :)
 -- * Internal functions
 
 mkEnvelope :: (MonadFork m, MonadTime m) => Text -> msg -> m (Envelope msg)

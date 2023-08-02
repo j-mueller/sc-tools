@@ -62,7 +62,7 @@ import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime
                                                            utcTimeToPOSIXSeconds)
 import qualified Ouroboros.Consensus.HardFork.History     as Consensus
 import qualified Ouroboros.Consensus.HardFork.History.Qry as Qry
-import qualified Plutus.V1.Ledger.Time                    as PV1
+import qualified PlutusLedgerApi.V1                       as PV1
 
 scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
@@ -116,7 +116,7 @@ extractTx txIds =
       extractTx' tx@(C.Tx txBody _) = do
         let txi = C.getTxId txBody
         when (txi `Set.member` txIds) $
-          void $ liftIO $ C.writeFileTextEnvelope (show txi <> ".json") Nothing tx
+          void $ liftIO $ C.writeFileTextEnvelope (C.File $ show txi <> ".json") Nothing tx
   in \case
     BlockInMode (Block _ txns) C.BabbageEraInCardanoMode ->
       traverse_ extractTx' txns
