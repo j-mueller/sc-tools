@@ -21,6 +21,7 @@ module Convex.MockChain(
   transactions,
   utxoSet,
   walletUtxo,
+  fromLedgerUTxO,
   -- * Transaction validation
   ExUnitsError(..),
   _Phase1Error,
