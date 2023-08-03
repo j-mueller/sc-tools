@@ -8,6 +8,10 @@ A collection of libraries that are helpful for building Cardano apps with Haskel
 * `convex-coin-selection`: Coin selection and transaction balancing
 * `convex-mockchain`: Minimal mockchain for tests
 
+### Dependencies
+
+The `main` branch supports cardano-node-8.1.1, cardano-api-8.8.0.0 and ghc-9.2.8. Support for ghc-8.10.7 and cardano-node-1.35.4 will be maintained for a little while in the [`node-1.35.4`](https://github.com/j-mueller/sc-tools/tree/node-1.35.4) branch.
+
 ## Building transactions
 
 We use the `TxBodyContent BuildTx BabbageEra` type from `cardano-api` as the basic type for building transactions.
