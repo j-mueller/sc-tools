@@ -42,7 +42,7 @@ addOutputFor ::
 addOutputFor n spendAfter q =
   let vl = lovelaceToValue (quantityToLovelace q)
       dt = UnAdaState{spendAfter, mps = mintingPolicyHash}
-  in payToPlutusV2 n validatorScript dt vl
+  in payToPlutusV2 n validatorScript dt C.NoStakeAddress vl
 
 burnUnAda :: NetworkId -> POSIXTime -> TxIn -> TxOut CtxTx BabbageEra -> UnAdaState -> Quantity -> TxBuild
 burnUnAda n currentTime txi txOut oldState q =
