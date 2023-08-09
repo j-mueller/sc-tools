@@ -69,13 +69,13 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
 payToPlutusScript :: Mockchain C.TxIn
 payToPlutusScript = do
-  let tx = emptyTx & payToPlutusV1 Defaults.networkId txInscript () (C.lovelaceToValue 10_000_000)
+  let tx = emptyTx & payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 payToPlutusV2Script :: Mockchain C.TxIn
 payToPlutusV2Script = do
-  let tx = emptyTx & payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () (C.lovelaceToValue 10_000_000)
+  let tx = emptyTx & payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 

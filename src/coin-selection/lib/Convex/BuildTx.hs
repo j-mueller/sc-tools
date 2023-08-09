@@ -118,25 +118,25 @@ payToPublicKey network pk vl =
       txo = C.TxOut addr val C.TxOutDatumNone C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
 
-payToScriptHash :: NetworkId -> ScriptHash -> ScriptData -> C.Value -> TxBuild
-payToScriptHash network script datum vl =
+payToScriptHash :: NetworkId -> ScriptHash -> ScriptData -> C.StakeAddressReference -> C.Value -> TxBuild
+payToScriptHash network script datum stakeAddress vl =
   let val = C.TxOutValue C.MultiAssetInBabbageEra vl
-      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript script) C.NoStakeAddress
+      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript script) stakeAddress
       dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra datum
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in over L.txOuts ((:) txo)
 
-payToPlutusV1 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV1 -> a -> C.Value -> TxBuild
-payToPlutusV1 network s datum vl =
+payToPlutusV1 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV1 -> a -> C.StakeAddressReference -> C.Value -> TxBuild
+payToPlutusV1 network s datum stakeRef vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 s)
       dt = C.fromPlutusData (Plutus.toData datum)
-  in payToScriptHash network sh dt vl
+  in payToScriptHash network sh dt stakeRef vl
 
-payToPlutusV2 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.Value -> TxBuild
-payToPlutusV2 network s datum vl =
+payToPlutusV2 :: forall a. Plutus.ToData a => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.StakeAddressReference -> C.Value -> TxBuild
+payToPlutusV2 network s datum stakeRef vl =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 s)
       dt = C.fromPlutusData (Plutus.toData datum)
-  in payToScriptHash network sh dt vl
+  in payToScriptHash network sh dt stakeRef vl
 
 payToPlutusV2Inline :: C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> TxBuild
 payToPlutusV2Inline addr script vl =
