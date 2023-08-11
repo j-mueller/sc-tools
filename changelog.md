@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `convex-mockchain`:
   - `Convex.MockChain`: Support for profiling plutus scripts. `evaluateTx` returns the script contexts for a transaction. These can be turned into a fully applied script with `fullyAppliedScript`.
   - `Convex.MockChain`: Export `fromLedgerUTxO`
+  - `Convex.MockChain`: `MonadTrans` instance for `MockchainT`, export constructor
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
 * Add `utcTimeToPosixTime` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.

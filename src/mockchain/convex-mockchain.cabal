@@ -43,6 +43,7 @@ library
       array,
       data-default,
       mtl,
+      transformers,
       strict-containers,
       HUnit,
       bytestring
