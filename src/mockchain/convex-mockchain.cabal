@@ -42,6 +42,7 @@ library
       time,
       data-default,
       mtl,
+      transformers,
       HUnit,
       bytestring
 
