@@ -37,7 +37,7 @@ module Convex.MockChain(
   fullyAppliedScript,
   -- * Mockchain implementation
   MockchainError(..),
-  MockchainT,
+  MockchainT(..),
   Mockchain,
   runMockchainT,
   runMockchain,
@@ -109,6 +109,7 @@ import           Control.Monad.Reader                  (ReaderT, ask, asks,
                                                         runReaderT)
 import           Control.Monad.State                   (StateT, get, gets,
                                                         modify, put, runStateT)
+import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadMockchain (..))
 import           Convex.Era                            (ERA)
@@ -314,15 +315,15 @@ constructValidated globals (UtxoEnv _ pp _ _) st tx =
             ValidatedTx
               (getField @"body" tx)
               (getField @"wits" tx)
-              (IsValid (lift scriptEvalResult))
+              (IsValid (lift_ scriptEvalResult))
               (getField @"auxiliaryData" tx)
        in pure (vTx, sLst)
   where
     utxo = _utxo st
     sysS = systemStart globals
     ei = epochInfo globals
-    lift (Passes _)  = True
-    lift (Fails _ _) = False
+    lift_ (Passes _)  = True
+    lift_ (Fails _ _) = False
 
 applyTx ::
   NodeParams ->
@@ -336,6 +337,9 @@ applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
   deriving newtype (Functor, Applicative, Monad)
+
+instance MonadTrans MockchainT where
+  lift = MockchainT . lift . lift . lift
 
 data MockchainError =
   MockchainValidationFailed ValidationError
