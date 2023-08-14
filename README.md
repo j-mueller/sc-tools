@@ -14,18 +14,16 @@ The `main` branch supports cardano-node-8.1.1, cardano-api-8.8.0.0 and ghc-9.2.8
 
 ## Building transactions
 
-We use the `TxBodyContent BuildTx BabbageEra` type from `cardano-api` as the basic type for building transactions.
+We use the `TxBodyContent BuildTx BabbageEra` type from `cardano-api` as the basic type for building transactions. The `MonadBuildTx` class from `Convex.BuildTx` is essentially a writer for `TxBodyContent` modifications. `Convex.BuildTx` defines a number of helper functions for common tasks such as spending and creating Plutus script outputs, minting native assets, setting collateral, etc.
 
-`Convex.Lenses` defines an `emptyTx` value and a number of lenses for adding content to transaction bodies. `Convex.BuildTx` adds a number of functions of the form `TxBodyContent BuildTx BabbageEra -> TxBodyContent BuildTx BabbageEra` for common tasks such as spending and creating Plutus script outputs, minting native assets, setting collateral, etc.
+To `Convex.Lenses` defines some lenses for adding content to transaction bodies. These can be used together with `MonadBuildTx.addBtx`.
 
 ```haskell
 import qualified Cardano.API.Shelley as C
-import Convex.Lenses (emptyTx)
-import Convex.BuildTx (payToAddress)
-import Control.Lens ((.~), (&))
+import Convex.BuildTx (execBuildTx', payToAddress)
 
 payTenAda :: Address BabbageEra -> TxBodyContent BuildTx BabbageEra
-payTenAda addr = emptyTx & payToAddress addr (C.lovelaceToValue 10_000_000)
+payTenAda addr = execBuildTx' (payToAddress addr (C.lovelaceToValue 10_000_000))
 ```
 
 ## Coin selection and transaction balancing
