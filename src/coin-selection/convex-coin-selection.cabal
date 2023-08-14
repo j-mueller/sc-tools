@@ -45,7 +45,9 @@ library
       cardano-api,
       cardano-ledger-core -any,
       plutus-ledger-api,
-      cardano-slotting
+      cardano-slotting,
+      transformers,
+      mtl
 
 test-suite convex-coin-selection-test
   import: lang

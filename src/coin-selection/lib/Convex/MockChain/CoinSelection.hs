@@ -9,8 +9,7 @@ module Convex.MockChain.CoinSelection(
 
 import           Cardano.Api.Shelley       (BabbageEra, BuildTx, TxBodyContent)
 import qualified Cardano.Api.Shelley       as C
-import           Control.Lens              ((&))
-import           Convex.BuildTx            (payToAddress)
+import           Convex.BuildTx            (execBuildTx, payToAddress)
 import           Convex.Class              (MonadBlockchain (..),
                                             MonadMockchain)
 import qualified Convex.CoinSelection      as CoinSelection
@@ -34,6 +33,6 @@ balanceAndSubmit wallet tx = do
 -}
 paymentTo :: (MonadMockchain m, MonadFail m) => Wallet -> Wallet -> m (C.Tx CoinSelection.ERA)
 paymentTo wFrom wTo = do
-  let tx = emptyTx & payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000)
+  let tx = execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000)) emptyTx
   balanceAndSubmit wFrom tx
 

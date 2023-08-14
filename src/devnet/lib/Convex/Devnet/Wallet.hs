@@ -36,14 +36,12 @@ import qualified Convex.CoinSelection      as CoinSelection
 import           Convex.Devnet.CardanoNode (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries as NodeQueries
 import           Convex.Devnet.Utils       (keysFor)
-import           Convex.Lenses             (emptyTx)
 import           Convex.MonadLog           (MonadLog (..))
 import           Convex.Utxos              (UtxoSet)
 import qualified Convex.Utxos              as Utxos
 import           Convex.Wallet             (Wallet (..), address)
 import qualified Convex.Wallet             as Wallet
 import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Function             ((&))
 import           Data.Text                 (Text)
 import           GHC.Generics              (Generic)
 import           Prettyprinter             (defaultLayoutOptions, layoutPretty)
@@ -63,7 +61,7 @@ walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
 sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Lovelace -> IO (Tx BabbageEra)
 sendFaucetFundsTo tracer node destination amount = do
   fct <- faucet
-  balanceAndSubmit tracer node fct (emptyTx & BuildTx.payToAddress destination (C.lovelaceToValue amount))
+  balanceAndSubmit tracer node fct (BuildTx.execBuildTx' (BuildTx.payToAddress destination (C.lovelaceToValue amount)))
 
 {-| Create a new wallet and send some funds to it. Returns when the seed txn has been registered
 on the chain.
