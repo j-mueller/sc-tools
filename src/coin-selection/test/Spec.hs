@@ -6,17 +6,15 @@ module Main(main) where
 import qualified Cardano.Api.Shelley            as C
 import           Control.Lens                   (_4, mapped, over, view, (&))
 import           Control.Monad                  (void)
-import           Convex.BuildTx                 (assetValue, mintPlutusV1,
-                                                 payToAddress, payToPlutusV1,
-                                                 payToPlutusV2,
+import           Convex.BuildTx                 (assetValue, execBuildTx',
+                                                 mintPlutusV1, payToAddress,
+                                                 payToPlutusV1, payToPlutusV2,
                                                  payToPlutusV2Inline,
-                                                 setMinAdaDeposit,
                                                  setMinAdaDepositAll,
                                                  spendPlutusV1,
                                                  spendPlutusV2Ref)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
-import           Convex.Lenses                  (emptyTx)
 import qualified Convex.Lenses                  as L
 import           Convex.MockChain               (Mockchain)
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
@@ -69,28 +67,28 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
 payToPlutusScript :: Mockchain C.TxIn
 payToPlutusScript = do
-  let tx = emptyTx & payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
+  let tx = execBuildTx' (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 payToPlutusV2Script :: Mockchain C.TxIn
 payToPlutusV2Script = do
-  let tx = emptyTx & payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
+  let tx = execBuildTx' (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 spendPlutusScript :: C.TxIn -> Mockchain C.TxId
 spendPlutusScript ref = do
-  let tx = emptyTx & spendPlutusV1 ref txInscript () ()
+  let tx = execBuildTx' (spendPlutusV1 ref txInscript () ())
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 putReferenceScript :: Wallet -> Mockchain C.TxIn
 putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
       addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
-  let tx = emptyTx
-            & payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
-            & setMinAdaDepositAll Defaults.ledgerProtocolParameters
+  let tx = execBuildTx' $
+            payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
+            >> setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
   let outRef = C.TxIn txId (C.TxIx 0)
   C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
@@ -104,14 +102,13 @@ putReferenceScript wallet = do
 spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
-  let tx = emptyTx
-            & spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ()
+  let tx = execBuildTx' (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 mintingPlutus :: Mockchain C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
-  let tx = emptyTx & mintPlutusV1 mintingScript () "assetName" 100
+  let tx = execBuildTx' (mintPlutusV1 mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
 spendTokens :: C.TxId -> Mockchain C.TxId
@@ -124,9 +121,9 @@ spendTokens _ = do
 nativeAssetPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
-      tx = emptyTx
-            & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
+      tx = execBuildTx' $
+            payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+            >> setMinAdaDepositAll Defaults.ledgerProtocolParameters
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom

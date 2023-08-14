@@ -8,20 +8,17 @@ tests
 ) where
 
 import qualified Cardano.Api.Shelley            as C
-import           Control.Lens                   (mapped, over)
 import           Control.Monad                  (void)
-import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
+import           Convex.BuildTx                 (execBuildTx', payToAddress,
+                                                 setMinAdaDepositAll)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
-import           Convex.Lenses                  (emptyTx)
-import qualified Convex.Lenses                  as L
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.MockChain.Utils         (mockchainSucceeds)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
-import           Data.Function                  ((&))
 import           Plutus.V1.Ledger.Interval      (Extended (..), LowerBound (..),
                                                  interval)
 import           Plutus.V1.Ledger.Time          (POSIXTime (..), POSIXTimeRange)
@@ -54,7 +51,7 @@ canMintUnAda = mockchainSucceeds mintSomeUnAda
 
 mintSomeUnAda :: (MonadFail m, MonadMockchain m) => m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
 mintSomeUnAda = do
-  let tx = emptyTx & mintUnAda Defaults.networkId 1 10_000_000
+  let tx = execBuildTx' (mintUnAda Defaults.networkId 1 10_000_000)
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   mintingTx <- balanceAndSubmit Wallet.w1 tx
   _ <- unAdaPaymentTo 5_000_000 Wallet.w1 Wallet.w2
@@ -65,7 +62,7 @@ canBurnUnAda :: Assertion
 canBurnUnAda = mockchainSucceeds $ do
   (txi, (txo, st)) <- mintSomeUnAda
 
-  let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 3_000_000
+  let tx' = execBuildTx' (burnUnAda Defaults.networkId 0 txi txo st 3_000_000)
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
@@ -73,9 +70,9 @@ canBurnUnAda = mockchainSucceeds $ do
 unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
   let vl = unLovelaceValue q
-      tx = emptyTx
-            & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
+      tx = execBuildTx'
+            $ payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+            >> setMinAdaDepositAll Defaults.ledgerProtocolParameters
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
