@@ -44,7 +44,7 @@ import           Control.Lens                    (_1, _2, makeLensesFor, over,
                                                   preview, set, to, traversed,
                                                   view, (&), (.~), (^.), (^..),
                                                   (|>))
-import           Convex.BuildTx                  (addCollateral,
+import           Convex.BuildTx                  (addCollateral, execBuildTx,
                                                   setMinAdaDeposit,
                                                   spendPublicKeyOutput)
 import           Convex.Class                    (MonadBlockchain (..))
@@ -357,8 +357,7 @@ addOwnInput :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent Build
 addOwnInput body (Utxos.onlyAda . Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
   | Map.null _utxos = body
   | not (List.null $ view L.txIns body) = body
-  | otherwise =
-      spendPublicKeyOutput (fst $ head $ Map.toList _utxos) body
+  | otherwise = execBuildTx (spendPublicKeyOutput (fst $ head $ Map.toList _utxos)) body
 
 setCollateral :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent BuildTx ERA
 setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
@@ -367,7 +366,7 @@ setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
     else
       case Map.lookupMax _utxos of
         Nothing     -> body -- TODO: Throw error
-        Just (k, _) -> addCollateral k body
+        Just (k, _) -> execBuildTx (addCollateral k) body
 
 {-| Whether the transaction runs any plutus scripts
 -}
