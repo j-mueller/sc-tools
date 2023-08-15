@@ -88,7 +88,7 @@ epochSize = EpochSize 432000
 
 -- | Slot length of 1 second
 slotLength :: SlotLength
-slotLength = mkSlotLength 1_000 -- 1 second
+slotLength = mkSlotLength 1 -- 1 second
 
 protocolParameters :: ProtocolParameters
 protocolParameters =
