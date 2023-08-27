@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Add generic return type to `withCardanoNode` and `withCardanoNodeDevnet` in `Convex.Devnet.CardanoNode`.
 * `Convex.BuildTx`: Include stake reference in `payToScriptHash`, `payToPlutusV1` and `payToPlutusV2`
 * Set `slotLength` in `Convex.MockChain.Defaults` to 1 second (it was set to 1000 seconds by accident)
+* Change base monad of `mockchainSucceeds` to `IO`
 
 ### Added
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Convex.MockChain`: Support for profiling plutus scripts. `evaluateTx` returns the script contexts for a transaction. These can be turned into a fully applied script with `fullyAppliedScript`.
   - `Convex.MockChain`: Export `fromLedgerUTxO`
   - `Convex.MockChain`: `MonadTrans` instance for `MockchainT`, export constructor
+  - `Convex.MockChain`: Add `MockchainIO` type
 * `Convex.BuildTx`: Add a monadic (writer) interface for building transactions
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
 * Add `utcTimeToPosixTime` in `Convex.Utils`.
