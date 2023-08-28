@@ -48,7 +48,16 @@ module Convex.MockChain(
   evalMockchain0,
   execMockchain,
   execMockchainT,
-  execMockchain0
+  execMockchain0,
+
+  -- ** MockchainIO
+  MockchainIO,
+  runMockchainIO,
+  runMockchain0IO,
+  evalMockchainIO,
+  evalMockchain0IO,
+  execMockchainIO,
+  execMockchain0IO
   ) where
 
 import           Cardano.Api.Shelley                   (AddressInEra,
@@ -91,6 +100,7 @@ import           Control.Lens.TH                       (makeLensesFor,
 import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)
+import           Control.Monad.IO.Class                (MonadIO)
 import           Control.Monad.Reader                  (ReaderT, ask, asks,
                                                         runReaderT)
 import           Control.Monad.State                   (StateT, get, gets,
@@ -299,7 +309,7 @@ applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   return (oldState & poolState .~ newMempool & over transactions ((:) (vtx, context)), vtx)
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
-  deriving newtype (Functor, Applicative, Monad)
+  deriving newtype (Functor, Applicative, Monad, MonadIO)
 
 instance MonadTrans MockchainT where
   lift = MockchainT . lift . lift . lift
@@ -397,6 +407,26 @@ execMockchain action nps = runIdentity . execMockchainT action nps
 
 execMockchain0 :: InitialUTXOs -> Mockchain a -> Either MockchainError MockChainState
 execMockchain0 dist action = execMockchain action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
+
+type MockchainIO a = MockchainT IO a
+
+runMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError (a, MockChainState))
+runMockchainIO action nps = runMockchainT action nps
+
+runMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError (a, MockChainState))
+runMockchain0IO dist action = runMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
+
+evalMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError a)
+evalMockchainIO action nps = evalMockchainT action nps
+
+evalMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError a)
+evalMockchain0IO dist action = evalMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
+
+execMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError MockChainState)
+execMockchainIO action nps = execMockchainT action nps
+
+execMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError MockChainState)
+execMockchain0IO dist action = execMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
 
 -- not exported by cardano-api 1.35.3 (though it seems like it's exported in 1.36)
 fromLedgerUTxO :: ShelleyLedgerEra era ~ ledgerera
