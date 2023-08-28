@@ -1,19 +1,21 @@
+{-# LANGUAGE LambdaCase #-}
 module Convex.MockChain.Utils(
   mockchainSucceeds,
   mockchainFails
   ) where
 
 import           Convex.MockChain         (Mockchain, MockchainError,
-                                           runMockchain0)
+                                           MockchainIO, runMockchain0,
+                                           runMockchain0IO)
 import qualified Convex.Wallet.MockWallet as Wallet
 import           Test.HUnit               (Assertion)
 
 {-| Run the 'Mockchain' action and fail if there is an error
 -}
-mockchainSucceeds :: Mockchain a -> Assertion
+mockchainSucceeds :: MockchainIO a -> Assertion
 mockchainSucceeds action =
-  case runMockchain0 Wallet.initialUTxOs action of
-    Right _  -> pure ()
+  runMockchain0IO Wallet.initialUTxOs action >>= \case
+    Right{}  -> pure ()
     Left err -> fail (show err)
 
 {-| Run the 'Mockchain' action, fail if it succeeds, and handle the error

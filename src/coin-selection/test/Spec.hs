@@ -16,7 +16,6 @@ import           Convex.BuildTx                 (assetValue, execBuildTx',
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
 import qualified Convex.Lenses                  as L
-import           Convex.MockChain               (Mockchain)
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.MockChain.Utils         (mockchainSucceeds)
@@ -65,24 +64,24 @@ txInscript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn
 mintingScript :: C.PlutusScript C.PlutusScriptV1
 mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
-payToPlutusScript :: Mockchain C.TxIn
+payToPlutusScript :: (MonadFail m, MonadMockchain m) => m C.TxIn
 payToPlutusScript = do
   let tx = execBuildTx' (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
-payToPlutusV2Script :: Mockchain C.TxIn
+payToPlutusV2Script :: (MonadFail m, MonadMockchain m) => m C.TxIn
 payToPlutusV2Script = do
   let tx = execBuildTx' (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
-spendPlutusScript :: C.TxIn -> Mockchain C.TxId
+spendPlutusScript :: (MonadFail m, MonadMockchain m) => C.TxIn -> m C.TxId
 spendPlutusScript ref = do
   let tx = execBuildTx' (spendPlutusV1 ref txInscript () ())
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
-putReferenceScript :: Wallet -> Mockchain C.TxIn
+putReferenceScript :: (MonadFail m, MonadMockchain m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
       addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
@@ -99,19 +98,19 @@ putReferenceScript wallet = do
       _                   -> fail "No reference script found"
   pure outRef
 
-spendPlutusScriptReference :: C.TxIn -> Mockchain C.TxId
+spendPlutusScriptReference :: (MonadFail m, MonadMockchain m) =>  C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = execBuildTx' (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
-mintingPlutus :: Mockchain C.TxId
+mintingPlutus :: (MonadFail m, MonadMockchain m) => m C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
   let tx = execBuildTx' (mintPlutusV1 mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
 
-spendTokens :: C.TxId -> Mockchain C.TxId
+spendTokens :: (MonadFail m, MonadMockchain m) => C.TxId -> m C.TxId
 spendTokens _ = do
   _ <- nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 51 Wallet.w1 Wallet.w2
