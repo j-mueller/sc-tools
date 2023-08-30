@@ -36,6 +36,8 @@ module Convex.BuildTx(
   addAuxScript,
   assetValue,
   setScriptsValid,
+  addRequiredSignature,
+  prependTxOut,
   -- * Minimum Ada deposit
   minAdaDeposit,
   setMinAdaDeposit,
@@ -69,6 +71,7 @@ import           Convex.MonadLog                 (MonadLog (..),
                                                   MonadLogKatipT)
 import           Convex.Scripts                  (toScriptData)
 import           Data.Functor.Identity           (Identity (..))
+import           Data.List                       (nub)
 import qualified Data.Map                        as Map
 import           Data.Maybe                      (fromMaybe)
 import qualified Plutus.V1.Ledger.Api            as Plutus
@@ -235,7 +238,7 @@ payToPublicKey network pk vl =
   let val = C.TxOutValue C.MultiAssetInBabbageEra vl
       addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByKey pk) C.NoStakeAddress
       txo = C.TxOut addr val C.TxOutDatumNone C.ReferenceScriptNone
-  in addBtx $ over L.txOuts ((:) txo)
+  in prependTxOut txo
 
 payToScriptHash :: MonadBuildTx m => NetworkId -> ScriptHash -> ScriptData -> C.StakeAddressReference -> C.Value -> m ()
 payToScriptHash network script datum stakeAddress vl =
@@ -243,7 +246,7 @@ payToScriptHash network script datum stakeAddress vl =
       addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript script) stakeAddress
       dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra datum
       txo = C.TxOut addr val dat C.ReferenceScriptNone
-  in addBtx $ over L.txOuts ((:) txo)
+  in prependTxOut txo
 
 payToPlutusV1 :: forall a m. (MonadBuildTx m, Plutus.ToData a) => NetworkId -> PlutusScript PlutusScriptV1 -> a -> C.StakeAddressReference -> C.Value -> m ()
 payToPlutusV1 network s datum stakeRef vl =
@@ -260,7 +263,7 @@ payToPlutusV2 network s datum stakeRef vl =
 payToPlutusV2Inline :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> m ()
 payToPlutusV2Inline addr script vl =
   let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone (C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script))
-  in addBtx $ over L.txOuts ((:) txo)
+  in prependTxOut txo
 
 -- TODO: Functions for building outputs (Output -> Output)
 
@@ -290,3 +293,14 @@ minAdaDeposit params txOut =
 -}
 setMinAdaDepositAll :: MonadBuildTx m => CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> m ()
 setMinAdaDepositAll params = addBtx $ over (L.txOuts . mapped) (setMinAdaDeposit params)
+
+{-| Add a public key hash to the list of required signatures.
+-}
+addRequiredSignature :: MonadBuildTx m => Hash PaymentKey -> m ()
+addRequiredSignature sig =
+  addBtx $ over (L.txExtraKeyWits . L._TxExtraKeyWitnesses) (nub . (:) sig)
+
+{-| Add a transaction output to the start of the list of transaction outputs.
+-}
+prependTxOut :: MonadBuildTx m => C.TxOut C.CtxTx C.BabbageEra -> m ()
+prependTxOut txOut = addBtx (over L.txOuts ((:) txOut))
