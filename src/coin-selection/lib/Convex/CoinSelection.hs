@@ -39,9 +39,9 @@ import qualified Cardano.Api.Shelley   as C
 import           Cardano.Ledger.Crypto (StandardCrypto)
 import qualified Cardano.Ledger.Keys   as Keys
 import           Cardano.Slotting.Time (SystemStart)
-import           Control.Lens          (_1, _2, makeLensesFor, over, preview,
-                                        set, to, traversed, view, (&), (.~),
-                                        (^.), (^..), (|>))
+import           Control.Lens          (_1, _2, at, makeLensesFor, over,
+                                        preview, set, to, traversed, view, (&),
+                                        (.~), (^.), (^..), (|>))
 import           Convex.BuildTx        (addCollateral, execBuildTx,
                                         setMinAdaDeposit, spendPublicKeyOutput)
 import           Convex.Class          (MonadBlockchain (..))
@@ -439,11 +439,11 @@ addOutputForNonAdaAssets ::
   (TxBodyContent BuildTx ERA, C.Lovelace) -- ^ The modified transaction body and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
 addOutputForNonAdaAssets pparams returnAddress (C.valueFromList . snd . splitValue -> positives) txBodyContent
   | isNothing (C.valueToLovelace positives) =
-      let vlWithAda = positives <> C.lovelaceToValue 1_000_000 -- add a dummy ada value to make sure the Ada asset ID is considered in 'C.calculateMinimumUTxO'
+      let vlWithoutAda = positives & set (L._Value . at C.AdaAssetId) Nothing
           output =
             setMinAdaDeposit pparams
-            $ C.TxOut returnAddress (C.TxOutValue C.MultiAssetInBabbageEra vlWithAda) C.TxOutDatumNone C.ReferenceScriptNone
-      in (txBodyContent & over L.txOuts (|> output), output ^. L._TxOut . _2 . L._TxOutValue . to C.selectLovelace)
+            $ C.TxOut returnAddress (C.TxOutValue C.MultiAssetInBabbageEra vlWithoutAda) C.TxOutDatumNone C.ReferenceScriptNone
+      in  (txBodyContent & over L.txOuts (|> output), output ^. L._TxOut . _2 . L._TxOutValue . to C.selectLovelace)
   | otherwise = (txBodyContent, C.Lovelace 0)
 
 splitValue :: C.Value -> ([(C.AssetId, C.Quantity)], [(C.AssetId, C.Quantity)])
