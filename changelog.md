@@ -30,7 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Convex.MockChain`: Export `fromLedgerUTxO`
   - `Convex.MockChain`: `MonadTrans` instance for `MockchainT`, export constructor
   - `Convex.MockChain`: Add `MockchainIO` type
-* `Convex.BuildTx`: Add a monadic (writer) interface for building transactions
+* `Convex.BuildTx`:
+  - Add a monadic (writer) interface for building transactions
+  - Add `addRequiredSignature`, `prependTxOut` functions
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
 * Add `utcTimeToPosixTime` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.
