@@ -26,6 +26,8 @@ module Convex.CoinSelection(
   signForWallet,
   -- * Balance changes
   balanceChanges,
+  requiredTxIns,
+  spentTxIns,
   -- * Etc.
   prepCSInputs
   ) where
