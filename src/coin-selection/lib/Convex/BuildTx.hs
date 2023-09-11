@@ -25,9 +25,11 @@ module Convex.BuildTx(
   payToScriptHash,
   payToPlutusV1,
   payToPlutusV2,
+  payToPlutusV2InlineDatum,
   spendPlutusV1,
   spendPlutusV2,
   spendPlutusV2Ref,
+  spendPlutusV2InlineDatum,
   mintPlutusV1,
   mintPlutusV2,
   payToPlutusV2Inline,
@@ -190,6 +192,14 @@ spendPlutusV2 txIn s (toScriptData -> dat) (toScriptData -> red) =
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
 
+{-| Spend an output locked by a Plutus V2 validator with an inline datum
+-}
+spendPlutusV2InlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> redeemer -> m ()
+spendPlutusV2InlineDatum txIn s (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) C.InlineScriptDatum red (C.ExecutionUnits 0 0)
+      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
+  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
+
 spendPlutusV2Ref :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
 spendPlutusV2Ref txIn refTxIn sh (toScriptData -> dat) (toScriptData -> red) =
   let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
@@ -265,6 +275,14 @@ payToPlutusV2Inline addr script vl =
   let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone (C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script))
   in prependTxOut txo
 
+payToPlutusV2InlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.StakeAddressReference -> C.Value -> m ()
+payToPlutusV2InlineDatum network script datum stakeRef vl =
+  let val = C.TxOutValue C.MultiAssetInBabbageEra vl
+      sh  = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
+      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript sh) stakeRef
+      dat = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (toScriptData datum)
+      txo = C.TxOut addr val dat C.ReferenceScriptNone
+  in prependTxOut txo
 -- TODO: Functions for building outputs (Output -> Output)
 
 setScriptsValid :: MonadBuildTx m => m ()
