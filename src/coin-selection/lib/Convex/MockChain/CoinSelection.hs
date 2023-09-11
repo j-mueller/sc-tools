@@ -4,6 +4,7 @@ on the mockchain
 -}
 module Convex.MockChain.CoinSelection(
   balanceAndSubmit,
+  balanceAndSubmitReturn,
   paymentTo
 ) where
 
@@ -24,8 +25,18 @@ on the mockchain, using the default network ID
 -}
 balanceAndSubmit :: (MonadMockchain m, MonadFail m) => Wallet -> TxBodyContent BuildTx BabbageEra -> m (C.Tx CoinSelection.ERA)
 balanceAndSubmit wallet tx = do
+  n <- networkId
+  let walletAddress = Wallet.addressInEra n wallet
+      txOut = CoinSelection.emptyTxOut walletAddress
+  balanceAndSubmitReturn wallet txOut tx
+
+{-| Balance and submit a transaction using the given return output and the wallet's UTXOs
+on the mockchain, using the default network ID
+-}
+balanceAndSubmitReturn :: (MonadMockchain m, MonadFail m) => Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (C.Tx CoinSelection.ERA)
+balanceAndSubmitReturn wallet returnOutput tx = do
   u <- MockChain.walletUtxo wallet
-  (tx', _) <- CoinSelection.balanceForWallet wallet u tx
+  (tx', _) <- CoinSelection.balanceForWalletReturn wallet u returnOutput tx
   _ <- sendTx tx'
   pure tx'
 

@@ -15,6 +15,7 @@ module Convex.Devnet.Wallet(
   createSeededWallet,
   walletUtxos,
   balanceAndSubmit,
+  balanceAndSubmitReturn,
   WalletLog(..),
   -- * Tracer / MonadLog interop
   TracerMonadLogT(..),
@@ -29,7 +30,7 @@ import           Control.Monad.IO.Class    (MonadIO (..))
 import           Control.Monad.Reader      (ReaderT (..), ask, lift)
 import           Control.Tracer            (Tracer, traceWith)
 import qualified Convex.BuildTx            as BuildTx
-import           Convex.Class              (MonadBlockchain,
+import           Convex.Class              (MonadBlockchain (networkId),
                                             runMonadBlockchainCardanoNodeT,
                                             sendTx)
 import qualified Convex.CoinSelection      as CoinSelection
@@ -91,9 +92,18 @@ runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
 -}
 balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBodyContent BuildTx BabbageEra -> IO (Tx BabbageEra)
 balanceAndSubmit tracer node wallet tx = do
+  n <- runningNodeBlockchain @String tracer node networkId
+  let walletAddress = Wallet.addressInEra n wallet
+      txOut = CoinSelection.emptyTxOut walletAddress
+  balanceAndSubmitReturn tracer node wallet txOut tx
+
+{-| Balance and submit the transaction using the wallet's UTXOs
+-}
+balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> IO (Tx BabbageEra)
+balanceAndSubmitReturn tracer node wallet returnOutput tx = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (tx', _) <- CoinSelection.balanceForWallet wallet utxos tx
+    (tx', _) <- CoinSelection.balanceForWalletReturn wallet utxos returnOutput tx
     _ <- sendTx tx'
     pure tx'
 
