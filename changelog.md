@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Convex.CoinSelection`:
   - Export `requiredTxIns`, `spentTxIns`
   - Fix a bug in coin selection that added too much output value for non-Ada assets
+  - Add a "change output" parameter to the coin selection functions
 * Set `slotLength` in `Convex.MockChain.Defaults` to 1 second (it was set to 1000 seconds by accident)
 * Change base monad of `mockchainSucceeds` to `IO`
 
