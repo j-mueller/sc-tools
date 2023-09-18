@@ -10,6 +10,7 @@
 module Convex.Lenses(
   -- * Tx body content lenses
   emptyTx,
+  emptyTxOut,
   TxIn,
   txIns,
   txInsReference,
@@ -137,6 +138,11 @@ emptyTx =
     , C.txGovernanceActions = C.TxGovernanceActionsNone
     , C.txVotes = C.TxVotesNone
     }
+
+{-| A transaction output with no value
+-}
+emptyTxOut :: AddressInEra BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
+emptyTxOut addr = C.TxOut addr (C.lovelaceToTxOutValue 0) C.TxOutDatumNone C.ReferenceScriptNone
 
 type TxIn v = (C.TxIn, BuildTxWith v (C.Witness C.WitCtxTxIn BabbageEra))
 

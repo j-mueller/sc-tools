@@ -14,7 +14,7 @@ import           Convex.BuildTx            (execBuildTx, payToAddress)
 import           Convex.Class              (MonadBlockchain (..),
                                             MonadMockchain)
 import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.Lenses             (emptyTx)
+import           Convex.Lenses             (emptyTx, emptyTxOut)
 import qualified Convex.MockChain          as MockChain
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)
@@ -27,7 +27,7 @@ balanceAndSubmit :: (MonadMockchain m, MonadFail m) => Wallet -> TxBodyContent B
 balanceAndSubmit wallet tx = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
-      txOut = CoinSelection.emptyTxOut walletAddress
+      txOut = emptyTxOut walletAddress
   balanceAndSubmitReturn wallet txOut tx
 
 {-| Balance and submit a transaction using the given return output and the wallet's UTXOs

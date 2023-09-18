@@ -29,12 +29,14 @@ library
     import: lang
     exposed-modules:
       Convex.Wallet
+      Convex.Wallet.API
       Convex.Wallet.Cli
       Convex.Wallet.Cli.Command
       Convex.Wallet.Cli.Config
       Convex.Wallet.MockWallet
       Convex.Wallet.NodeClient
       Convex.Wallet.NodeClient.BalanceClient
+      Convex.Wallet.Operator
       Convex.Wallet.WalletState
     hs-source-dirs: lib
     build-depends:
@@ -50,13 +52,20 @@ library
       mtl,
       katip,
       bytestring,
-      aeson-pretty
+      aeson-pretty,
+      servant,
+      servant-client,
+      servant-client-core,
+      servant-server,
+      stm,
+      warp
 
     -- cardano dependencies
     build-depends:
       cardano-api,
       cardano-ledger-shelley,
-      cardano-ledger-core
+      cardano-ledger-core,
+      plutus-ledger-api
 
 executable convex-wallet
     import: lang

@@ -38,8 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add a monadic (writer) interface for building transactions
   - Add `addRequiredSignature`, `prependTxOut`, `payToPlutusV2InlineDatum`, `spendPlutusV2InlineDatum` functions
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
-* Add `utcTimeToPosixTime` in `Convex.Utils`.
+* Add `utcTimeToPosixTime`, `toShelleyPaymentCredential` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.
+* `convex-wallet`:
+  - Add HTTP server
+  - Add `Convex.Wallet.Operator` for managing credentials
+* `convex-coin-selection`:
+  - Add `Convex.Query` for UTxO queries, add convex-wallet backend for operator UTxOs
 
 ### Deleted
 
