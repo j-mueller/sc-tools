@@ -32,6 +32,7 @@ library
       Convex.CoinSelection
       Convex.CoinSelection.CardanoApi
       Convex.MockChain.CoinSelection
+      Convex.Query
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -42,7 +43,8 @@ library
       convex-wallet,
       array,
       text,
-      mtl
+      mtl,
+      servant-client
 
     -- cardano dependencies
     build-depends:
@@ -55,7 +57,8 @@ library
       cardano-slotting,
       ouroboros-consensus,
       transformers,
-      mtl
+      mtl,
+      either-result
 
 test-suite convex-coin-selection-test
   import: lang
