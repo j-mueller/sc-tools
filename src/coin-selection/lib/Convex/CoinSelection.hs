@@ -18,7 +18,6 @@ module Convex.CoinSelection(
   txBody,
   changeOutput,
   numWitnesses,
-  emptyTxOut,
   -- * Balancing
   BalancingError(..),
   balanceTransactionBody,
@@ -34,9 +33,9 @@ module Convex.CoinSelection(
   prepCSInputs
   ) where
 
-import           Cardano.Api.Shelley   (AddressInEra, BabbageEra, BuildTx,
-                                        CardanoMode, EraHistory, PoolId,
-                                        TxBodyContent, TxOut, UTxO (..))
+import           Cardano.Api.Shelley   (BabbageEra, BuildTx, CardanoMode,
+                                        EraHistory, PoolId, TxBodyContent,
+                                        TxOut, UTxO (..))
 import qualified Cardano.Api.Shelley   as C
 import           Cardano.Ledger.Crypto (StandardCrypto)
 import qualified Cardano.Ledger.Keys   as Keys
@@ -67,7 +66,7 @@ type ERA = BabbageEra
 {- Note [Change Output]
 
 The balancing functions take a "change output" parameter. This is a @TxOut@ value that will
-receive any Ada change that's leftover after balancing. 
+receive any Ada change that's leftover after balancing.
 
 If the change output has a non-zero value (of any currency) then it will be included in the
 final transaction regardless of the final balance of the transaction.
@@ -328,11 +327,6 @@ txOutChange (view L._TxOut -> (fmap C.fromShelleyPaymentCredential . preview (L.
   BalanceChanges (Map.singleton addr value)
 txOutChange _ = mempty
 
-{-| A transaction output with no value
--}
-emptyTxOut :: AddressInEra BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
-emptyTxOut addr = C.TxOut addr (C.lovelaceToTxOutValue 0) C.TxOutDatumNone C.ReferenceScriptNone
-
 {-| Balance the transaction using the given UTXOs and return address. This
 calls 'balanceTransactionBody' after preparing all the required inputs.
 -}
@@ -374,7 +368,7 @@ balanceForWallet :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxU
 balanceForWallet wallet walletUtxo txb = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
-      txOut = emptyTxOut walletAddress
+      txOut = L.emptyTxOut walletAddress
   balanceForWalletReturn wallet walletUtxo txOut txb
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.

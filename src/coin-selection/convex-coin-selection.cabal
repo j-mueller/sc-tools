@@ -31,6 +31,7 @@ library
       Convex.BuildTx
       Convex.CoinSelection
       Convex.MockChain.CoinSelection
+      Convex.Query
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -39,6 +40,7 @@ library
       convex-base,
       convex-mockchain,
       convex-wallet,
+      servant-client
 
     -- cardano dependencies
     build-depends:
@@ -47,7 +49,8 @@ library
       plutus-ledger-api,
       cardano-slotting,
       transformers,
-      mtl
+      mtl,
+      either-result
 
 test-suite convex-coin-selection-test
   import: lang

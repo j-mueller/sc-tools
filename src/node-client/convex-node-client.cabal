@@ -50,7 +50,6 @@ library
       cardano-api,
       cardano-slotting,
       ouroboros-consensus,
-      ouroboros-network,
       ouroboros-network-protocols,
       typed-protocols
 

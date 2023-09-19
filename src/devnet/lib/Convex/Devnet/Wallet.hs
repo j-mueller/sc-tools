@@ -37,6 +37,7 @@ import qualified Convex.CoinSelection      as CoinSelection
 import           Convex.Devnet.CardanoNode (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries as NodeQueries
 import           Convex.Devnet.Utils       (keysFor)
+import           Convex.Lenses             (emptyTxOut)
 import           Convex.MonadLog           (MonadLog (..))
 import           Convex.Utxos              (UtxoSet)
 import qualified Convex.Utxos              as Utxos
@@ -94,7 +95,7 @@ balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBodyConten
 balanceAndSubmit tracer node wallet tx = do
   n <- runningNodeBlockchain @String tracer node networkId
   let walletAddress = Wallet.addressInEra n wallet
-      txOut = CoinSelection.emptyTxOut walletAddress
+      txOut = emptyTxOut walletAddress
   balanceAndSubmitReturn tracer node wallet txOut tx
 
 {-| Balance and submit the transaction using the wallet's UTXOs
