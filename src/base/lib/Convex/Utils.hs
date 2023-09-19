@@ -17,6 +17,19 @@ module Convex.Utils(
   -- * Serialised transactions
   txFromCbor,
   unsafeTxFromCbor,
+
+  -- * Dealing with errors
+  liftResult,
+  liftEither,
+  mapError,
+  failOnLeft,
+  failOnLeftLog,
+
+  -- * Reading key files
+  readSigningKeyFromFile,
+  readVerificationKeyFromFile,
+  readStakingKeyFromFile,
+
   -- * Etc.
   extractTx,
   txnUtxos,
@@ -25,7 +38,8 @@ module Convex.Utils(
   utcTimeToSlotUnsafe,
   utcTimeToPosixTime,
   posixTimeToSlot,
-  posixTimeToSlotUnsafe
+  posixTimeToSlotUnsafe,
+  toShelleyPaymentCredential
 ) where
 
 import           Cardano.Api                              (BabbageEra,
@@ -33,18 +47,26 @@ import           Cardano.Api                              (BabbageEra,
                                                            BlockInMode (..),
                                                            CardanoMode,
                                                            NetworkId,
+                                                           PaymentCredential (..),
                                                            PlutusScript,
                                                            PlutusScriptV1,
                                                            PlutusScriptV2,
                                                            SlotNo, Tx, TxIn)
 import qualified Cardano.Api.Shelley                      as C
+import qualified Cardano.Ledger.Credential                as Shelley
+import           Cardano.Ledger.Crypto                    (StandardCrypto)
 import           Cardano.Slotting.EpochInfo.API           (EpochInfo,
                                                            epochInfoSlotToUTCTime,
                                                            hoistEpochInfo)
 import qualified Cardano.Slotting.Time                    as Time
 import           Control.Monad                            (void, when)
-import           Control.Monad.Except                     (runExcept)
+import           Control.Monad.Except                     (MonadError,
+                                                           runExcept)
 import           Control.Monad.IO.Class                   (MonadIO (..))
+import           Control.Monad.Result                     (ResultT, throwError)
+import qualified Control.Monad.Result                     as Result
+import           Control.Monad.Trans.Except               (ExceptT, runExceptT)
+import           Convex.MonadLog                          (MonadLog, logWarnS)
 import           Convex.PlutusLedger                      (transPOSIXTime,
                                                            unTransPOSIXTime)
 import           Data.Aeson                               (Result (..),
@@ -56,6 +78,7 @@ import           Data.Function                            ((&))
 import           Data.Proxy                               (Proxy (..))
 import           Data.Set                                 (Set)
 import qualified Data.Set                                 as Set
+import qualified Data.Text.IO                             as Text
 import           Data.Time.Clock                          (NominalDiffTime,
                                                            UTCTime)
 import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime,
@@ -63,6 +86,7 @@ import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime
 import qualified Ouroboros.Consensus.HardFork.History     as Consensus
 import qualified Ouroboros.Consensus.HardFork.History.Qry as Qry
 import qualified Plutus.V1.Ledger.Time                    as PV1
+import           System.Exit                              (exitFailure)
 
 scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
@@ -170,3 +194,58 @@ toLedgerEpochInfo :: C.EraHistory mode -> EpochInfo (Either String)
 toLedgerEpochInfo (C.EraHistory _ interpreter) =
   hoistEpochInfo (first show . runExcept) $
     Consensus.interpreterToEpochInfo interpreter
+
+liftResult :: (MonadError e m) => (String -> e) -> ResultT m a -> m a
+liftResult f action = Result.runResultT action >>= either (throwError . f) pure . Result.toEither
+
+liftEither :: (MonadError e m) => (ee -> e) -> m (Either ee a) -> m a
+liftEither f action = action >>= either (throwError . f) pure
+
+mapError :: (MonadError e m) => (ee -> e) -> ExceptT ee m a -> m a
+mapError f action = runExceptT action >>= either (throwError . f) pure
+
+failOnLeft :: MonadIO m => (e -> String) -> Either e a -> m a
+failOnLeft f = \case
+  Left err -> liftIO $ do
+    putStrLn (f err)
+    exitFailure
+  Right x -> pure x
+
+failOnLeftLog :: (MonadLog m, MonadIO m) => (e -> String) -> Either e a -> m a
+failOnLeftLog f = \case
+  Left err -> do
+    logWarnS (f err)
+    liftIO exitFailure
+  Right x -> pure x
+
+{-| Read a serialised signing key from a file
+-}
+readSigningKeyFromFile :: FilePath -> IO (C.SigningKey C.PaymentKey)
+readSigningKeyFromFile = readKeyFromFile Proxy
+
+{-| Read a serialised verification key from a file. Try bech32 encoding first, then text envelope (JSON)
+-}
+readVerificationKeyFromFile :: FilePath -> IO (C.VerificationKey C.PaymentKey)
+readVerificationKeyFromFile = readKeyFromFile Proxy
+
+{-| Read a serialised signing key from a file
+-}
+readStakingKeyFromFile :: FilePath -> IO (C.VerificationKey C.StakeKey)
+readStakingKeyFromFile = readKeyFromFile Proxy
+
+{-| Read a serialised key from a file. Try bech32 encoding first, then text envelope (JSON)
+-}
+readKeyFromFile :: (C.SerialiseAsBech32 key, C.HasTextEnvelope key) => Proxy key -> FilePath -> IO key
+readKeyFromFile p source = do
+  txt <- Text.readFile source
+  case C.deserialiseFromBech32 (C.proxyToAsType p) txt of
+    Left err1 -> C.readFileTextEnvelope (C.proxyToAsType p) source >>= \case
+      Left err2 -> fail ("readKeyFromFile: Failed to read " <> source <> ". Errors: " <> show err1 <> ", " <> show err2)
+      Right k -> pure k
+    Right k  -> pure k
+
+toShelleyPaymentCredential :: PaymentCredential -> Shelley.PaymentCredential StandardCrypto
+toShelleyPaymentCredential (PaymentCredentialByKey (C.PaymentKeyHash kh)) =
+    Shelley.KeyHashObj kh
+toShelleyPaymentCredential (PaymentCredentialByScript sh) =
+    Shelley.ScriptHashObj (C.toShelleyScriptHash sh)

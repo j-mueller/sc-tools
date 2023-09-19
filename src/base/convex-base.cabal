@@ -52,7 +52,8 @@ library
       transformers,
       text,
       exceptions,
-      time
+      time,
+      either-result
       
     build-depends:
       cardano-api,
