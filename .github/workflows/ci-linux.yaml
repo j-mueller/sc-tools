@@ -103,6 +103,7 @@ jobs:
           cabal update
           cabal install -j cardano-node-8.1.1 --overwrite-policy=always
           cabal install -j cardano-cli-8.4.0.0 --overwrite-policy=always
+          cabal install -j convex-wallet --overwrite-policy=always
           echo "/home/runner/.cabal/bin" >> $GITHUB_PATH
 
       - name: build & test
