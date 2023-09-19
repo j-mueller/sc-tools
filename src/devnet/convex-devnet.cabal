@@ -46,6 +46,7 @@ library
       Convex.Devnet.NodeQueries
       Convex.Devnet.Utils
       Convex.Devnet.Wallet
+      Convex.Devnet.WalletServer
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0
@@ -68,6 +69,9 @@ library
       , mtl
       , prettyprinter
       , transformers
+      , http-client
+      , servant-client
+      , servant-client-core
 
       -- cardano-node deps.
       , cardano-api

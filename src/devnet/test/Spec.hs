@@ -5,24 +5,26 @@
 {-# LANGUAGE NamedFieldPuns     #-}
 module Main where
 
-import qualified Cardano.Api               as C
-import           Control.Monad.Except      (runExceptT)
-import           Convex.Devnet.CardanoNode (NodeLog, RunningNode (..),
-                                            getCardanoNodeVersion,
-                                            withCardanoNodeDevnet)
-import           Convex.Devnet.Logging     (contramap, showLogsOnFailure)
-import           Convex.Devnet.NodeQueries (loadConnectInfo)
-import           Convex.Devnet.Utils       (failAfter, failure, withTempDir)
-import           Convex.Devnet.Wallet      (WalletLog)
-import qualified Convex.Devnet.Wallet      as W
-import qualified Convex.Utxos              as Utxos
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.List                 (isInfixOf)
-import qualified Data.Text                 as Text
-import           GHC.Generics              (Generic)
-import           GHC.IO.Encoding           (setLocaleEncoding, utf8)
-import           Test.Tasty                (defaultMain, testGroup)
-import           Test.Tasty.HUnit          (assertBool, assertEqual, testCase)
+import qualified Cardano.Api                as C
+import           Control.Monad.Except       (runExceptT)
+import           Convex.Devnet.CardanoNode  (NodeLog, RunningNode (..),
+                                             getCardanoNodeVersion,
+                                             withCardanoNodeDevnet)
+import           Convex.Devnet.Logging      (contramap, showLogsOnFailure)
+import           Convex.Devnet.NodeQueries  (loadConnectInfo)
+import           Convex.Devnet.Utils        (failAfter, failure, withTempDir)
+import           Convex.Devnet.Wallet       (WalletLog)
+import qualified Convex.Devnet.Wallet       as W
+import           Convex.Devnet.WalletServer (getUTxOs, withWallet)
+import qualified Convex.Devnet.WalletServer as WS
+import qualified Convex.Utxos               as Utxos
+import           Data.Aeson                 (FromJSON, ToJSON)
+import           Data.List                  (isInfixOf)
+import qualified Data.Text                  as Text
+import           GHC.Generics               (Generic)
+import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
+import           Test.Tasty                 (defaultMain, testGroup)
+import           Test.Tasty.HUnit           (assertBool, assertEqual, testCase)
 
 main :: IO ()
 main = do
@@ -31,6 +33,7 @@ main = do
     [ testCase "cardano-node is available" checkCardanoNode
     , testCase "start local node" startLocalNode
     , testCase "make a payment" makePayment
+    , testCase "run the wallet server" runWalletServer
     ]
 
 checkCardanoNode :: IO ()
@@ -58,7 +61,16 @@ makePayment = do
           bal <- Utxos.totalBalance <$> W.walletUtxos runningNode wllt
           assertEqual "Wallet should have the expected balance" 100_000_000 (C.selectLovelace bal)
 
+runWalletServer :: IO ()
+runWalletServer =
+  showLogsOnFailure $ \tr -> do
+    withTempDir "cardano-cluster" $ \tmp -> do
+      withCardanoNodeDevnet (contramap TLNode tr) tmp $ \node ->
+        withWallet (contramap TWallet tr) tmp node $ \wllt -> do
+          _x <- getUTxOs wllt
+          pure ()
+
 data TestLog =
-  TLWallet WalletLog | TLNode NodeLog | SubmitTx{ txId :: C.TxId } | FoundTx{txId :: C.TxId }
+  TLWallet WalletLog | TLNode NodeLog | TWallet WS.WalletLog | SubmitTx{ txId :: C.TxId } | FoundTx{txId :: C.TxId }
   deriving stock (Generic)
   deriving anyclass (ToJSON, FromJSON)
