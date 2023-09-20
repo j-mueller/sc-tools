@@ -29,10 +29,15 @@ module Convex.BuildTx(
   spendPlutusV1,
   spendPlutusV2,
   spendPlutusV2Ref,
+  spendPlutusV2RefWithInlineDatum,
+  spendPlutusV2RefWithoutInRef,
+  spendPlutusV2RefWithoutInRefInlineDatum,
   spendPlutusV2InlineDatum,
   mintPlutusV1,
   mintPlutusV2,
   payToPlutusV2Inline,
+  payToPlutusV2InlineWithInlineDatum,
+  payToPlutusV2InlineWithDatum,
   addReference,
   addCollateral,
   addAuxScript,
@@ -200,11 +205,36 @@ spendPlutusV2InlineDatum txIn s (toScriptData -> red) =
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
   in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
 
-spendPlutusV2Ref :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
-spendPlutusV2Ref txIn refTxIn sh (toScriptData -> dat) (toScriptData -> red) =
-  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
+spendPlutusV2RefBase :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
+spendPlutusV2RefBase txIn refTxIn sh dat (toScriptData -> red) =
+  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) dat red (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
-  in setScriptsValid >> addReference refTxIn >> addBtx (over L.txIns ((txIn, wit') :))
+  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
+
+{-| same as spendPlutusV2RefBase but adds the reference script in the reference input list
+-}
+spendPlutusV2RefBaseWithInRef :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
+spendPlutusV2RefBaseWithInRef txIn refTxIn sh dat red = spendPlutusV2RefBase txIn refTxIn sh dat red >> addReference refTxIn
+
+spendPlutusV2Ref :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
+spendPlutusV2Ref txIn refTxIn sh (toScriptData -> dat) red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh (C.ScriptDatumForTxIn dat) red
+
+{-| same as spendPlutusV2Ref but considers inline datum at the spent utxo
+-}
+spendPlutusV2RefWithInlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
+spendPlutusV2RefWithInlineDatum txIn refTxIn sh red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh C.InlineScriptDatum red
+
+{-| same as spendPlutusV2Ref but does not add the reference script in the reference input list
+This is to cover the case whereby the reference script utxo is expected to be consumed in the same tx.
+-}
+spendPlutusV2RefWithoutInRef :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
+spendPlutusV2RefWithoutInRef txIn refTxIn sh (toScriptData -> dat) red = spendPlutusV2RefBase txIn refTxIn sh (C.ScriptDatumForTxIn dat) red
+
+{-| same as spendPlutusV2RefWithoutInRef but considers inline datum at the spent utxo
+-}
+spendPlutusV2RefWithoutInRefInlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
+spendPlutusV2RefWithoutInRefInlineDatum txIn refTxIn sh red = spendPlutusV2RefBase txIn refTxIn sh C.InlineScriptDatum red
+
 
 mintPlutusV1 :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> m ()
 mintPlutusV1 script (toScriptData -> red) assetName quantity =
@@ -270,10 +300,26 @@ payToPlutusV2 network s datum stakeRef vl =
       dt = C.fromPlutusData (Plutus.toData datum)
   in payToScriptHash network sh dt stakeRef vl
 
-payToPlutusV2Inline :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> m ()
-payToPlutusV2Inline addr script vl =
-  let txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone (C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script))
+payToPlutusV2InlineBase :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> C.TxOutDatum C.CtxTx C.BabbageEra -> C.Value -> m ()
+payToPlutusV2InlineBase addr script dat vl =
+  let refScript = C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script)
+      txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) dat refScript
   in prependTxOut txo
+
+payToPlutusV2Inline :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> m ()
+payToPlutusV2Inline addr script vl = payToPlutusV2InlineBase addr script C.TxOutDatumNone vl
+
+{-| same as payToPlutusV2Inline but also specify an inline datum -}
+payToPlutusV2InlineWithInlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
+payToPlutusV2InlineWithInlineDatum addr script datum vl =
+  let dat = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (toScriptData datum)
+  in payToPlutusV2InlineBase addr script dat vl
+
+{-| same as payToPlutusV2Inline but also specify a datum -}
+payToPlutusV2InlineWithDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
+payToPlutusV2InlineWithDatum addr script datum vl =
+  let dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (C.fromPlutusData $ Plutus.toData datum)
+  in payToPlutusV2InlineBase addr script dat vl
 
 payToPlutusV2InlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.StakeAddressReference -> C.Value -> m ()
 payToPlutusV2InlineDatum network script datum stakeRef vl =
