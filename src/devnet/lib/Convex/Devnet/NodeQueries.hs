@@ -10,6 +10,7 @@ module Convex.Devnet.NodeQueries(
   queryTipBlock,
   queryTipSlotNo,
   queryUTxO,
+  queryUTxOWhole,
   waitForTxn,
   waitForTxIn,
   waitForTxInSpend,
@@ -24,6 +25,7 @@ import           Cardano.Api                                        (Address,
                                                                      EraHistory (..),
                                                                      NetworkId,
                                                                      QueryInMode,
+                                                                     QueryUTxOFilter,
                                                                      ShelleyAddr,
                                                                      SlotNo, Tx,
                                                                      TxIn, UTxO)
@@ -126,18 +128,29 @@ queryTipSlotNo networkId socket = queryTip networkId socket >>= (\(s, l, _) -> p
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO C.BabbageEra)
-queryUTxO networkId socket addresses =
+queryUTxOFilter :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.BabbageEra)
+queryUTxOFilter networkId socket flt =
   let query =
         C.QueryInEra
           C.BabbageEraInCardanoMode
           ( C.QueryInShelleyBasedEra
               C.ShelleyBasedEraBabbage
-              ( C.QueryUTxO
-                  (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
-              )
+              ( C.QueryUTxO flt)
           )
    in queryLocalState query networkId socket >>= throwOnEraMismatch
+
+-- | Query UTxO for all given addresses at given point.
+--
+-- Throws at least 'QueryException' if query fails.
+queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO C.BabbageEra)
+queryUTxO networkId socket addresses =
+  queryUTxOFilter networkId socket (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
+
+-- | Query the entire UTxO set
+--
+-- Throws at least 'QueryException' if query fails.
+queryUTxOWhole :: NetworkId -> FilePath -> IO (UTxO C.BabbageEra)
+queryUTxOWhole networkId socket = queryUTxOFilter networkId socket C.QueryUTxOWhole
 
 throwOnEraMismatch :: (MonadThrow m, MonadIO m) => Either EraMismatch a -> m a
 throwOnEraMismatch res =
