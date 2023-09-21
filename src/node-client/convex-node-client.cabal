@@ -33,6 +33,7 @@ library
       Convex.NodeClient.Progress
       Convex.NodeClient.Resuming
       Convex.NodeClient.Types
+      Convex.NodeClient.WaitForTxnClient
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
@@ -40,7 +41,9 @@ library
       text,
       time,
       containers,
-      aeson
+      aeson,
+      stm,
+      mtl
 
     build-depends:
       convex-base
