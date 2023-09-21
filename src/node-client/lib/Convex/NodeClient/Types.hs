@@ -8,6 +8,7 @@ module Convex.NodeClient.Types(
   PipelinedLedgerStateClient(..),
   ClientBlock,
   runNodeClient,
+  protocols,
   -- * Sync points
   ChainPoint(..),
   fromChainTip

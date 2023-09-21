@@ -6,10 +6,12 @@ module Convex.NodeQueries(
   loadConnectInfo,
   queryEraHistory,
   querySystemStart,
-  queryLocalState
+  queryLocalState,
+  queryTip
 ) where
 
 import           Cardano.Api                                        (CardanoMode,
+                                                                     ChainPoint,
                                                                      ConsensusModeParams (..),
                                                                      Env (..),
                                                                      EpochSlots (..),
@@ -79,6 +81,9 @@ querySystemStart = queryLocalState CAPI.QuerySystemStart
 
 queryEraHistory :: LocalNodeConnectInfo CardanoMode -> IO (EraHistory CardanoMode)
 queryEraHistory = queryLocalState (CAPI.QueryEraHistory CAPI.CardanoModeIsMultiEra)
+
+queryTip :: LocalNodeConnectInfo CardanoMode -> IO ChainPoint
+queryTip = queryLocalState (CAPI.QueryChainPoint CAPI.CardanoMode)
 
 queryLocalState :: CAPI.QueryInMode CardanoMode b -> LocalNodeConnectInfo CardanoMode -> IO b
 queryLocalState query connectInfo = do
