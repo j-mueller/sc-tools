@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add a "change output" parameter to the coin selection functions
 * Set `slotLength` in `Convex.MockChain.Defaults` to 1 second (it was set to 1000 seconds by accident)
 * Change base monad of `mockchainSucceeds` to `IO`
+* Change `_PlutusScriptWitness` in `Convex.Lenses` to `_PlutusScriptWitnessV1`
 
 ### Added
 
@@ -39,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Convex.BuildTx`:
   - Add a monadic (writer) interface for building transactions
   - Add `addRequiredSignature`, `prependTxOut`, `payToPlutusV2InlineDatum`, `spendPlutusV2InlineDatum` functions
+  - Add `spendPlutusV2RefWithInlineDatum`, `spendPlutusV2RefWithoutInRef` and `spendPlutusV2RefWithoutInRefInlineDatum` functions
+  - Add `payToPlutusV2InlineWithDatum` and `payToPlutusV2InlineWithInlineDatum` functions
+
+
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
 * Add `utcTimeToPosixTime`, `toShelleyPaymentCredential` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.
@@ -47,11 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add `Convex.Wallet.Operator` for managing credentials
 * `convex-coin-selection`:
   - Add `Convex.Query` for UTxO queries, add convex-wallet backend for operator UTxOs
+* Add `_PlutusScriptWitnessV2` to `Convex.Lenses`
+
+
 
 ### Deleted
 
 * Deleted the `trading-bot` and `muesli` packages.
-* Deleted `spendPlutusV1Ref` and `spendPlutusV2Ref` as they don't make sense.
+* Deleted `spendPlutusV1Ref` as it does not make sense.
 
 ## [0.0.1] - 2023-04-26
 
