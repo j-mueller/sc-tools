@@ -39,6 +39,7 @@ library
       lens,
       convex-base,
       convex-mockchain,
+      convex-node-client,
       convex-wallet,
       servant-client
 
