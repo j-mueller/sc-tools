@@ -25,37 +25,38 @@ module Convex.Query(
   runWalletAPIQueryT
 ) where
 
-import           Cardano.Api                       (BabbageEra, BalancedTxBody,
-                                                    BuildTx, CtxTx,
-                                                    PaymentCredential (..),
-                                                    TxBodyContent, TxOut,
-                                                    UTxO (..))
-import qualified Cardano.Api                       as C
-import           Control.Monad.Except              (MonadError)
-import           Control.Monad.IO.Class            (MonadIO (..))
-import           Control.Monad.Reader              (ReaderT, ask, runReaderT)
-import           Control.Monad.Trans.Class         (MonadTrans (..))
-import           Control.Monad.Trans.Except        (ExceptT, runExceptT)
-import           Control.Monad.Trans.Except.Result (ResultT)
-import qualified Control.Monad.Trans.State         as StrictState
-import qualified Control.Monad.Trans.State.Strict  as LazyState
-import           Convex.Class                      (MonadBlockchain (..),
-                                                    MonadBlockchainCardanoNodeT)
+import           Cardano.Api                        (BabbageEra, BalancedTxBody,
+                                                     BuildTx, CtxTx,
+                                                     PaymentCredential (..),
+                                                     TxBodyContent, TxOut,
+                                                     UTxO (..))
+import qualified Cardano.Api                        as C
+import           Control.Monad.Except               (MonadError)
+import           Control.Monad.IO.Class             (MonadIO (..))
+import           Control.Monad.Reader               (ReaderT, ask, runReaderT)
+import           Control.Monad.Trans.Class          (MonadTrans (..))
+import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
+import           Control.Monad.Trans.Except.Result  (ResultT)
+import qualified Control.Monad.Trans.State          as StrictState
+import qualified Control.Monad.Trans.State.Strict   as LazyState
+import           Convex.Class                       (MonadBlockchain (..),
+                                                     MonadBlockchainCardanoNodeT)
 import qualified Convex.CoinSelection
-import           Convex.MockChain                  (MockchainT, utxoSet)
-import           Convex.MonadLog                   (MonadLogIgnoreT)
-import           Convex.Utils                      (liftEither, liftResult)
-import           Convex.Utxos                      (BalanceChanges, fromApiUtxo,
-                                                    fromUtxoTx, onlyCredential,
-                                                    toApiUtxo)
-import qualified Convex.Wallet.API                 as Wallet.API
-import           Convex.Wallet.Operator            (Operator (..), Signing,
-                                                    operatorPaymentCredential,
-                                                    operatorReturnOutput,
-                                                    signTx)
-import qualified Data.Map                          as Map
-import           Data.Maybe                        (listToMaybe)
-import           Servant.Client                    (ClientEnv)
+import           Convex.MockChain                   (MockchainT, utxoSet)
+import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
+import           Convex.NodeClient.WaitForTxnClient (MonadBlockchainWaitingT (..))
+import           Convex.Utils                       (liftEither, liftResult)
+import           Convex.Utxos                       (BalanceChanges,
+                                                     fromApiUtxo, fromUtxoTx,
+                                                     onlyCredential, toApiUtxo)
+import qualified Convex.Wallet.API                  as Wallet.API
+import           Convex.Wallet.Operator             (Operator (..), Signing,
+                                                     operatorPaymentCredential,
+                                                     operatorReturnOutput,
+                                                     signTx)
+import qualified Data.Map                           as Map
+import           Data.Maybe                         (listToMaybe)
+import           Servant.Client                     (ClientEnv)
 
 class Monad m => MonadUtxoQuery m where
   utxosByPayment :: PaymentCredential -> m (UTxO BabbageEra)
@@ -84,6 +85,8 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) wh
 instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
   utxosByPayment = lift . utxosByPayment
 
+deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWaitingT m)
+
 newtype BalancingError = BalancingError String
   deriving stock (Eq, Ord, Show)
 
@@ -96,7 +99,7 @@ balanceTx operator changeOutput txBody = do
   runExceptT $ liftResult BalancingError (Convex.CoinSelection.balanceTx changeOutput o txBody)
 
 newtype WalletAPIQueryT m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog)
 
 runWalletAPIQueryT :: ClientEnv -> WalletAPIQueryT m a -> m a
 runWalletAPIQueryT env (WalletAPIQueryT action) = runReaderT action env
@@ -111,6 +114,8 @@ instance MonadIO m => MonadUtxoQuery (WalletAPIQueryT m) where
         liftIO (putStrLn msg)
         error msg
       Right x  -> pure (toApiUtxo $ onlyCredential credential $ fromUtxoTx x)
+
+deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
 balanceAndSubmitOperator :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Operator Signing -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
