@@ -79,19 +79,19 @@ jobs:
           echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
-      - name: Cache .cabal
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cabal
-          key: cabal-${{ hashFiles('cabal.project', '**/*.cabal') }}
+      - uses: actions/checkout@v2
 
       - uses: haskell/actions/setup@v1
+        id: setup
         with:
           ghc-version: '8.10' # Resolves to the latest point release of GHC 8.10
           cabal-version: '3.6.0.0' # Exact version of Cabal
 
-      - uses: actions/checkout@v2
+      - name: Cache .cabal
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: cabal-${{ hashFiles('cabal.project') }}
 
       - name: Set up cabal.project.local
         run: |
