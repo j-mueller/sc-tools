@@ -57,9 +57,11 @@ makePayment = do
     failAfter 10 $
       withTempDir "cardano-cluster" $ \tmp -> do
         withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode -> do
-          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode 100_000_000
+          let lovelacePerUtxo = 100_000_000
+              numUtxos        = 10
+          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           bal <- Utxos.totalBalance <$> W.walletUtxos runningNode wllt
-          assertEqual "Wallet should have the expected balance" 100_000_000 (C.selectLovelace bal)
+          assertEqual "Wallet should have the expected balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.selectLovelace bal)
 
 runWalletServer :: IO ()
 runWalletServer =
@@ -67,8 +69,10 @@ runWalletServer =
     withTempDir "cardano-cluster" $ \tmp -> do
       withCardanoNodeDevnet (contramap TLNode tr) tmp $ \node ->
         withWallet (contramap TWallet tr) tmp node $ \wllt -> do
-          _x <- getUTxOs wllt
-          pure ()
+          bal <- Utxos.totalBalance <$> getUTxOs wllt
+          let lovelacePerUtxo = 100_000_000
+              numUtxos        = 10 :: Int
+          assertEqual "Wallet should have the correct balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.selectLovelace bal)
 
 data TestLog =
   TLWallet WalletLog | TLNode NodeLog | TWallet WS.WalletLog | SubmitTx{ txId :: C.TxId } | FoundTx{txId :: C.TxId }
