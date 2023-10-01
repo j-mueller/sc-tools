@@ -26,6 +26,7 @@ module Convex.Devnet.Wallet(
 import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
                                             Lovelace, Tx, TxBodyContent)
 import qualified Cardano.Api               as C
+import           Control.Monad             (replicateM)
 import           Control.Monad.IO.Class    (MonadIO (..))
 import           Control.Monad.Reader      (ReaderT (..), ask, lift)
 import           Control.Tracer            (Tracer, traceWith)
@@ -58,21 +59,21 @@ walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO ())
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
   Utxos.fromApiUtxo <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
 
-{-| Send the desired amount of lovelace to the address
+{-| Send @n@ times the given amount of lovelace to the address
 -}
-sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Lovelace -> IO (Tx BabbageEra)
-sendFaucetFundsTo tracer node destination amount = do
+sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Lovelace -> IO (Tx BabbageEra)
+sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
-  balanceAndSubmit tracer node fct (BuildTx.execBuildTx' (BuildTx.payToAddress destination (C.lovelaceToValue amount)))
+  balanceAndSubmit tracer node fct $ BuildTx.execBuildTx' $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue amount))
 
-{-| Create a new wallet and send some funds to it. Returns when the seed txn has been registered
+{-| Create a new wallet and send @n@ times the given amount of lovelace to it. Returns when the seed txn has been registered
 on the chain.
 -}
-createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Lovelace -> IO Wallet
-createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} amount = do
+createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Int -> Lovelace -> IO Wallet
+createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} n amount = do
   wallet <- Wallet.generateWallet
   traceWith tracer (GeneratedWallet wallet)
-  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) amount >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
+  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) n amount >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
   pure wallet
 
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the

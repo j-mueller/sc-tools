@@ -182,4 +182,4 @@ waitUntilAvailable tr RunningWalletServer{rwsClient} =
 sendFundsToOperator :: Tracer IO WalletLog -> RunningNode -> Operator k -> Lovelace -> IO (Tx BabbageEra)
 sendFundsToOperator tr node@RunningNode{rnNetworkId} op lvl = do
   let opAddress = operatorAddress rnNetworkId op
-  Wallet.sendFaucetFundsTo (contramap WWallet tr) node (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) opAddress) lvl
+  Wallet.sendFaucetFundsTo (contramap WWallet tr) node (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) opAddress) 10 lvl
