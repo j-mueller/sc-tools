@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Set `slotLength` in `Convex.MockChain.Defaults` to 1 second (it was set to 1000 seconds by accident)
 * Change base monad of `mockchainSucceeds` to `IO`
 * Change `_PlutusScriptWitness` in `Convex.Lenses` to `_PlutusScriptWitnessV1`
+* Increased the amount of UTxOs generated for wallets in the devnet from 1 to 10.
 
 ### Added
 
