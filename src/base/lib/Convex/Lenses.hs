@@ -297,12 +297,12 @@ _TxOutDatumInTx = prism' from to where
   from :: C.ScriptData -> TxOutDatum CtxTx C.BabbageEra
   from cd = C.TxOutDatumInTx C.ScriptDataInBabbageEra cd
 
-_TxOutDatumInline :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.ScriptData
+_TxOutDatumInline :: forall ctx. Prism' (TxOutDatum ctx C.BabbageEra) C.ScriptData
 _TxOutDatumInline = prism' from to where
-  to :: TxOutDatum CtxTx C.BabbageEra -> Maybe C.ScriptData
+  to :: TxOutDatum ctx C.BabbageEra -> Maybe C.ScriptData
   to (C.TxOutDatumInline _ k) = Just k
   to _                        = Nothing
-  from :: C.ScriptData -> TxOutDatum CtxTx C.BabbageEra
+  from :: C.ScriptData -> TxOutDatum ctx C.BabbageEra
   from cd = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra cd
 
 _ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
