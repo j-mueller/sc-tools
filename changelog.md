@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Change base monad of `mockchainSucceeds` to `IO`
 * Change `_PlutusScriptWitness` in `Convex.Lenses` to `_PlutusScriptWitnessV1`
 * Increased the amount of UTxOs generated for wallets in the devnet from 1 to 10.
+* Relax the context type of `_TxOutDatumInline` from `CtxTx` to `ctx` (any context type)
 
 ### Added
 
@@ -43,8 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add `addRequiredSignature`, `prependTxOut`, `payToPlutusV2InlineDatum`, `spendPlutusV2InlineDatum` functions
   - Add `spendPlutusV2RefWithInlineDatum`, `spendPlutusV2RefWithoutInRef` and `spendPlutusV2RefWithoutInRefInlineDatum` functions
   - Add `payToPlutusV2InlineWithDatum` and `payToPlutusV2InlineWithInlineDatum` functions
-
-
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
 * Add `utcTimeToPosixTime`, `toShelleyPaymentCredential` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.
