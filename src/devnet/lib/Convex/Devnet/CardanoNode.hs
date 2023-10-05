@@ -19,10 +19,12 @@ module Convex.Devnet.CardanoNode(
   getCardanoNodeVersion,
   waitForFullySynchronized,
   waitForBlock,
+  waitForSocket,
   withCardanoNodeDevnet
 ) where
 
-import           Cardano.Api               (NetworkId)
+import           Cardano.Api               (CardanoMode, Env,
+                                            LocalNodeConnectInfo, NetworkId)
 import qualified Cardano.Api               as C
 import           Cardano.Slotting.Slot     (withOriginToMaybe)
 import           Cardano.Slotting.Time     (diffRelativeTime, getRelativeTime,
@@ -31,6 +33,7 @@ import           Control.Concurrent        (threadDelay)
 import           Control.Concurrent.Async  (race)
 import           Control.Exception         (finally, throwIO)
 import           Control.Monad             (unless, when, (>=>))
+import           Control.Monad.Except      (runExceptT)
 import           Control.Tracer            (Tracer, traceWith)
 import qualified Convex.Devnet.NodeQueries as Q
 import           Convex.Devnet.Utils       (checkProcessHasNotDied,
@@ -66,9 +69,10 @@ newtype NodeId = NodeId Int
   deriving newtype (Eq, Show, Num, ToJSON, FromJSON)
 
 data RunningNode = RunningNode
-  { rnNodeSocket     :: FilePath
-  , rnNetworkId      :: NetworkId
-  , rnNodeConfigFile :: FilePath
+  { rnNodeSocket     :: FilePath -- ^ Cardano node socket
+  , rnNetworkId      :: NetworkId -- ^ Network ID used by the cardano node
+  , rnNodeConfigFile :: FilePath -- ^ Cardano node config file (JSON)
+  , rnConnectInfo    :: (LocalNodeConnectInfo CardanoMode, Env) -- ^ Connection info for node queries
   }
 
 -- | Configuration parameters for a single node devnet
@@ -173,9 +177,11 @@ withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nod
   socketPath = stateDirectory </> nodeSocket
 
   waitForNode = do
-    let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile = stateDirectory </> nodeConfigFile}
-    waitForSocket rn
+    waitForFile socketPath
+    let rnNodeConfigFile = stateDirectory </> nodeConfigFile
     traceWith tr $ MsgSocketIsReady socketPath
+    rnConnectInfo <- runExceptT (Q.loadConnectInfo rnNodeConfigFile socketPath) >>= either (error . (<>) "Failed to load connect info: " . Text.unpack . C.renderInitialLedgerStateError) pure
+    let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile, rnConnectInfo}
     action rn
 
   cleanupSocketFile = do
@@ -222,11 +228,15 @@ cardanoNodeProcess cwd args =
 
 -- | Wait for the node socket file to become available.
 waitForSocket :: RunningNode -> IO ()
-waitForSocket node@RunningNode{rnNodeSocket} = do
-  x <- doesFileExist rnNodeSocket
+waitForSocket = waitForFile . rnNodeSocket
+
+-- | Wait until a file exists
+waitForFile :: FilePath -> IO ()
+waitForFile fp = do
+  x <- doesFileExist fp
   unless x $ do
     threadDelay 100_000
-    waitForSocket node
+    waitForFile fp
 
 -- | Wait until the node is fully caught up with the network. This can take a
 -- while!
