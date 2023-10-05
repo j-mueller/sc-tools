@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Change `_PlutusScriptWitness` in `Convex.Lenses` to `_PlutusScriptWitnessV1`
 * Increased the amount of UTxOs generated for wallets in the devnet from 1 to 10.
 * Relax the context type of `_TxOutDatumInline` from `CtxTx` to `ctx` (any context type)
+* Added a field for `(LocalNodeConnectInfo CardanoMode, Env)` to `RunningNode` in `convex-devnet`
 
 ### Added
 
