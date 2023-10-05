@@ -35,6 +35,7 @@ module Convex.BuildTx(
   spendPlutusV2InlineDatum,
   mintPlutusV1,
   mintPlutusV2,
+  mintPlutusV2Ref,
   payToPlutusV2Inline,
   payToPlutusV2InlineWithInlineDatum,
   payToPlutusV2InlineWithDatum,
@@ -252,6 +253,15 @@ mintPlutusV2 script (toHashableScriptData -> red) assetName quantity =
       policyId = C.PolicyId sh
       wit      = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
   in  setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+
+mintPlutusV2Ref :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => C.TxIn -> C.ScriptHash -> redeemer -> C.AssetName -> C.Quantity -> m ()
+mintPlutusV2Ref refTxIn sh (toHashableScriptData -> red) assetName quantity =
+  let v = assetValue sh assetName quantity
+      wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn (Just sh)) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
+      policyId = C.PolicyId sh
+  in  setScriptsValid
+      >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+      >> addReference refTxIn
 
 addCollateral :: MonadBuildTx m => C.TxIn -> m ()
 addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateral) ((:) i)

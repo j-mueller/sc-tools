@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add `addRequiredSignature`, `prependTxOut`, `payToPlutusV2InlineDatum`, `spendPlutusV2InlineDatum` functions
   - Add `spendPlutusV2RefWithInlineDatum`, `spendPlutusV2RefWithoutInRef` and `spendPlutusV2RefWithoutInRefInlineDatum` functions
   - Add `payToPlutusV2InlineWithDatum` and `payToPlutusV2InlineWithInlineDatum` functions
+  - Add `mintPlutusV2Ref` function
 * Add `querySlotNo` to `MonadBlockchain` typeclass and update both blockchain and mockchain implementations.
 * Add `utcTimeToPosixTime`, `toShelleyPaymentCredential` in `Convex.Utils`.
 * Considering explicit error type `MonadBlockchainError` for `MonadBlockchainCardanoNodeT` to enable proper error handling by caller.
