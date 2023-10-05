@@ -255,7 +255,7 @@ mintPlutusV2 script (toHashableScriptData -> red) assetName quantity =
   in  setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
 
 mintPlutusV2Ref :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => C.TxIn -> C.ScriptHash -> redeemer -> C.AssetName -> C.Quantity -> m ()
-mintPlutusV2Ref refTxIn sh (toScriptData -> red) assetName quantity =
+mintPlutusV2Ref refTxIn sh (toHashableScriptData -> red) assetName quantity =
   let v = assetValue sh assetName quantity
       wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn (Just sh)) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
       policyId = C.PolicyId sh
