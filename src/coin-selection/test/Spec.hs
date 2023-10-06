@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
@@ -8,18 +9,21 @@ import           Cardano.Ledger.Alonzo.Scripts  (AlonzoScript (..),
                                                  transProtocolVersion,
                                                  validScript)
 import           Cardano.Ledger.Language        (Language (..))
-import           Control.Lens                   (_4, view)
+import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (void)
 import           Control.Monad.Except           (runExcept)
-import           Convex.BuildTx                 (assetValue, execBuildTx',
+import           Convex.BuildTx                 (BuildTxT, assetValue,
+                                                 execBuildTx', execBuildTxT,
                                                  mintPlutusV1, payToAddress,
+                                                 payToAddressTxOut,
                                                  payToPlutusV1, payToPlutusV2,
                                                  payToPlutusV2Inline,
+                                                 prependTxOut,
                                                  setMinAdaDepositAll,
                                                  spendPlutusV1, spendPlutusV2,
                                                  spendPlutusV2Ref)
 import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadMockchain)
+                                                 MonadMockchain (resolveDatumHash))
 import qualified Convex.Lenses                  as L
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
@@ -54,6 +58,10 @@ tests = testGroup "unit tests"
     , testCase "using a reference script" (mockchainSucceeds (payToPlutusV2Script >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds mintingPlutus)
     , testCase "making payments with tokens" (mockchainSucceeds (mintingPlutus >>= spendTokens))
+    ]
+  , testGroup "mockchain"
+    [ testCase "resolveDatumHash" (mockchainSucceeds checkResolveDatumHash)
+
     ]
   ]
 
@@ -148,3 +156,51 @@ nativeAssetPaymentTo q wFrom wTo = do
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> balanceAndSubmit wFrom tx
+
+checkResolveDatumHash :: (MonadMockchain m, MonadFail m) => m ()
+checkResolveDatumHash = do
+  let addr = Wallet.addressInEra Defaults.networkId Wallet.w1
+      assertDatumPresent vl = resolveDatumHash (C.hashScriptDataBytes vl) >>= \case
+        Nothing -> fail "Expected datum"
+        Just x
+          | x == C.getScriptData vl -> pure ()
+          | otherwise -> fail $ "Expected " <> show (C.getScriptData vl) <> ", found " <> show x
+
+
+  -- 1. resolve an inline datum
+  let datum1 = C.unsafeHashableScriptData  (C.ScriptDataConstructor 5 [])
+      dat = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra datum1
+      txOut = payToAddressTxOut addr mempty
+                & L._TxOut . _3 .~ dat
+
+  _ <- execBuildTxWallet Wallet.w1 (prependTxOut txOut)
+
+  assertDatumPresent datum1
+
+  -- 2. resolve a datum that was provided as a "TxOutDatumInTx" (this is what 'payToPlutusV1' does)
+  let d2 = (11 :: Integer, 12 :: Integer)
+      datum2 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d2
+  _ <- execBuildTxWallet Wallet.w1 (payToPlutusV1 Defaults.networkId txInscript d2 C.NoStakeAddress mempty)
+  assertDatumPresent datum2
+
+  -- 3. resolve a datum that was provided by a redeeming transaction
+  let d3 = 500 :: Integer
+      datum3 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d3
+      txo =
+        C.TxOut
+          (C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript (C.hashScript (C.PlutusScript C.PlutusScriptV1 txInscript))) C.NoStakeAddress)
+          (C.TxOutValue C.MultiAssetInBabbageEra mempty)
+          (C.TxOutDatumHash C.ScriptDataInBabbageEra (C.hashScriptDataBytes datum3))
+          C.ReferenceScriptNone
+  txId <- execBuildTxWallet Wallet.w1 (prependTxOut txo)
+  _ <- execBuildTxWallet Wallet.w1 (spendPlutusV1 (C.TxIn txId (C.TxIx 0)) txInscript d3 ())
+  assertDatumPresent datum3
+
+
+{-| Build a transaction, then balance and sign it with the wallet, then
+  submit it to the mockchain.
+-}
+execBuildTxWallet :: (MonadMockchain m, MonadFail m) => Wallet -> BuildTxT m a -> m C.TxId
+execBuildTxWallet wallet action = do
+  tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
+  C.getTxId . C.getTxBody <$> balanceAndSubmit wallet (tx L.emptyTx)
