@@ -147,6 +147,7 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
 instance MonadMockchain m => MonadMockchain (BuildTxT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
+  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadState s m => MonadState s (BuildTxT m) where
   state = lift . state
