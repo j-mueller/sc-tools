@@ -53,6 +53,8 @@ module Convex.PlutusLedger(
 
   -- * Value
   unTransTxOutValue,
+
+  transValue,
   unTransValue,
 
   -- * Scripts
@@ -87,6 +89,7 @@ import           PlutusLedgerApi.V1.Interval (Closure, Extended (..),
                                               UpperBound (..))
 import qualified PlutusLedgerApi.V1.Scripts  as P
 import qualified PlutusLedgerApi.V1.Value    as Value
+import qualified PlutusTx.AssocMap           as Map
 import qualified PlutusTx.Prelude            as PlutusTx
 
 transScriptHash :: C.ScriptHash -> PV1.ScriptHash
@@ -218,6 +221,13 @@ unTransValue =
   where
     toSingleton (cs, tn, q) =
         unTransAssetId (Value.assetClass cs tn) <&> (, C.Quantity q)
+
+transValue :: C.Value -> PV1.Value
+transValue =
+  let t (assetId, C.Quantity quantity) =
+        let Value.AssetClass (sym, tn) = transAssetId assetId
+        in (sym, Map.singleton tn quantity)
+  in PV1.Value . Map.fromList . fmap t . C.valueToList
 
 unTransPlutusScript
     :: C.SerialiseAsRawBytes plutusScript
