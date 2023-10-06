@@ -19,6 +19,7 @@ module Convex.MockChain(
   poolState,
   transactions,
   utxoSet,
+  datums,
   walletUtxo,
   fromLedgerUTxO,
   -- * Transaction validation
@@ -60,8 +61,11 @@ module Convex.MockChain(
   ) where
 
 import           Cardano.Api.Shelley                   (AddressInEra,
+                                                        BabbageEra, Hash,
+                                                        ScriptData,
                                                         ShelleyLedgerEra,
-                                                        SlotNo)
+                                                        SlotNo, Tx,
+                                                        TxBody (ShelleyTxBody))
 import qualified Cardano.Api.Shelley                   as Cardano.Api
 import           Cardano.Ledger.Alonzo.Data            (Data)
 import qualified Cardano.Ledger.Alonzo.Data            as Ledger
@@ -79,7 +83,7 @@ import           Cardano.Ledger.Alonzo.TxInfo          (ExtendedUTxO,
                                                         ScriptResult (..),
                                                         TranslationError)
 import qualified Cardano.Ledger.Alonzo.TxInfo          as Ledger
-import           Cardano.Ledger.Alonzo.TxWitness       (RdmrPtr)
+import           Cardano.Ledger.Alonzo.TxWitness       (RdmrPtr, unTxDats)
 import qualified Cardano.Ledger.Alonzo.TxWitness       as Alonzo
 import           Cardano.Ledger.Babbage.PParams        (PParams' (..))
 import           Cardano.Ledger.Babbage.Tx             (IsValid (..))
@@ -107,8 +111,9 @@ import           Cardano.Ledger.Shelley.LedgerState    (DPState (..),
 import           Cardano.Ledger.Shelley.TxBody         (DCert, Wdrl)
 import           Cardano.Ledger.ShelleyMA.Timelocks    (ValidityInterval)
 import qualified Cardano.Ledger.Val                    as Val
-import           Control.Lens                          (_1, over, set, to, view,
-                                                        (&), (.~), (^.))
+import           Control.Lens                          (_1, _3, over, set, to,
+                                                        view, (%=), (&), (.~),
+                                                        (^.))
 import           Control.Lens.TH                       (makeLensesFor,
                                                         makePrisms)
 import           Control.Monad.Except                  (ExceptT,
@@ -117,8 +122,9 @@ import           Control.Monad.Except                  (ExceptT,
 import           Control.Monad.IO.Class                (MonadIO)
 import           Control.Monad.Reader                  (ReaderT, ask, asks,
                                                         runReaderT)
-import           Control.Monad.State                   (StateT, get, gets,
-                                                        modify, put, runStateT)
+import           Control.Monad.State                   (MonadState, StateT, get,
+                                                        gets, modify, put,
+                                                        runStateT)
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadMockchain (..))
@@ -137,7 +143,9 @@ import           Data.Array                            (array)
 import           Data.Bifunctor                        (Bifunctor (..))
 import           Data.ByteString.Short                 (ShortByteString)
 import           Data.Default                          (Default (def))
+import           Data.Foldable                         (for_, traverse_)
 import           Data.Functor.Identity                 (Identity (..))
+import           Data.Map                              (Map)
 import qualified Data.Map                              as Map
 import           Data.Proxy                            (Proxy (..))
 import           Data.Sequence.Strict                  (StrictSeq)
@@ -176,12 +184,14 @@ data MockChainState =
     { mcsEnv          :: MempoolEnv ERA
     , mcsPoolState    :: MempoolState ERA
     , mcsTransactions :: [(Validated (Core.Tx ERA), [ScriptContext ERA])]
+    , mcsDatums       :: Map (Hash ScriptData) ScriptData
     }
 
 makeLensesFor
   [ ("mcsEnv", "env")
   , ("mcsPoolState", "poolState")
   , ("mcsTransactions", "transactions")
+  , ("mcsDatums", "datums")
   ] ''MockChainState
 
 initialState :: NodeParams -> MockChainState
@@ -224,6 +234,7 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
           , lsDPState = DPState def def
           }
       , mcsTransactions = []
+      , mcsDatums = Map.empty
       }
 
 utxoEnv :: NodeParams -> SlotNo -> UtxoEnv ERA
@@ -362,6 +373,7 @@ instance Monad m => MonadFail (MockchainT m) where
 instance Monad m => MonadBlockchain (MockchainT m) where
   sendTx tx = MockchainT $ do
     nps <- ask
+    addDatumHashes tx
     st <- get
     case applyTransaction nps st tx of
       Left err       -> throwError (MockchainValidationFailed err)
@@ -395,6 +407,26 @@ instance Monad m => MonadMockchain (MockchainT m) where
     let (u', a) = f u
     modify (set (poolState . L.utxoState . L._UTxOState . _1) u')
     pure a
+  resolveDatumHash k = MockchainT (gets (Map.lookup k . view datums))
+
+
+{-| Add all datums from the transaction to the map of known datums
+-}
+addDatumHashes :: MonadState MockChainState m => Tx BabbageEra -> m ()
+addDatumHashes (Cardano.Api.Tx (ShelleyTxBody Cardano.Api.ShelleyBasedEraBabbage txBody _scripts scriptData _auxData _) _witnesses) = do
+  let txOuts = Cardano.Api.fromLedgerTxOuts Cardano.Api.ShelleyBasedEraBabbage txBody scriptData
+
+  let insertHashableScriptData scriptDat =
+        datums %= Map.insert (Cardano.Api.hashScriptData scriptDat) scriptDat
+
+  for_ txOuts $ \(view (L._TxOut . _3) -> txDat) -> case txDat of
+    Cardano.Api.TxOutDatumInline _ dat -> insertHashableScriptData dat
+    _                                  -> pure ()
+
+  case scriptData of
+    Cardano.Api.TxBodyScriptData Cardano.Api.ScriptDataInBabbageEra (unTxDats -> txDats) _redeemers -> do
+      traverse_ (insertHashableScriptData . Cardano.Api.fromAlonzoData) txDats
+    _ -> pure ()
 
 {-| All transaction outputs
 -}

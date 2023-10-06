@@ -81,5 +81,6 @@ test-suite convex-coin-selection-test
     convex-wallet,
     cardano-api,
     containers,
+    plutus-ledger-api,
     plutus-tx,
-    plutus-tx-plugin
+    plutus-tx-plugin,
