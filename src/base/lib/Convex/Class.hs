@@ -26,9 +26,11 @@ import qualified Cardano.Api                                       as C
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     CardanoMode,
                                                                     EraHistory (..),
+                                                                    Hash,
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
                                                                     PoolId,
+                                                                    ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
 import           Cardano.Ledger.Shelley.API                        (UTxO)
@@ -131,25 +133,35 @@ class MonadBlockchain m => MonadMockchain m where
   modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
 
+  {-| Look up the datum of a script hash, taking into account
+  all datums that were part of transactions submitted with @sendTx@.
+  -}
+  resolveDatumHash :: Hash ScriptData -> m (Maybe ScriptData)
+
 instance MonadMockchain m => MonadMockchain (ResultT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
+  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (ReaderT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
+  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (ExceptT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
+  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (StrictState.StateT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
+  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (LazyState.StateT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
+  resolveDatumHash = lift . resolveDatumHash
 
 {-| Get the current slot number
 -}
