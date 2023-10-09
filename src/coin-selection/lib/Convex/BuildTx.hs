@@ -15,6 +15,7 @@ module Convex.BuildTx(
   execBuildTxT,
   execBuildTx,
   execBuildTx',
+  evalBuildTxT,
 
   TxBuild,
   -- * Building transactions
@@ -161,6 +162,11 @@ runBuildTxT = fmap (fmap unBtx) . runWriterT . unBuildTxT
 -}
 execBuildTxT :: Monad m => BuildTxT m a -> m TxBuild
 execBuildTxT = fmap unBtx . execWriterT . unBuildTxT
+
+{-| Run the @BuildTxT@ monad transformer, returnin only the result
+-}
+evalBuildTxT :: Monad m => BuildTxT m a -> m a
+evalBuildTxT = fmap fst . runWriterT . unBuildTxT
 
 runBuildTx :: BuildTxT Identity a -> (a, TxBuild)
 runBuildTx = runIdentity . runBuildTxT
