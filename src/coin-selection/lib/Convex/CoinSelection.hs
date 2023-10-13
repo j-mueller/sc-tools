@@ -57,7 +57,9 @@ import           Data.Function         (on)
 import qualified Data.List             as List
 import           Data.Map              (Map)
 import qualified Data.Map              as Map
-import           Data.Maybe            (isNothing, mapMaybe, maybeToList)
+import           Data.Maybe            (isNothing, listToMaybe, mapMaybe,
+                                        maybeToList)
+import           Data.Ord              (Down (..))
 import           Data.Set              (Set)
 import qualified Data.Set              as Set
 
@@ -395,7 +397,8 @@ setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
   if not (runsScripts body)
     then body -- no script witnesses in inputs.
     else
-      case Map.lookupMax _utxos of
+      -- select the output with the largest amount of Ada
+      case listToMaybe $ List.sortOn (Down . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) . fst . snd) $ Map.toList _utxos of
         Nothing     -> body -- TODO: Throw error
         Just (k, _) -> execBuildTx (addCollateral k) body
 
