@@ -54,6 +54,7 @@ module Convex.MockChain(
   MockchainIO,
   runMockchainIO,
   runMockchain0IO,
+  runMockchain0IOWith,
   evalMockchainIO,
   evalMockchain0IO,
   execMockchainIO,
@@ -452,10 +453,15 @@ type Mockchain a = MockchainT Identity a
 runMockchain :: Mockchain a -> NodeParams -> MockChainState -> Either MockchainError (a, MockChainState)
 runMockchain action nps = runIdentity . runMockchainT action nps
 
-{-| Run the mockchain action with
+{-| Run the mockchain action with an initial distribution, using the default node parameters
 -}
 runMockchain0 :: InitialUTXOs -> Mockchain a -> Either MockchainError (a, MockChainState)
-runMockchain0 dist action = runMockchain action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
+runMockchain0 dist = runMockchain0With dist Defaults.nodeParams
+
+{-| Run the mockchain action with an initial distribution and a given set of node params
+-}
+runMockchain0With :: InitialUTXOs -> NodeParams -> Mockchain a -> Either MockchainError (a, MockChainState)
+runMockchain0With dist params action = runMockchain action params (initialStateFor params dist)
 
 evalMockchainT :: Functor m => MockchainT m a -> NodeParams -> MockChainState -> m (Either MockchainError a)
 evalMockchainT action nps = fmap (fmap fst) . runMockchainT action nps
@@ -480,8 +486,15 @@ type MockchainIO a = MockchainT IO a
 runMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError (a, MockChainState))
 runMockchainIO action nps = runMockchainT action nps
 
+{-| Run the mockchain IO action with an initial distribution, using the default node parameters
+-}
 runMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError (a, MockChainState))
-runMockchain0IO dist action = runMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
+runMockchain0IO dist = runMockchain0IOWith dist Defaults.nodeParams
+
+{-| Run the mockchain IO action with an initial distribution and a given set of node params
+-}
+runMockchain0IOWith :: InitialUTXOs -> NodeParams -> MockchainIO a -> IO (Either MockchainError (a, MockChainState))
+runMockchain0IOWith dist params action = runMockchainIO action params (initialStateFor params dist)
 
 evalMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError a)
 evalMockchainIO action nps = evalMockchainT action nps
