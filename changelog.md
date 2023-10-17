@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Convex.MockChain`: `MonadTrans` instance for `MockchainT`, export constructor
   - `Convex.MockChain`: Add `MockchainIO` type
   - `Convex.MockChain`: Add `resolveDatumHash` function, giving access to all datums that were previously seen
+  - `Convex.NodeParams`: Add lenses for `ProtocolParameters` type from `cardano-api`
+  - `Convex.MockChain`: Add `runMockchain0IOWith` to allow easy manipulation of the protocol parameters for emulator tests, incl. `mockchainSucceedsWith` and `mockchainFailsWith` in `Convex.MockChain.Utils`
 * `convex-node-client`: Add `Convex.NodeClient.WaitForTxnClient`
 * `Convex.BuildTx`:
   - Add a monadic (writer) interface for building transactions
