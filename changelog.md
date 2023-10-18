@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0.0-old-node]
+
 ### Changed
 
 * Update `queryTip` and `queryTipSlotNo` in `Convex.Devnet.NodeQueries` to also return `SlotLength`.
@@ -59,8 +61,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add `Convex.Query` for UTxO queries, add convex-wallet backend for operator UTxOs
   - Add `utxosByPaymentCredentials` to `MonadUtxoQuery`
 * Add `_PlutusScriptWitnessV2` to `Convex.Lenses`
-
-
 
 ### Deleted
 
