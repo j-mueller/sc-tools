@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          convex-node-client
-version:       0.0.1
+version:       0.2.0.0-old-node
 synopsis:      Conveniences for cardano-node clients
 license: Apache-2.0
 license-files:
