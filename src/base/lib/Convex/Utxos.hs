@@ -21,6 +21,7 @@ module Convex.Utxos(
   onlyPubKey,
   onlyAddress,
   onlyCredential,
+  onlyCredentials,
   onlyStakeCredential,
   removeUtxos,
   fromApiUtxo,
@@ -85,6 +86,7 @@ import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, isNothing, listToMaybe,
                                                 mapMaybe)
+import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
@@ -158,8 +160,15 @@ onlyAddress addr =
 {-| Restrict the utxo set to outputs with the given payment credential
 -}
 onlyCredential :: PaymentCredential -> UtxoSet ctx a -> UtxoSet ctx a
-onlyCredential c =
-  let flt (fmap CS.fromShelleyPaymentCredential . preview (_1 . L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2) -> k) = k == Just c
+onlyCredential c = onlyCredentials (Set.singleton c)
+
+{-| Restrict the utxo set to outputs locked by one of the given payment credentials
+-}
+onlyCredentials :: Set (PaymentCredential) -> UtxoSet ctx a -> UtxoSet ctx a
+onlyCredentials cs =
+  let flt (fmap CS.fromShelleyPaymentCredential . preview (_1 . L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2) -> k) = case k of
+        Just c -> c `Set.member` cs
+        _      -> False
   in fst . partition flt
 
 {-| Restrict the utxo set to outputs with the given stake credential

@@ -11,6 +11,7 @@ queries that we need for building transactions
 -}
 module Convex.Query(
   MonadUtxoQuery(..),
+  utxosByPayment,
   BalancingError(..),
   balanceTx,
 
@@ -48,7 +49,7 @@ import           Convex.NodeClient.WaitForTxnClient (MonadBlockchainWaitingT (..
 import           Convex.Utils                       (liftEither, liftResult)
 import           Convex.Utxos                       (BalanceChanges,
                                                      fromApiUtxo, fromUtxoTx,
-                                                     onlyCredential, toApiUtxo)
+                                                     onlyCredentials, toApiUtxo)
 import qualified Convex.Wallet.API                  as Wallet.API
 import           Convex.Wallet.Operator             (Operator (..), Signing,
                                                      operatorPaymentCredential,
@@ -56,34 +57,39 @@ import           Convex.Wallet.Operator             (Operator (..), Signing,
                                                      signTx)
 import qualified Data.Map                           as Map
 import           Data.Maybe                         (listToMaybe)
+import           Data.Set                           (Set)
+import qualified Data.Set                           as Set
 import           Servant.Client                     (ClientEnv)
 
 class Monad m => MonadUtxoQuery m where
-  utxosByPayment :: PaymentCredential -> m (UTxO BabbageEra)
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UTxO BabbageEra)
+
+utxosByPayment :: MonadUtxoQuery m => PaymentCredential -> m (UTxO BabbageEra)
+utxosByPayment = utxosByPaymentCredentials . Set.singleton
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
-  utxosByPayment cred = toApiUtxo . onlyCredential cred <$> utxoSet
+  utxosByPaymentCredentials cred = toApiUtxo . onlyCredentials cred <$> utxoSet
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ExceptT e m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ReaderT e m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance MonadUtxoQuery m => MonadUtxoQuery (StrictState.StateT s m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance MonadUtxoQuery m => MonadUtxoQuery (LazyState.StateT s m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
-  utxosByPayment = lift . utxosByPayment
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWaitingT m)
 
@@ -105,7 +111,7 @@ runWalletAPIQueryT :: ClientEnv -> WalletAPIQueryT m a -> m a
 runWalletAPIQueryT env (WalletAPIQueryT action) = runReaderT action env
 
 instance MonadIO m => MonadUtxoQuery (WalletAPIQueryT m) where
-  utxosByPayment credential = WalletAPIQueryT $ do
+  utxosByPaymentCredentials credentials = WalletAPIQueryT $ do
     result <- ask >>= liftIO . Wallet.API.getUTxOs
     case result of
       Left err -> do
@@ -113,7 +119,7 @@ instance MonadIO m => MonadUtxoQuery (WalletAPIQueryT m) where
         let msg = "WalletAPI: Error when calling remote server: " <> show err
         liftIO (putStrLn msg)
         error msg
-      Right x  -> pure (toApiUtxo $ onlyCredential credential $ fromUtxoTx x)
+      Right x  -> pure (toApiUtxo $ onlyCredentials credentials $ fromUtxoTx x)
 
 deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 
