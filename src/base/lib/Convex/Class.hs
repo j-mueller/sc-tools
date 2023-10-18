@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
@@ -56,8 +57,12 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
+import           Data.Aeson                                        (FromJSON,
+                                                                    ToJSON)
 import           Data.Set                                          (Set)
+import qualified Data.Text                                         as Text
 import           Data.Time.Clock                                   (UTCTime)
+import           GHC.Generics                                      (Generic)
 import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
                                                                     slotToSlotLength)
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
@@ -203,9 +208,13 @@ nextSlot = modifySlot (\s -> (succ s, ()))
 
 data MonadBlockchainError e =
   MonadBlockchainError e
-  | ProtocolConversionError C.ProtocolParametersConversionError
+  | ProtocolConversionError Text.Text
   | FailWith String
-  deriving (Eq)
+  deriving stock (Eq, Functor, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+protocolConversionError :: C.ProtocolParametersConversionError -> MonadBlockchainError e
+protocolConversionError = ProtocolConversionError . C.textShow
 
 instance Show e => Show (MonadBlockchainError e) where
   show (MonadBlockchainError e)    = show e
@@ -269,7 +278,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
     p <- runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
     case C.bundleProtocolParams C.BabbageEra p of
       Right x -> pure x
-      Left err -> MonadBlockchainCardanoNodeT $ throwError (ProtocolConversionError err)
+      Left err -> MonadBlockchainCardanoNodeT $ throwError (protocolConversionError err)
 
   queryStakePools =
     runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))
