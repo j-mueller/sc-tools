@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add `Convex.Wallet.Operator` for managing credentials
 * `convex-coin-selection`:
   - Add `Convex.Query` for UTxO queries, add convex-wallet backend for operator UTxOs
+  - Add `utxosByPaymentCredentials` to `MonadUtxoQuery`
 * Add `_PlutusScriptWitnessV2` to `Convex.Lenses`
 
 
