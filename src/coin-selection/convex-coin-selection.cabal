@@ -34,6 +34,7 @@ library
       Convex.Query
     hs-source-dirs: lib
     build-depends:
+      aeson,
       base >= 4.14.0,
       containers >= 0.6.5,
       lens,
@@ -41,7 +42,8 @@ library
       convex-mockchain,
       convex-node-client,
       convex-wallet,
-      servant-client
+      servant-client,
+      text
 
     -- cardano dependencies
     build-depends:
