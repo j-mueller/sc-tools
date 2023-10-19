@@ -6,10 +6,13 @@
 module Main where
 
 import qualified Cardano.Api                as C
+import qualified Cardano.Api.Shelley        as C
 import           Control.Monad.Except       (runExceptT)
 import           Convex.Devnet.CardanoNode  (NodeLog, RunningNode (..),
+                                             allowLargeTransactions,
                                              getCardanoNodeVersion,
-                                             withCardanoNodeDevnet)
+                                             withCardanoNodeDevnet,
+                                             withCardanoNodeDevnetConfig)
 import           Convex.Devnet.Logging      (contramap, showLogsOnFailure)
 import           Convex.Devnet.NodeQueries  (loadConnectInfo)
 import           Convex.Devnet.Utils        (failAfter, failure, withTempDir)
@@ -17,6 +20,7 @@ import           Convex.Devnet.Wallet       (WalletLog)
 import qualified Convex.Devnet.Wallet       as W
 import           Convex.Devnet.WalletServer (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer as WS
+import           Convex.NodeQueries         (queryProtocolParameters)
 import qualified Convex.Utxos               as Utxos
 import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.List                  (isInfixOf)
@@ -34,6 +38,7 @@ main = do
     , testCase "start local node" startLocalNode
     , testCase "make a payment" makePayment
     , testCase "run the wallet server" runWalletServer
+    , testCase "change max tx size" changeMaxTxSize
     ]
 
 checkCardanoNode :: IO ()
@@ -73,6 +78,15 @@ runWalletServer =
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10 :: Int
           assertEqual "Wallet should have the correct balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.selectLovelace bal)
+
+changeMaxTxSize :: IO ()
+changeMaxTxSize =
+  let getMaxTxSize = fmap (C.protocolParamMaxTxSize . C.unbundleProtocolParams) . queryProtocolParameters . fst . rnConnectInfo in
+  showLogsOnFailure $ \tr -> do
+    withTempDir "cardano-cluster" $ \tmp -> do
+      standardTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp mempty getMaxTxSize
+      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions getMaxTxSize
+      assertEqual "tx size should be large" (2 * standardTxSize) largeTxSize
 
 data TestLog =
   TLWallet WalletLog | TLNode NodeLog | TWallet WS.WalletLog | SubmitTx{ txId :: C.TxId } | FoundTx{txId :: C.TxId }

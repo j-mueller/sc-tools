@@ -20,46 +20,60 @@ module Convex.Devnet.CardanoNode(
   waitForFullySynchronized,
   waitForBlock,
   waitForSocket,
-  withCardanoNodeDevnet
+  withCardanoNodeDevnet,
+  GenesisConfigChanges(..),
+  allowLargeTransactions,
+  withCardanoNodeDevnetConfig
 ) where
 
-import           Cardano.Api               (CardanoMode, Env,
-                                            LocalNodeConnectInfo, NetworkId)
-import qualified Cardano.Api               as C
-import           Cardano.Slotting.Slot     (withOriginToMaybe)
-import           Cardano.Slotting.Time     (diffRelativeTime, getRelativeTime,
-                                            toRelativeTime)
-import           Control.Concurrent        (threadDelay)
-import           Control.Concurrent.Async  (race)
-import           Control.Exception         (finally, throwIO)
-import           Control.Monad             (unless, when, (>=>))
-import           Control.Monad.Except      (runExceptT)
-import           Control.Tracer            (Tracer, traceWith)
-import qualified Convex.Devnet.NodeQueries as Q
-import           Convex.Devnet.Utils       (checkProcessHasNotDied,
-                                            defaultNetworkId, failure,
-                                            readConfigFile, withLogFile)
-import           Data.Aeson                (FromJSON, ToJSON (toJSON), (.=))
-import qualified Data.Aeson                as Aeson
-import qualified Data.Aeson.KeyMap         as Aeson.KeyMap
-import qualified Data.ByteString           as BS
-import           Data.Fixed                (Centi)
-import           Data.Functor              ((<&>))
-import           Data.Text                 (Text)
-import qualified Data.Text                 as Text
-import           Data.Time.Clock           (UTCTime, addUTCTime, getCurrentTime)
-import           Data.Time.Clock.POSIX     (posixSecondsToUTCTime,
-                                            utcTimeToPOSIXSeconds)
-import           GHC.Generics              (Generic)
-import           System.Directory          (createDirectoryIfMissing,
-                                            doesFileExist, removeFile)
-import           System.FilePath           ((</>))
-import           System.IO                 (BufferMode (NoBuffering),
-                                            hSetBuffering)
-import           System.Posix              (ownerReadMode, setFileMode)
-import           System.Process            (CreateProcess (..),
-                                            StdStream (UseHandle), proc,
-                                            readProcess, withCreateProcess)
+import           Cardano.Api                      (CardanoMode, Env,
+                                                   LocalNodeConnectInfo,
+                                                   NetworkId)
+import qualified Cardano.Api                      as C
+import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
+import           Cardano.Ledger.Conway.Genesis    (ConwayGenesis)
+import qualified Cardano.Ledger.Core              as Core
+import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
+import           Cardano.Slotting.Slot            (withOriginToMaybe)
+import           Cardano.Slotting.Time            (diffRelativeTime,
+                                                   getRelativeTime,
+                                                   toRelativeTime)
+import           Control.Concurrent               (threadDelay)
+import           Control.Concurrent.Async         (race)
+import           Control.Exception                (finally, throwIO)
+import           Control.Lens                     (over)
+import           Control.Monad                    (unless, when, (>=>))
+import           Control.Monad.Except             (runExceptT)
+import           Control.Tracer                   (Tracer, traceWith)
+import qualified Convex.Devnet.NodeQueries        as Q
+import           Convex.Devnet.Utils              (checkProcessHasNotDied,
+                                                   defaultNetworkId, failure,
+                                                   readConfigFile, withLogFile)
+import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
+                                                   (.=))
+import qualified Data.Aeson                       as Aeson
+import qualified Data.Aeson.KeyMap                as Aeson.KeyMap
+import qualified Data.ByteString                  as BS
+import           Data.Fixed                       (Centi)
+import           Data.Functor                     ((<&>))
+import           Data.Text                        (Text)
+import qualified Data.Text                        as Text
+import           Data.Time.Clock                  (UTCTime, addUTCTime,
+                                                   getCurrentTime)
+import           Data.Time.Clock.POSIX            (posixSecondsToUTCTime,
+                                                   utcTimeToPOSIXSeconds)
+import           GHC.Generics                     (Generic)
+import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
+import           System.Directory                 (createDirectoryIfMissing,
+                                                   doesFileExist, removeFile)
+import           System.FilePath                  ((</>))
+import           System.IO                        (BufferMode (NoBuffering),
+                                                   hSetBuffering)
+import           System.Posix                     (ownerReadMode, setFileMode)
+import           System.Process                   (CreateProcess (..),
+                                                   StdStream (UseHandle), proc,
+                                                   readProcess,
+                                                   withCreateProcess)
 
 import           Prelude
 
@@ -271,6 +285,36 @@ waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
     _ -> do
       threadDelay 1_000_000 >> waitForBlock n
 
+{-| Modifications to apply to the default genesis configurations
+-}
+data GenesisConfigChanges =
+  GenesisConfigChanges
+    { cfShelley :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+    , cfAlonzo  :: AlonzoGenesis -> AlonzoGenesis
+    , cfConway  :: ConwayGenesis StandardCrypto -> ConwayGenesis StandardCrypto
+    }
+
+instance Semigroup GenesisConfigChanges where
+  l <> r =
+    GenesisConfigChanges
+      { cfShelley = cfShelley r . cfShelley l
+      , cfAlonzo  = cfAlonzo  r . cfAlonzo l
+      , cfConway  = cfConway  r . cfConway l
+      }
+
+instance Monoid GenesisConfigChanges where
+  mempty = GenesisConfigChanges id id id
+
+-- {-| Change the alonzo genesis config to allow transactions with up to twice the normal size
+-- -}
+allowLargeTransactions :: GenesisConfigChanges
+allowLargeTransactions =
+  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+      change g = g{sgProtocolParams = double (sgProtocolParams g)}
+      double :: Core.PParams (ShelleyEra StandardCrypto) -> Core.PParams (ShelleyEra StandardCrypto)
+      double = over (Core.ppLens . Core.hkdMaxTxSizeL) (*2)
+  in mempty{cfShelley = change}
+
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
 -- "initialFunds". Use 'seedFromFaucet' to distribute funds other wallets.
@@ -280,7 +324,21 @@ withCardanoNodeDevnet ::
   FilePath ->
   (RunningNode -> IO a) ->
   IO a
-withCardanoNodeDevnet tracer stateDirectory action = do
+withCardanoNodeDevnet tracer stateDirectory action =
+  withCardanoNodeDevnetConfig tracer stateDirectory mempty action
+
+-- | Start a single cardano-node devnet using the config from config/ and
+-- credentials from config/credentials/. Only the 'Faucet' actor will receive
+-- "initialFunds". Use 'seedFromFaucet' to distribute funds other wallets.
+withCardanoNodeDevnetConfig ::
+  Tracer IO NodeLog ->
+  -- | State directory in which credentials, db & logs are persisted.
+  FilePath ->
+  -- | Changes to apply to the default genesis configurations
+  GenesisConfigChanges ->
+  (RunningNode -> IO a) ->
+  IO a
+withCardanoNodeDevnetConfig tracer stateDirectory configChanges action = do
   createDirectoryIfMissing True stateDirectory
   [dlgCert, signKey, vrfKey, kesKey, opCert] <-
     mapM
@@ -319,6 +377,8 @@ withCardanoNodeDevnet tracer stateDirectory action = do
     setFileMode destination ownerReadMode
     pure destination
 
+  GenesisConfigChanges{cfAlonzo, cfConway, cfShelley} = configChanges
+
   copyDevnetFiles args = do
     readConfigFile ("devnet" </> "cardano-node.json")
       >>= BS.writeFile
@@ -327,18 +387,33 @@ withCardanoNodeDevnet tracer stateDirectory action = do
       >>= BS.writeFile
         (stateDirectory </> nodeByronGenesisFile args)
     readConfigFile ("devnet" </> "genesis-shelley.json")
-      >>= BS.writeFile
+      >>= copyAndChangeJSONFile
+        cfShelley
         (stateDirectory </> nodeShelleyGenesisFile args)
     readConfigFile ("devnet" </> "genesis-alonzo.json")
-      >>= BS.writeFile
+      >>= copyAndChangeJSONFile
+        cfAlonzo
         (stateDirectory </> nodeAlonzoGenesisFile args)
     readConfigFile ("devnet" </> "genesis-conway.json")
-      >>= BS.writeFile
+      >>= copyAndChangeJSONFile
+        cfConway
         (stateDirectory </> nodeConwayGenesisFile args)
 
   writeTopology peers args =
     Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
       mkTopology peers
+
+{-| Decode a json file, change the value, and write the result to another JSON file
+-}
+copyAndChangeJSONFile :: (FromJSON a, ToJSON a) => (a -> a) -> FilePath -> BS.ByteString -> IO ()
+copyAndChangeJSONFile modification target =
+  BS.writeFile
+        target
+        . BS.toStrict
+        . Aeson.encode
+        . either (error . (<>) "Failed to decode json: ") modification
+        . Aeson.eitherDecode
+        . BS.fromStrict
 
 -- | Re-generate configuration and genesis files with fresh system start times.
 refreshSystemStart ::
