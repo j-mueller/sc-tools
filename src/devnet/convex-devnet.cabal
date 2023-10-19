@@ -27,7 +27,6 @@ data-files:
   config/devnet/kes.skey
   config/devnet/opcert.cert
   config/devnet/vrf.skey
-  config/protocol-parameters.json
 
 common lang
     default-language: Haskell2010
@@ -67,6 +66,7 @@ library
       , convex-wallet
       , convex-base
       , convex-coin-selection
+      , lens
       , mtl
       , stm
       , si-timers
@@ -77,9 +77,14 @@ library
 
       -- cardano-node deps.
       , cardano-api
+      , cardano-ledger-core
+      , cardano-ledger-alonzo
+      , cardano-ledger-conway
+      , cardano-ledger-shelley
       , cardano-slotting
       , io-classes
       , ouroboros-consensus
+      , ouroboros-consensus-cardano
 
       -- logging
       , contra-tracer
