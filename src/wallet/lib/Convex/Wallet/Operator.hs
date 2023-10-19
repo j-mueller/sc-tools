@@ -15,12 +15,14 @@ module Convex.Wallet.Operator(
   toVerification,
   verificationKey,
   signTx,
+  signTxOperator,
   Operator(..),
   operatorAddress,
   operatorPaymentCredential,
   operatorWalletID,
   operatorReturnOutput,
   generateOperator,
+  returnOutputFor,
 
   -- * Configuration
   OperatorConfigSigning(..),
@@ -31,7 +33,8 @@ module Convex.Wallet.Operator(
   loadOperatorFilesVerification
 ) where
 
-import           Cardano.Api         (BabbageEra, CtxTx, TxOut)
+import           Cardano.Api         (BabbageEra, CtxTx, PaymentCredential,
+                                      TxOut)
 import qualified Cardano.Api         as C
 import           Convex.Class        (MonadBlockchain (networkId))
 import           Convex.Lenses       (emptyTxOut)
@@ -69,6 +72,11 @@ signTx = \case
   PESigningEx k -> addSignatureExtended k
   PESigning   k -> addSignature k
 
+{-| Add a signature to the transaction
+-}
+signTxOperator :: Operator Signing -> C.Tx C.BabbageEra -> C.Tx C.BabbageEra
+signTxOperator Operator{oPaymentKey} = signTx oPaymentKey
+
 {-| An entity that can match orders
 -}
 data Operator k =
@@ -104,10 +112,21 @@ operatorWalletID Operator{oPaymentKey, oStakeKey} =
   , fmap (transStakeKeyHash . C.verificationKeyHash) oStakeKey
   )
 
+{-| An empty output locked by the operator's payment credential
+-}
 operatorReturnOutput :: MonadBlockchain m => Operator k -> m (TxOut CtxTx BabbageEra)
-operatorReturnOutput op = do
-  n <- networkId
-  pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) $ operatorAddress n op
+operatorReturnOutput = returnOutputFor . operatorPaymentCredential
+
+{- An empty output locked by the payment credential
+-}
+returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut CtxTx BabbageEra)
+returnOutputFor cred = do
+  addr <- C.makeShelleyAddress
+    <$> networkId
+    <*> pure cred
+    <*> pure C.NoStakeAddress
+  pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
+
 
 {-| Key files for operating the oracle and stablecoin
 -}
