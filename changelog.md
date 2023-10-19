@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - More fine-grained functions in `Convex.Wallet.Operator` and `Convex.Query` signing & balancing transactions
+- JSON instances for `CoinSelectionError` and `BalancingError`
 
 ### Deleted
 
