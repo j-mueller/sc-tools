@@ -7,7 +7,8 @@ module Convex.NodeQueries(
   queryEraHistory,
   querySystemStart,
   queryLocalState,
-  queryTip
+  queryTip,
+  queryProtocolParameters
 ) where
 
 import           Cardano.Api                                        (CardanoMode,
@@ -23,6 +24,7 @@ import           Cardano.Api                                        (CardanoMode
                                                                      SystemStart,
                                                                      envSecurityParam)
 import qualified Cardano.Api                                        as CAPI
+import           Cardano.Api.Shelley                                (ProtocolParameters)
 import qualified Cardano.Chain.Genesis
 import           Cardano.Crypto                                     (RequiresNetworkMagic (..),
                                                                      getProtocolMagic)
@@ -91,3 +93,11 @@ queryLocalState query connectInfo = do
     Left err -> do
       fail ("queryLocalState: Failed with " <> show err)
     Right result -> pure result
+
+queryProtocolParameters :: LocalNodeConnectInfo CardanoMode -> IO ProtocolParameters
+queryProtocolParameters connectInfo = do
+  result <- queryLocalState (CAPI.QueryInEra CAPI.BabbageEraInCardanoMode (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryProtocolParameters)) connectInfo
+  case result of
+    Left err -> do
+      fail ("queryProtocolParameters: failed with: " <> show err)
+    Right k -> pure k
