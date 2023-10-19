@@ -1,5 +1,7 @@
 {-# LANGUAGE BangPatterns       #-}
 {-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
@@ -12,6 +14,8 @@
 -}
 module Convex.CoinSelection(
   -- * Data types
+  CoinSelectionError(..),
+  bodyError,
   CSInputs(..),
   ERA,
   utxo,
@@ -60,6 +64,7 @@ import           Convex.Utxos                    (BalanceChanges (..),
 import qualified Convex.Utxos                    as Utxos
 import           Convex.Wallet                   (Wallet)
 import qualified Convex.Wallet                   as Wallet
+import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.Bifunctor                  (Bifunctor (..))
 import           Data.Function                   (on)
 import qualified Data.List                       as List
@@ -70,6 +75,9 @@ import           Data.Maybe                      (isNothing, listToMaybe,
 import           Data.Ord                        (Down (..))
 import           Data.Set                        (Set)
 import qualified Data.Set                        as Set
+import           Data.Text                       (Text)
+import qualified Data.Text                       as Text
+import           GHC.Generics                    (Generic)
 
 type ERA = BabbageEra
 
@@ -102,17 +110,25 @@ makeLensesFor
 
 data CoinSelectionError =
   UnsupportedBalance (C.TxOutValue ERA)
-  | BodyError C.TxBodyError
+  | BodyError Text
   | NotEnoughAdaOnlyOutputsFor C.Lovelace
   | NotEnoughMixedOutputsFor{ valuesNeeded :: [(C.PolicyId, C.AssetName, C.Quantity)], valueProvided :: C.Value, txBalance :: C.Value }
-  deriving Show
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+bodyError :: C.TxBodyError -> CoinSelectionError
+bodyError = BodyError . Text.pack . C.displayError
 
 data BalancingError =
-  BalancingError C.TxBodyErrorAutoBalance
+  BalancingError Text
   | CheckMinUtxoValueError (C.TxOut C.CtxTx BabbageEra) C.Lovelace
   | BalanceCheckError BalancingError
   | ComputeBalanceChangeError
-  deriving Show
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+balancingError :: C.TxBodyErrorAutoBalance -> BalancingError
+balancingError = BalancingError . Text.pack . C.displayError
 
 {-| Perform transaction balancing
 -}
@@ -123,16 +139,16 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
       changeOutputLarge = mkChangeOutputFor ((2^(64 :: Integer)) - 1)
   -- append output instead of prepending
   txbody0 <-
-    first (BalancingError . C.TxBodyError) $ C.makeTransactionBody $ csiTxBody & appendTxOut changeOutputSmall
+    first (balancingError . C.TxBodyError) $ C.makeTransactionBody $ csiTxBody & appendTxOut changeOutputSmall
 
-  exUnitsMap <- first (BalancingError . C.TxBodyErrorValidityInterval) $
+  exUnitsMap <- first (balancingError . C.TxBodyErrorValidityInterval) $
                 CC.evaluateTransactionExecutionUnits
                 systemStart eraHistory
                 protocolParams
                 csiUtxo
                 txbody0
 
-  exUnitsMap' <- first BalancingError $
+  exUnitsMap' <- first balancingError $
     case Map.mapEither id exUnitsMap of
       (failures, exUnitsMap') ->
         handleExUnitsErrors C.ScriptValid failures exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
@@ -140,7 +156,7 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
   let txbodycontent1 = substituteExecutionUnits exUnitsMap' csiTxBody
 
   -- append output instead of prepending
-  txbody1 <- first (BalancingError . C.TxBodyError)
+  txbody1 <- first (balancingError . C.TxBodyError)
               $ C.makeTransactionBody
               $ txbodycontent1
                   & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1))
@@ -148,7 +164,7 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
 
   let !t_fee = CC.evaluateTransactionFee protocolParams txbody1 csiNumWitnesses
 
-  txbody2 <- first (BalancingError . C.TxBodyError)
+  txbody2 <- first (balancingError . C.TxBodyError)
               $ C.makeTransactionBody
               $ txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeOutput
 
@@ -164,7 +180,7 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
     C.TxOutValue _ v -> do
       case C.valueToLovelace v of
         -- FIXME: Support non Ada assets
-        Nothing -> Left $ BalancingError $ C.TxBodyErrorNonAdaAssetsUnbalanced v
+        Nothing -> Left $ balancingError $ C.TxBodyErrorNonAdaAssetsUnbalanced v
         Just lvl  ->  do
           let op = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId <>~ (Just $ C.lovelaceToQuantity lvl)
           balanceCheck protocolParams op
@@ -175,7 +191,7 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
           & set L.txFee t_fee
           & over L.txOuts (accountForNoChange changeOutputBalance)
 
-  txbody3 <- first (BalancingError . C.TxBodyError) $ C.makeTransactionBody finalBodyContent
+  txbody3 <- first (balancingError . C.TxBodyError) $ C.makeTransactionBody finalBodyContent
 
   balances <- maybe (Left ComputeBalanceChangeError) Right (balanceChanges csiUtxo finalBodyContent)
 
@@ -187,7 +203,7 @@ checkMinUTxOValue
   -> Core.PParams Ledger.Era.ERA
   -> Either BalancingError ()
 checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
-  minUTxO  <- first (BalancingError . C.TxBodyErrorMinUTxOMissingPParams)
+  minUTxO  <- first (balancingError . C.TxBodyErrorMinUTxOMissingPParams)
                 $ CC.calculateMinimumUTxO txout pparams'
   if C.txOutValueToLovelace v >= C.selectLovelace minUTxO
   then Right ()
@@ -215,7 +231,7 @@ balanceCheck pparams output =
     if view L._TxOutValue balance == mempty
       then return ()
       else do
-        when (C.txOutValueToLovelace balance < 0) (Left . BalancingError . C.TxBodyErrorAdaBalanceNegative $ C.txOutValueToLovelace balance)
+        when (C.txOutValueToLovelace balance < 0) (Left . balancingError . C.TxBodyErrorAdaBalanceNegative $ C.txOutValueToLovelace balance)
         bimap BalanceCheckError (const ()) $ checkMinUTxOValue output pparams
 
 updateRestWithChange :: C.TxOut C.CtxTx C.BabbageEra -> [C.TxOut C.CtxTx C.BabbageEra] -> [C.TxOut C.CtxTx C.BabbageEra]
@@ -418,7 +434,7 @@ runsScripts body =
 -}
 addMissingInputs :: Set PoolId -> Core.PParams Ledger.Era.ERA -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
 addMissingInputs poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
-  txb <- first BodyError (C.makeTransactionBody txBodyContent0)
+  txb <- first bodyError (C.makeTransactionBody txBodyContent0)
   let bal = CC.evaluateTransactionBalance ledgerPPs poolIds utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
 
