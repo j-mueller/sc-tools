@@ -133,6 +133,7 @@ import           Convex.Era                            (ERA)
 import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
+import           Convex.MonadLog                       (MonadLog (..))
 import           Convex.NodeParams                     (NodeParams (..))
 import           Convex.Utils                          (slotToUtcTime)
 import           Convex.Utxos                          (UtxoSet (..),
@@ -358,7 +359,7 @@ applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   return (oldState & poolState .~ newMempool & over transactions ((:) (vtx, context)), vtx)
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
-  deriving newtype (Functor, Applicative, Monad, MonadIO)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
 
 instance MonadTrans MockchainT where
   lift = MockchainT . lift . lift . lift
