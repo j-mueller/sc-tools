@@ -79,15 +79,19 @@ loadConnectInfo nodeConfigFilePath socketPath = do
           }
   pure (connectInfo, env)
 
+-- | Get the system start from the local cardano node
 querySystemStart :: LocalNodeConnectInfo CardanoMode -> IO SystemStart
 querySystemStart = queryLocalState CAPI.QuerySystemStart
 
+-- | Get the era history from the local cardano node
 queryEraHistory :: LocalNodeConnectInfo CardanoMode -> IO (EraHistory CardanoMode)
 queryEraHistory = queryLocalState (CAPI.QueryEraHistory CAPI.CardanoModeIsMultiEra)
 
+-- | Get the tip from the local cardano node
 queryTip :: LocalNodeConnectInfo CardanoMode -> IO ChainPoint
 queryTip = queryLocalState (CAPI.QueryChainPoint CAPI.CardanoMode)
 
+-- | Run a local state query on the local cardano node
 queryLocalState :: CAPI.QueryInMode CardanoMode b -> LocalNodeConnectInfo CardanoMode -> IO b
 queryLocalState query connectInfo = do
   CAPI.queryNodeLocalState connectInfo Nothing query >>= \case
@@ -95,6 +99,7 @@ queryLocalState query connectInfo = do
       fail ("queryLocalState: Failed with " <> show err)
     Right result -> pure result
 
+-- | Get the protocol parameters from the local cardano node
 queryProtocolParameters :: LocalNodeConnectInfo CardanoMode -> IO (BundledProtocolParameters BabbageEra)
 queryProtocolParameters connectInfo = do
   result <- queryLocalState (CAPI.QueryInEra CAPI.BabbageEraInCardanoMode (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryProtocolParameters)) connectInfo

@@ -92,19 +92,23 @@ import qualified PlutusLedgerApi.V1.Value    as Value
 import qualified PlutusTx.AssocMap           as Map
 import qualified PlutusTx.Prelude            as PlutusTx
 
+-- | Translate a script hash from @cardano-api@ to @plutus@
 transScriptHash :: C.ScriptHash -> PV1.ScriptHash
 transScriptHash h = PV1.ScriptHash (PV1.toBuiltin (C.serialiseToRawBytes h)) -- TODO: is serialiseToRawBytes the correct thing to do here?
 
+-- | Translate a script hash from @plutus@ to @cardano-api@
 unTransScriptHash :: PV1.ScriptHash -> Either C.SerialiseAsRawBytesError C.ScriptHash
 unTransScriptHash (PV1.ScriptHash vh) =
   C.deserialiseFromRawBytes C.AsScriptHash $ PlutusTx.fromBuiltin vh
 
+-- | Translate an asset name from @cardano-api@ to @plutus@
 transAssetName :: Mary.AssetName -> PV1.TokenName
 transAssetName (Mary.AssetName bs) = PV1.TokenName (PV1.toBuiltin (fromShort bs))
 
 unTransAssetName :: PV1.TokenName -> C.AssetName
 unTransAssetName (PV1.TokenName bs) = C.AssetName $ PV1.fromBuiltin bs
 
+-- | Translate a policy ID from @cardano-api@ to @plutus@
 transPolicyId :: C.PolicyId -> PV1.CurrencySymbol
 transPolicyId (C.PolicyId scriptHash) = PV1.CurrencySymbol $ PlutusTx.toBuiltin (C.serialiseToRawBytes scriptHash)
 
@@ -112,6 +116,7 @@ unTransPolicyId :: PV1.CurrencySymbol -> Either C.SerialiseAsRawBytesError C.Pol
 unTransPolicyId (PV1.CurrencySymbol bs) =
   C.deserialiseFromRawBytes C.AsPolicyId (PlutusTx.fromBuiltin bs)
 
+-- | Translate an asset ID from @cardano-api@ to @plutus@
 transAssetId :: C.AssetId -> Value.AssetClass
 transAssetId C.AdaAssetId = Value.assetClass PV1.adaSymbol PV1.adaToken
 transAssetId (C.AssetId policyId assetName) =

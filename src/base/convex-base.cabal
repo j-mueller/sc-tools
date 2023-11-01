@@ -30,9 +30,7 @@ library
     exposed-modules:
       Convex.Class
       Convex.Constants
-      Convex.Event
       Convex.Lenses
-      Convex.Measures
       Convex.MonadLog
       Convex.NodeQueries
       Convex.PlutusLedger

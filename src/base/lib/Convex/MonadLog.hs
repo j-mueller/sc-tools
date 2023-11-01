@@ -44,9 +44,16 @@ import           Prettyprinter              (Doc, Pretty (..),
 import qualified Prettyprinter.Render.Text  as Render
 import           System.IO                  (stdout)
 
+-- | Logging effect for pretty-printed text messages
 class Monad m => MonadLog m where
+
+  -- | Log a message at the @info@ level
   logInfo'  :: Doc Void -> m ()
+
+  -- | Log a message at the @warn@ level
   logWarn'  :: Doc Void -> m ()
+
+  -- | Log a message at the @debug@ level
   logDebug' :: Doc Void -> m ()
 
 instance MonadLog m => MonadLog (ReaderT e m) where
@@ -74,24 +81,31 @@ instance MonadLog m => MonadLog (ExceptT e m) where
   logWarn' = lift . logWarn'
   logDebug' = lift . logDebug'
 
+-- | Pretty-print a message and log it at the @info@ level
 logInfo :: forall a m. (Pretty a, MonadLog m) => a -> m ()
 logInfo = logInfo' . pretty
 
+-- | Log a string at the @info@ level
 logInfoS :: forall  m. (MonadLog m) => String -> m ()
 logInfoS = logInfo' . fromString
 
+-- | Pretty-print a message and log it at the @warn@ level
 logWarn :: forall a m. (Pretty a, MonadLog m) => a -> m ()
 logWarn = logWarn' . pretty
 
+-- | Log a string at the @warn@ level
 logWarnS :: forall m. MonadLog m => String -> m ()
 logWarnS = logWarn' . fromString
 
+-- | Pretty-print a message and log it at the @debug@ level
 logDebug :: forall a m. (Pretty a, MonadLog m) => a -> m ()
 logDebug = logDebug' . pretty
 
+-- | Log a string at the @debug@ level
 logDebugS :: forall m. MonadLog m => String -> m ()
 logDebugS = logDebug' . fromString
 
+-- | 'MonadLog' implementation that ignores all messages
 newtype MonadLogIgnoreT m a = MonadLogIgnoreT { runMonadLogIgnoreT :: m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
 
@@ -105,9 +119,11 @@ instance Monad m => MonadLog (MonadLogIgnoreT m) where
   logWarn' _ = pure ()
   logDebug' _ = pure ()
 
+-- | 'MonadLog' implementation that uses a @katip@ backend
 newtype MonadLogKatipT m a = MonadLogKatipT { runMonadLogKatipT :: KatipContextT m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
 
+-- | Run the 'MonadLogKatipT@ transformer with the given configuration
 runMonadLogKatip :: KatipConfig -> MonadLogKatipT m a -> m a
 runMonadLogKatip (env, context, ns) (MonadLogKatipT action) =
   Katip.runKatipContextT env context ns action
