@@ -2,10 +2,6 @@ name: Build haddocks and publish to github pages
 on:
   pull_request:
   push:
-    paths:
-      - '.github/workflows/ci-linux.yaml'
-      - 'cabal.project'
-      - '*/src/**'
 jobs:
   # Build job
   build:
