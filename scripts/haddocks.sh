@@ -54,6 +54,7 @@ HADDOCK_OPTS=(
 # build documentation of all modules
 if [ ${REGENERATE} == "true" ]; then
   cabal haddock "${HADDOCK_OPTS[@]}" \
+    cardano-api \
     convex-base \
     convex-node-client \
     convex-wallet \
