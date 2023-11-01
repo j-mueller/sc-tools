@@ -77,7 +77,7 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - uses: haskell/actions/setup@v2
+      - uses: haskell-actions/setup@v2
         id: setuphaskell
         with:
           ghc-version: '9.2.8'
