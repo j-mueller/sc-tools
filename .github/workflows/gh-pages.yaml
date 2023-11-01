@@ -34,7 +34,7 @@ jobs:
         run: ./scripts/haddocks.sh
 
       - name: Upload GH pages artifact
-        uses: actions/upload-pages-artifact
+        uses: actions/upload-pages-artifact@v2.0.0
         with:
           path: haddocks
 
