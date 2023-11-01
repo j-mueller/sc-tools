@@ -1,7 +1,10 @@
 name: Build haddocks and publish to github pages
 on:
-  pull_request:
   push:
+    branches: [ "main" ]
+    tags: [ "*.*.*" ]
+  pull_request:
+
 jobs:
   # Build job
   build:
