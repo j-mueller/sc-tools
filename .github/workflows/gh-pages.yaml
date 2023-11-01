@@ -31,7 +31,9 @@ jobs:
           echo "  flags: -external-libsodium-vrf" >> cabal.project.local
 
       - name: Build haddocks
-        run: ./scripts/haddocks.sh
+        run: |
+          cabal update
+          ./scripts/haddocks.sh
 
       - name: Upload GH pages artifact
         uses: actions/upload-pages-artifact@v2.0.0
