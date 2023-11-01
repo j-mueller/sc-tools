@@ -47,6 +47,7 @@ HADDOCK_OPTS=(
     --haddock-hyperlink-source
     --haddock-option "--show-all"
     --haddock-option "--use-unicode"
+    --haddock-base-url=https://hackage.haskell.org
     --disable-tests
     $DRY_RUN_ARGS
   )
