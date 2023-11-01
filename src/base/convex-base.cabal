@@ -30,7 +30,6 @@ library
     exposed-modules:
       Convex.Class
       Convex.Constants
-      Convex.Era
       Convex.Event
       Convex.Lenses
       Convex.Measures

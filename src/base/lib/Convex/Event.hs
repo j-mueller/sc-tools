@@ -53,7 +53,7 @@ import           Cardano.Ledger.Shelley.TxBody      (witVKeyHash)
 import qualified Cardano.Ledger.TxIn                as CT
 import           Control.Monad.State.Strict         (MonadState, get, put,
                                                      runState)
-import           Convex.Era                         (ERA)
+import           Convex.Constants                   (ERA)
 import           Data.Bifunctor                     (Bifunctor (..))
 import           Data.Foldable                      (foldl', toList)
 import           Data.List                          (sortOn)
