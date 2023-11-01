@@ -22,7 +22,6 @@ BUILD_DIR=${3:-"dist-newstyle"}
 DRY_RUN="${DRY_RUN:-}"
 
 GHC_VERSION=$(ghc --numeric-version)
-OS_ARCH="$(cat "$BUILD_DIR/cache/plan.json" | jq -r '.arch + "-" + .os' | head -n 1 | xargs)"
 
 if [ "${DRY_RUN}" == 1 ]; then
   DRY_RUN_ARGS="--dry-run"
