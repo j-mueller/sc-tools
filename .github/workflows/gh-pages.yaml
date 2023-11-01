@@ -124,6 +124,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
+    # Deploy only from the main branch
+    if: ${{ github.ref == 'main' }}
+
     # Specify runner + deployment step
     runs-on: ubuntu-latest
     steps:

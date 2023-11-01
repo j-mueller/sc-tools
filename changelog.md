@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON instances for `CoinSelectionError` and `BalancingError`
 - Add `Convex.Devnet.CardanoNode.withCardanoNodeDevnetConfig` and associated types for modifications to the genesis config files. Includes `allowLargeTransactions` for large transactions.
 - MonadLog instance for `MockchainT`
+- API documentation published on github pages (https://j-mueller.github.io/sc-tools/)
 
 ### Deleted
 
