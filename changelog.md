@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deleted
 
+- `Convex.Era`, `Convex.Measure`, `Convex.Event` modules
+
 ## [0.2.0.0]
 
 ### Changed
