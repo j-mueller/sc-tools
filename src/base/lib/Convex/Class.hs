@@ -51,7 +51,7 @@ import qualified Control.Monad.State                               as LazyState
 import qualified Control.Monad.State.Strict                        as StrictState
 import           Control.Monad.Trans.Except                        (ExceptT)
 import           Control.Monad.Trans.Except.Result                 (ResultT)
-import           Convex.Era                                        (ERA)
+import           Convex.Constants                                  (ERA)
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     logInfoS,
                                                                     logWarnS)

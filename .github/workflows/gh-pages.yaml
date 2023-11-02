@@ -1,11 +1,10 @@
 name: Build haddocks and publish to github pages
 on:
-  pull_request:
   push:
-    paths:
-      - '.github/workflows/ci-linux.yaml'
-      - 'cabal.project'
-      - '*/src/**'
+    branches: [ "main" ]
+    tags: [ "*.*.*" ]
+  pull_request:
+
 jobs:
   # Build job
   build:
@@ -82,7 +81,7 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - uses: haskell/actions/setup@v2
+      - uses: haskell-actions/setup@v2
         id: setuphaskell
         with:
           ghc-version: '9.2.8'

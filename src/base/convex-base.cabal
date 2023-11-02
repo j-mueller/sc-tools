@@ -30,10 +30,7 @@ library
     exposed-modules:
       Convex.Class
       Convex.Constants
-      Convex.Era
-      Convex.Event
       Convex.Lenses
-      Convex.Measures
       Convex.MonadLog
       Convex.NodeQueries
       Convex.PlutusLedger
@@ -57,7 +54,6 @@ library
       
     build-depends:
       cardano-api == 8.8.0.0,
-      cardano-ledger-binary,
       cardano-ledger-core,
       cardano-crypto-wrapper,
 

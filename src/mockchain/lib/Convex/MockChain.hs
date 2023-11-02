@@ -116,7 +116,7 @@ import           Control.Monad.State                   (MonadState, StateT, get,
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadMockchain (..))
-import           Convex.Era                            (ERA)
+import           Convex.Constants                      (ERA)
 import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults

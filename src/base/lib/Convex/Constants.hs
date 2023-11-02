@@ -4,14 +4,22 @@
 {-| Some useful constants related to the cardano network.
 -}
 module Convex.Constants(
+  ERA,
   alonzoMainnet,
   recent,
   lessRecent
   ) where
 
-import           Cardano.Api (AsType (AsHash), BlockHeader, ChainPoint (..))
-import qualified Cardano.Api as CAPI
-import           Data.Proxy  (Proxy (..))
+import           Cardano.Api            (AsType (AsHash), BlockHeader,
+                                         ChainPoint (..))
+import qualified Cardano.Api            as CAPI
+import           Cardano.Ledger.Babbage (BabbageEra)
+import           Cardano.Ledger.Crypto  (StandardCrypto)
+
+import           Data.Proxy             (Proxy (..))
+
+-- | Current era
+type ERA = BabbageEra StandardCrypto
 
 -- | Start of the Alonzo era on mainnet.
 -- https://explorer.cardano.org/en/block?id=8959c0323b94cc670afe44222ab8b4e72cfcad3b5ab665f334bbe642dc6e9ef4

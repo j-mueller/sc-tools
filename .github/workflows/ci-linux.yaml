@@ -1,11 +1,10 @@
 name: ci-linux
 on:
-  pull_request:
   push:
-    paths:
-      - '.github/workflows/ci-linux.yaml'
-      - 'cabal.project'
-      - '*/src/**'
+    branches: [ "main" ]
+    tags: [ "*.*.*" ]
+  pull_request:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -81,7 +80,7 @@ jobs:
 
       - uses: actions/checkout@v2
 
-      - uses: haskell/actions/setup@v2
+      - uses: haskell-actions/setup@v2
         id: setuphaskell
         with:
           ghc-version: '9.2.8'
