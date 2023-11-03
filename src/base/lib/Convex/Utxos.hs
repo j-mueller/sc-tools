@@ -33,6 +33,7 @@ module Convex.Utxos(
   AddUtxoEvent(..),
   RemoveUtxoEvent(..),
   extract,
+  extractBabbageTxn,
   txId,
 
   -- * Changes to utxo sets
@@ -383,16 +384,19 @@ extract ex cred state = DList.toList . \case
   BlockInMode block BabbageEraInCardanoMode -> extractBabbage ex state cred block
   _                                         -> mempty
 
+extractBabbageTxn :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> Maybe AddressCredential -> UtxoSet C.CtxTx a -> C.Tx BabbageEra -> [UtxoChangeEvent a]
+extractBabbageTxn ex cred state = DList.toList . extractBabbageTxn' ex state cred
+
 {-| Extract from a block the UTXO changes at the given address
 -}
 extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> UtxoChange C.CtxTx ()
 extract_ a b = foldMap fromEvent . extract (\_ -> const $ Just ()) (Just a) b
 
 extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> Block BabbageEra -> DList (UtxoChangeEvent a)
-extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn ex state cred) txns
+extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn' ex state cred) txns
 
-extractBabbageTxn :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
-extractBabbageTxn ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
+extractBabbageTxn' :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
+extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
   let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
       Babbage.TxBody.TxBody{Babbage.TxBody.inputs} = txBody'
       txid = C.getTxId txBody
