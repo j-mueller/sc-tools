@@ -28,7 +28,6 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.BuildTx
       Convex.CoinSelection
       Convex.MockChain.CoinSelection
       Convex.Query
@@ -49,7 +48,6 @@ library
     build-depends:
       cardano-api,
       cardano-ledger-core -any,
-      plutus-ledger-api,
       cardano-slotting,
       transformers,
       mtl,

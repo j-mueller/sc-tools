@@ -28,6 +28,7 @@ common lang
 library
     import: lang
     exposed-modules:
+      Convex.BuildTx
       Convex.Class
       Convex.Constants
       Convex.Lenses
