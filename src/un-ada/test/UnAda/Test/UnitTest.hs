@@ -53,7 +53,7 @@ mintSomeUnAda :: (MonadFail m, MonadMockchain m) => m (C.TxIn, (C.TxOut C.CtxTx 
 mintSomeUnAda = do
   let tx = execBuildTx' (mintUnAda Defaults.networkId 1 10_000_000)
   _ <- Wallet.w2 `paymentTo` Wallet.w1
-  mintingTx <- balanceAndSubmit Wallet.w1 tx
+  mintingTx <- balanceAndSubmit mempty Wallet.w1 tx
   _ <- unAdaPaymentTo 5_000_000 Wallet.w1 Wallet.w2
 
   getUnAdaOutput mintingTx
@@ -65,7 +65,7 @@ canBurnUnAda = mockchainSucceeds $ do
   let tx' = execBuildTx' (burnUnAda Defaults.networkId 0 txi txo st 3_000_000)
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
-  balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
+  balanceAndSubmit mempty Wallet.w1 tx' >>= getUnAdaOutput
 
 unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
@@ -76,7 +76,7 @@ unAdaPaymentTo q wFrom wTo = do
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
-  balanceAndSubmit wFrom tx
+  balanceAndSubmit mempty wFrom tx
 
 {-| Get exactly 1 un-Ada output from the transaction. Fails if there are 0 or more than one
 un-Ada outputs.

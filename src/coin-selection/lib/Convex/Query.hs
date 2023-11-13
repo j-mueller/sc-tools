@@ -17,7 +17,8 @@ module Convex.Query(
 
   -- * Tx balancing for operator
   balanceAndSubmitOperator,
-  balanceOperator,
+  balancePaymentCredential,
+  balancePaymentCredentials,
   signTxOperator,
   signAndSubmitOperator,
   operatorUtxos,
@@ -43,8 +44,10 @@ import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
 import           Control.Monad.Trans.Except.Result  (ResultT)
 import qualified Control.Monad.Trans.State          as StrictState
 import qualified Control.Monad.Trans.State.Strict   as LazyState
+import           Control.Tracer                     (Tracer, natTracer)
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT)
+import           Convex.CoinSelection               (TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MockChain                   (MockchainT, utxoSet)
 import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
@@ -100,13 +103,13 @@ deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWai
 newtype BalancingError = BalancingError String
   deriving stock (Eq, Ord, Show)
 
-{-| Balance the transaction body using the UTxOs locked by the payment credential,
-and returning any unused funds to the given payment credential and stake credential
+{-| Balance the transaction body using the UTxOs locked by the payment credentials,
+returning any unused funds to the given return output
 |-}
-balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => PaymentCredential -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either BalancingError (BalancedTxBody BabbageEra, BalanceChanges))
-balanceTx operator changeOutput txBody = do
-  o <- fromApiUtxo <$> utxosByPayment operator
-  runExceptT $ liftResult BalancingError (Convex.CoinSelection.balanceTx changeOutput o txBody)
+balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => Tracer m TxBalancingMessage -> [PaymentCredential] -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either BalancingError (BalancedTxBody BabbageEra, BalanceChanges))
+balanceTx dbg inputCredentials changeOutput txBody = do
+  o <- fromApiUtxo <$> utxosByPaymentCredentials (Set.fromList inputCredentials)
+  runExceptT $ liftResult BalancingError (Convex.CoinSelection.balanceTx (natTracer (lift . lift) dbg) changeOutput o txBody)
 
 newtype WalletAPIQueryT m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog)
@@ -127,17 +130,27 @@ instance MonadIO m => MonadUtxoQuery (WalletAPIQueryT m) where
 
 deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 
-{-| Balance a transaction body using the funds locked by the payment credential
+{-| Balance a transaction body using the funds locked by one of a list of payment credentials
 -}
-balanceOperator :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => C.PaymentCredential -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
-balanceOperator cred returnOutput txBody = do
-  output <- maybe (returnOutputFor cred) pure returnOutput
-  (C.BalancedTxBody txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx cred output txBody)
+balancePaymentCredentials ::
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) =>
+  Tracer m TxBalancingMessage ->
+  C.PaymentCredential -> -- ^ Primary payment credential, used for return output
+  [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
+  Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
+  output <- maybe (returnOutputFor primaryCred) pure returnOutput
+  (C.BalancedTxBody txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody)
   pure (C.makeSignedTransaction [] txbody)
 
+{-| Balance a transaction body using the funds locked by the payment credential
+-}
+balancePaymentCredential :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Tracer m TxBalancingMessage -> C.PaymentCredential -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+balancePaymentCredential dbg cred = balancePaymentCredentials dbg cred []
+
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
-balanceAndSubmitOperator :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Operator Signing -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
-balanceAndSubmitOperator op changeOut txBody = balanceOperator (operatorPaymentCredential op) changeOut txBody >>= signAndSubmitOperator op
+balanceAndSubmitOperator :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Tracer m TxBalancingMessage -> Operator Signing -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+balanceAndSubmitOperator dbg op changeOut txBody = balancePaymentCredential dbg (operatorPaymentCredential op) changeOut txBody >>= signAndSubmitOperator op
 
 {-| Add the operator's signature to the transaction and send it to the blockchain
 -}
