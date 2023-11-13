@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
@@ -35,7 +36,7 @@ module Convex.Wallet.Operator(
 
 import           Cardano.Api         (BabbageEra, CtxTx, PaymentCredential,
                                       TxOut)
-import qualified Cardano.Api         as C
+import qualified Cardano.Api.Shelley as C
 import           Convex.Class        (MonadBlockchain (networkId))
 import           Convex.Lenses       (emptyTxOut)
 import           Convex.PlutusLedger (transPubKeyHash, transStakeKeyHash)
@@ -56,7 +57,8 @@ data PaymentExtendedKey k where
   PESigningEx :: C.SigningKey C.PaymentExtendedKey -> PaymentExtendedKey Signing
   PEVerification :: C.VerificationKey C.PaymentKey -> PaymentExtendedKey Verification
 
-deriving stock instance Show (PaymentExtendedKey k)
+deriving stock instance Show (PaymentExtendedKey Signing)
+deriving stock instance Show (PaymentExtendedKey Verification)
 
 verificationKey :: PaymentExtendedKey k -> C.VerificationKey C.PaymentKey
 verificationKey = \case
@@ -97,7 +99,7 @@ operatorAddress networkId_ op =
   C.makeShelleyAddress
     networkId_
     (operatorPaymentCredential op)
-    C.NoStakeAddress
+    (maybe C.NoStakeAddress (C.StakeAddressByValue . C.StakeCredentialByKey . C.verificationKeyHash) $ oStakeKey op)
 
 {-| The operator's payment credential (public key)
 -}
@@ -127,8 +129,7 @@ returnOutputFor cred = do
     <*> pure C.NoStakeAddress
   pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
 
-
-{-| Key files for operating the oracle and stablecoin
+{-| Loading operator files for signing from disk
 -}
 data OperatorConfigSigning =
   OperatorConfigSigning
@@ -137,7 +138,7 @@ data OperatorConfigSigning =
     }
     deriving stock (Eq, Show)
 
-{-| Key files for operating the oracle and stablecoin
+{-| Loading operator files for verification from disk
 -}
 data OperatorConfigVerification =
   OperatorConfigVerification

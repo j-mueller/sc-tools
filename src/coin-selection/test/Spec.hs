@@ -2,6 +2,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE ViewPatterns       #-}
 module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
@@ -10,8 +11,10 @@ import           Cardano.Ledger.Alonzo.Scripts  (AlonzoScript (..),
                                                  validScript)
 import           Cardano.Ledger.Language        (Language (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
-import           Control.Monad                  (void)
-import           Control.Monad.Except           (runExcept)
+import           Control.Monad                  (void, when)
+import           Control.Monad.Except           (runExcept, runExceptT)
+import           Control.Monad.State.Strict     (execStateT, modify)
+import           Control.Monad.Trans.Class      (MonadTrans (..))
 import           Convex.BuildTx                 (BuildTxT, assetValue,
                                                  execBuildTx', execBuildTxT,
                                                  mintPlutusV1, payToAddress,
@@ -24,21 +27,35 @@ import           Convex.BuildTx                 (BuildTxT, assetValue,
                                                  spendPlutusV2Ref)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain (resolveDatumHash))
+import           Convex.CoinSelection           (keyWitnesses,
+                                                 publicKeyCredential)
 import qualified Convex.Lenses                  as L
-import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
+import           Convex.MockChain.CoinSelection (balanceAndSubmit,
+                                                 payToOperator', paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
-import           Convex.MockChain.Utils         (mockchainSucceeds)
+import qualified Convex.MockChain.Gen           as Gen
+import           Convex.MockChain.Utils         (mockchainSucceeds,
+                                                 runMockchainProp)
+import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
+import           Convex.Wallet.Operator         (operatorPaymentCredential,
+                                                 operatorReturnOutput,
+                                                 signTxOperator)
+import           Data.Foldable                  (traverse_)
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
 import qualified PlutusLedgerApi.V2             as PV2
 import qualified Scripts
+import qualified Test.QuickCheck.Gen            as Gen
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
 import           Test.Tasty.HUnit               (Assertion, assertBool,
                                                  testCase)
+import qualified Test.Tasty.QuickCheck          as QC
+import           Test.Tasty.QuickCheck          (Property, classify,
+                                                 testProperty)
 
 main :: IO ()
 main = defaultMain tests
@@ -48,6 +65,7 @@ tests = testGroup "unit tests"
   [ testGroup "payments"
     [ testCase "spending a public key output" spendPublicKeyOutput
     , testCase "making several payments" makeSeveralPayments
+    , testProperty "balance transactions with many addresses" balanceMultiAddress
     ]
   , testGroup "scripts"
     [ testCase "paying to a plutus script" (mockchainSucceeds payToPlutusScript)
@@ -61,7 +79,6 @@ tests = testGroup "unit tests"
     ]
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds checkResolveDatumHash)
-
     ]
   ]
 
@@ -91,24 +108,24 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 payToPlutusScript :: (MonadFail m, MonadMockchain m) => m C.TxIn
 payToPlutusScript = do
   let tx = execBuildTx' (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-  i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  i <- C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 payToPlutusV2Script :: (MonadFail m, MonadMockchain m) => m C.TxIn
 payToPlutusV2Script = do
   let tx = execBuildTx' (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-  i <- C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  i <- C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 spendPlutusScript :: (MonadFail m, MonadMockchain m) => C.TxIn -> m C.TxId
 spendPlutusScript ref = do
   let tx = execBuildTx' (spendPlutusV1 ref txInscript () ())
-  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
 
 spendPlutusV2Script :: (MonadFail m, MonadMockchain m) => C.TxIn -> m C.TxId
 spendPlutusV2Script ref = do
   let tx = execBuildTx' (spendPlutusV2 ref Scripts.v2SpendingScript () ())
-  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
 
 putReferenceScript :: (MonadFail m, MonadMockchain m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
@@ -117,7 +134,7 @@ putReferenceScript wallet = do
       tx = execBuildTx' $
             payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
-  txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit wallet tx
+  txId <- C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet tx
   let outRef = C.TxIn txId (C.TxIx 0)
   C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
   case Map.lookup outRef utxo of
@@ -131,13 +148,13 @@ spendPlutusScriptReference :: (MonadFail m, MonadMockchain m) =>  C.TxIn -> m C.
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = execBuildTx' (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
-  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
 
 mintingPlutus :: (MonadFail m, MonadMockchain m) => m C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
   let tx = execBuildTx' (mintPlutusV1 mintingScript () "assetName" 100)
-  C.getTxId . C.getTxBody <$> balanceAndSubmit Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
 
 spendTokens :: (MonadFail m, MonadMockchain m) => C.TxId -> m C.TxId
 spendTokens _ = do
@@ -155,7 +172,7 @@ nativeAssetPaymentTo q wFrom wTo = do
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
-  C.getTxId . C.getTxBody <$> balanceAndSubmit wFrom tx
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wFrom tx
 
 checkResolveDatumHash :: (MonadMockchain m, MonadFail m) => m ()
 checkResolveDatumHash = do
@@ -203,4 +220,34 @@ checkResolveDatumHash = do
 execBuildTxWallet :: (MonadMockchain m, MonadFail m) => Wallet -> BuildTxT m a -> m C.TxId
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
-  C.getTxId . C.getTxBody <$> balanceAndSubmit wallet (tx L.emptyTx)
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet (tx L.emptyTx)
+
+-- | Balance a transaction using
+-- a list of operators
+balanceMultiAddress :: Property
+balanceMultiAddress = do
+  let gen = (,) <$> Gen.operator <*> fmap (take 20) (Gen.listOf Gen.operator)
+  QC.forAll gen $ \(op, operators) ->
+    QC.forAll (Gen.chooseInteger (5_000_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Lovelace -> nAmount) ->
+      classify (null operators) "1 operator"
+        $ classify (length operators > 0 && length operators <= 9) "2-10 operators"
+        $ classify (length operators > 9) "10+ operators"
+        $ runMockchainProp $ lift $ do
+            -- send Ada to each operator
+            traverse_ (payToOperator' mempty (C.lovelaceToValue $ 2_500_000 + nAmount) Wallet.w2) (op:operators)
+
+            -- send the entire amount back to Wallet.w2
+            walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
+            protParams <- queryProtocolParameters
+            let tx = execBuildTx' $ do
+                      payToAddress walletAddr $ C.lovelaceToValue nAmount
+                      setMinAdaDepositAll protParams
+
+            -- balance the tx using all of the operators' addressses
+            balancedTx <- runExceptT (balancePaymentCredentials mempty (operatorPaymentCredential op) (operatorPaymentCredential <$> operators) Nothing tx) >>= either (fail . show) pure
+            txInputs <- let C.Tx (C.TxBody txBody) _ = balancedTx in keyWitnesses txBody
+            -- add the required operators' signatures
+            finalTx <- flip execStateT balancedTx $ flip traverse_ (op:operators) $ \o -> do
+              Just pkh <- publicKeyCredential <$> operatorReturnOutput o
+              when (pkh `Set.member` txInputs) (modify (signTxOperator o))
+            void (sendTx finalTx)

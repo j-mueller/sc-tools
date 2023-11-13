@@ -39,7 +39,7 @@ import           Convex.Utxos              (UtxoSet (..), onlyAda)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
                                             withObject, (.:), (.=))
 import           Data.Bifunctor            (Bifunctor (..))
-import           Data.List                 (find)
+import           Data.List                 (find, nub)
 import qualified Data.Map.Strict           as Map
 import           Data.Maybe                (fromMaybe, mapMaybe)
 import qualified Data.Set                  as Set
@@ -83,7 +83,7 @@ to the transaction
 addSignature :: IsShelleyBasedEra era => SigningKey PaymentKey -> C.Tx era -> C.Tx era
 addSignature (C.WitnessPaymentKey -> key) tx =
   let C.Tx body wits = tx
-      wit = (C.makeShelleyKeyWitness body key) : wits
+      wit = nub $ C.makeShelleyKeyWitness body key : wits
       stx = C.makeSignedTransaction wit body
   in stx
 
@@ -93,7 +93,7 @@ to the transaction
 addSignatureExtended :: IsShelleyBasedEra era => SigningKey PaymentExtendedKey -> C.Tx era -> C.Tx era
 addSignatureExtended (C.WitnessPaymentExtendedKey -> key) tx =
   let C.Tx body wits = tx
-      wit = (C.makeShelleyKeyWitness body key) : wits
+      wit = nub $ C.makeShelleyKeyWitness body key : wits
       stx = C.makeSignedTransaction wit body
   in stx
 
