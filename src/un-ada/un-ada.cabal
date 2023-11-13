@@ -42,7 +42,6 @@ library
 
     build-depends:
       convex-base,
-      convex-coin-selection
 
     build-depends:
       cardano-api,

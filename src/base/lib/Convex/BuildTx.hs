@@ -53,37 +53,34 @@ module Convex.BuildTx(
   setMinAdaDepositAll
   ) where
 
-import           Cardano.Api.Shelley             (Hash, NetworkId, PaymentKey,
-                                                  PlutusScript, PlutusScriptV1,
-                                                  PlutusScriptV2, ScriptData,
-                                                  ScriptHash)
-import qualified Cardano.Api.Shelley             as C
-import qualified Cardano.Ledger.Core             as CLedger
-import           Control.Lens                    (_1, _2, at, mapped, over, set,
-                                                  (&))
-import           Control.Monad.Except            (MonadError (..))
-import qualified Control.Monad.State             as LazyState
-import           Control.Monad.State.Class       (MonadState (..))
-import qualified Control.Monad.State.Strict      as StrictState
-import           Control.Monad.Trans.Class       (MonadTrans (..))
-import           Control.Monad.Trans.Except      (ExceptT)
-import           Control.Monad.Writer            (WriterT, execWriterT,
-                                                  runWriterT)
-import           Control.Monad.Writer.Class      (MonadWriter (..))
-import           Convex.Class                    (MonadBlockchain (..),
-                                                  MonadBlockchainCardanoNodeT,
-                                                  MonadMockchain (..))
-import qualified Convex.CoinSelection.CardanoApi as CC
-import qualified Convex.Lenses                   as L
-import           Convex.MonadLog                 (MonadLog (..),
-                                                  MonadLogIgnoreT,
-                                                  MonadLogKatipT)
-import           Convex.Scripts                  (toScriptData)
-import           Data.Functor.Identity           (Identity (..))
-import           Data.List                       (nub)
-import qualified Data.Map                        as Map
-import           Data.Maybe                      (fromMaybe)
-import qualified Plutus.V1.Ledger.Api            as Plutus
+import           Cardano.Api.Shelley        (Hash, NetworkId, PaymentKey,
+                                             PlutusScript, PlutusScriptV1,
+                                             PlutusScriptV2, ScriptData,
+                                             ScriptHash)
+import qualified Cardano.Api.Shelley        as C
+import qualified Cardano.Ledger.Core        as CLedger
+import           Control.Lens               (_1, _2, at, mapped, over, set, (&))
+import           Control.Monad.Except       (MonadError (..))
+import qualified Control.Monad.State        as LazyState
+import           Control.Monad.State.Class  (MonadState (..))
+import qualified Control.Monad.State.Strict as StrictState
+import           Control.Monad.Trans.Class  (MonadTrans (..))
+import           Control.Monad.Trans.Except (ExceptT)
+import           Control.Monad.Writer       (WriterT, execWriterT, runWriterT)
+import           Control.Monad.Writer.Class (MonadWriter (..))
+import qualified Convex.CardanoApi          as CC
+import           Convex.Class               (MonadBlockchain (..),
+                                             MonadBlockchainCardanoNodeT,
+                                             MonadMockchain (..))
+import qualified Convex.Lenses              as L
+import           Convex.MonadLog            (MonadLog (..), MonadLogIgnoreT,
+                                             MonadLogKatipT)
+import           Convex.Scripts             (toScriptData)
+import           Data.Functor.Identity      (Identity (..))
+import           Data.List                  (nub)
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (fromMaybe)
+import qualified Plutus.V1.Ledger.Api       as Plutus
 
 newtype BTX = BTX{ unBtx :: C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra }
 
