@@ -37,47 +37,42 @@ module Convex.CoinSelection(
   prepCSInputs
   ) where
 
-import           Cardano.Api.Shelley             (BabbageEra, BuildTx,
-                                                  CardanoMode, EraHistory,
-                                                  PoolId, TxBodyContent, TxOut,
-                                                  UTxO (..))
-import qualified Cardano.Api.Shelley             as C
-import qualified Cardano.Ledger.Core             as Core
-import           Cardano.Ledger.Crypto           (StandardCrypto)
-import qualified Cardano.Ledger.Keys             as Keys
-import           Cardano.Slotting.Time           (SystemStart)
-import           Control.Lens                    (_1, _2, at, makeLensesFor,
-                                                  over, preview, set, to,
-                                                  traversed, view, (&), (.~),
-                                                  (<>~), (?~), (^.), (^..),
-                                                  (|>))
-import           Control.Monad                   (when)
-import           Convex.BuildTx                  (addCollateral, execBuildTx,
-                                                  setMinAdaDeposit,
-                                                  spendPublicKeyOutput)
-import           Convex.Class                    (MonadBlockchain (..))
-import qualified Convex.CoinSelection.CardanoApi as CC
-import qualified Convex.Era                      as Ledger.Era
-import qualified Convex.Lenses                   as L
-import           Convex.Utxos                    (BalanceChanges (..),
-                                                  UtxoSet (..))
-import qualified Convex.Utxos                    as Utxos
-import           Convex.Wallet                   (Wallet)
-import qualified Convex.Wallet                   as Wallet
-import           Data.Aeson                      (FromJSON, ToJSON)
-import           Data.Bifunctor                  (Bifunctor (..))
-import           Data.Function                   (on)
-import qualified Data.List                       as List
-import           Data.Map                        (Map)
-import qualified Data.Map                        as Map
-import           Data.Maybe                      (isNothing, listToMaybe,
-                                                  mapMaybe, maybeToList)
-import           Data.Ord                        (Down (..))
-import           Data.Set                        (Set)
-import qualified Data.Set                        as Set
-import           Data.Text                       (Text)
-import qualified Data.Text                       as Text
-import           GHC.Generics                    (Generic)
+import           Cardano.Api.Shelley   (BabbageEra, BuildTx, CardanoMode,
+                                        EraHistory, PoolId, TxBodyContent,
+                                        TxOut, UTxO (..))
+import qualified Cardano.Api.Shelley   as C
+import qualified Cardano.Ledger.Core   as Core
+import           Cardano.Ledger.Crypto (StandardCrypto)
+import qualified Cardano.Ledger.Keys   as Keys
+import           Cardano.Slotting.Time (SystemStart)
+import           Control.Lens          (_1, _2, at, makeLensesFor, over,
+                                        preview, set, to, traversed, view, (&),
+                                        (.~), (<>~), (?~), (^.), (^..), (|>))
+import           Control.Monad         (when)
+import           Convex.BuildTx        (addCollateral, execBuildTx,
+                                        setMinAdaDeposit, spendPublicKeyOutput)
+import qualified Convex.CardanoApi     as CC
+import           Convex.Class          (MonadBlockchain (..))
+import qualified Convex.Era            as Ledger.Era
+import qualified Convex.Lenses         as L
+import           Convex.Utxos          (BalanceChanges (..), UtxoSet (..))
+import qualified Convex.Utxos          as Utxos
+import           Convex.Wallet         (Wallet)
+import qualified Convex.Wallet         as Wallet
+import           Data.Aeson            (FromJSON, ToJSON)
+import           Data.Bifunctor        (Bifunctor (..))
+import           Data.Function         (on)
+import qualified Data.List             as List
+import           Data.Map              (Map)
+import qualified Data.Map              as Map
+import           Data.Maybe            (isNothing, listToMaybe, mapMaybe,
+                                        maybeToList)
+import           Data.Ord              (Down (..))
+import           Data.Set              (Set)
+import qualified Data.Set              as Set
+import           Data.Text             (Text)
+import qualified Data.Text             as Text
+import           GHC.Generics          (Generic)
 
 type ERA = BabbageEra
 

@@ -28,9 +28,7 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.BuildTx
       Convex.CoinSelection
-      Convex.CoinSelection.CardanoApi
       Convex.MockChain.CoinSelection
       Convex.Query
     hs-source-dirs: lib

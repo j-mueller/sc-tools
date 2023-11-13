@@ -28,7 +28,9 @@ common lang
 library
     import: lang
     exposed-modules:
+      Convex.BuildTx
       Convex.Class
+      Convex.CardanoApi
       Convex.Constants
       Convex.Era
       Convex.Event
@@ -53,7 +55,8 @@ library
       text,
       exceptions,
       time,
-      either-result
+      either-result,
+      array
       
     build-depends:
       cardano-api,

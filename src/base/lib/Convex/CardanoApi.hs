@@ -7,7 +7,7 @@ cardano-api.
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE GADTs     #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
-module Convex.CoinSelection.CardanoApi(
+module Convex.CardanoApi(
   evaluateTransactionBalance,
   evaluateTransactionFee,
   evaluateTransactionExecutionUnits,

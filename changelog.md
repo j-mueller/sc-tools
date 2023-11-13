@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Move `Convex.BuildTx` and `Convex.CoinSelection.CardanoAPI` from `convex-coin-selection` to `convex-base`
+- Rename `Convex.CoinSelection.CardanoAPI` to `Convex.CoinSelection`
+
 ### Added
 
 - More fine-grained functions in `Convex.Wallet.Operator` and `Convex.Query` signing & balancing transactions
