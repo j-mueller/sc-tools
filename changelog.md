@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+- Move `Convex.BuildTx` from `convex-coin-selection` to `convex-base`
+
 ### Added
 
 - More fine-grained functions in `Convex.Wallet.Operator` and `Convex.Query` signing & balancing transactions
