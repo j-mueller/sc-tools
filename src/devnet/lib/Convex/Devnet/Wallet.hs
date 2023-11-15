@@ -105,7 +105,7 @@ balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOu
 balanceAndSubmitReturn tracer node wallet returnOutput tx = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (tx', _) <- CoinSelection.balanceForWalletReturn wallet utxos returnOutput tx
+    (tx', _) <- CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx
     _ <- sendTx tx'
     pure tx'
 

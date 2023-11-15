@@ -16,6 +16,7 @@ module Convex.CoinSelection(
   -- * Data types
   CoinSelectionError(..),
   bodyError,
+  TransactionSignatureCount(..),
   CSInputs(..),
   ERA,
   utxo,
@@ -24,6 +25,7 @@ module Convex.CoinSelection(
   numWitnesses,
   -- * Balancing
   BalancingError(..),
+  TxBalancingMessage(..),
   balanceTransactionBody,
   balanceForWallet,
   balanceForWalletReturn,
@@ -34,42 +36,50 @@ module Convex.CoinSelection(
   requiredTxIns,
   spentTxIns,
   -- * Etc.
-  prepCSInputs
+  prepCSInputs,
+  keyWitnesses,
+  publicKeyCredential
   ) where
 
-import           Cardano.Api.Shelley   (BabbageEra, BuildTx, CardanoMode,
-                                        EraHistory, PoolId, TxBodyContent,
-                                        TxOut, UTxO (..))
-import qualified Cardano.Api.Shelley   as C
-import           Cardano.Ledger.Crypto (StandardCrypto)
-import qualified Cardano.Ledger.Keys   as Keys
-import           Cardano.Slotting.Time (SystemStart)
-import           Control.Lens          (_1, _2, at, makeLensesFor, over,
-                                        preview, set, to, traversed, view, (&),
-                                        (.~), (<>~), (?~), (^.), (^..), (|>))
-import           Control.Monad         (when)
-import           Convex.BuildTx        (addCollateral, execBuildTx,
-                                        setMinAdaDeposit, spendPublicKeyOutput)
-import           Convex.Class          (MonadBlockchain (..))
-import qualified Convex.Lenses         as L
-import           Convex.Utxos          (BalanceChanges (..), UtxoSet (..))
-import qualified Convex.Utxos          as Utxos
-import           Convex.Wallet         (Wallet)
-import qualified Convex.Wallet         as Wallet
-import           Data.Aeson            (FromJSON, ToJSON)
-import           Data.Bifunctor        (Bifunctor (..))
-import           Data.Function         (on)
-import qualified Data.List             as List
-import           Data.Map              (Map)
-import qualified Data.Map              as Map
-import           Data.Maybe            (isNothing, listToMaybe, mapMaybe,
-                                        maybeToList)
-import           Data.Ord              (Down (..))
-import           Data.Set              (Set)
-import qualified Data.Set              as Set
-import           Data.Text             (Text)
-import qualified Data.Text             as Text
-import           GHC.Generics          (Generic)
+import           Cardano.Api.Shelley       (BabbageEra, BuildTx, CardanoMode,
+                                            EraHistory, PoolId, TxBodyContent,
+                                            TxOut, UTxO (..))
+import qualified Cardano.Api.Shelley       as C
+import           Cardano.Ledger.Crypto     (StandardCrypto)
+import qualified Cardano.Ledger.Keys       as Keys
+import           Cardano.Slotting.Time     (SystemStart)
+import           Control.Lens              (_1, _2, at, makeLensesFor, over,
+                                            preview, set, to, traversed, view,
+                                            (&), (.~), (<>~), (?~), (^.), (^..),
+                                            (|>))
+import           Control.Monad             (when)
+import           Control.Monad.Except      (MonadError (..), runExceptT)
+import           Control.Monad.Trans.Class (MonadTrans (..))
+import           Control.Tracer            (Tracer, natTracer, traceWith)
+import           Convex.BuildTx            (addCollateral, execBuildTx,
+                                            setMinAdaDeposit,
+                                            spendPublicKeyOutput)
+import           Convex.Class              (MonadBlockchain (..))
+import qualified Convex.Lenses             as L
+import           Convex.Utxos              (BalanceChanges (..), UtxoSet (..))
+import qualified Convex.Utxos              as Utxos
+import           Convex.Wallet             (Wallet)
+import qualified Convex.Wallet             as Wallet
+import           Data.Aeson                (FromJSON, ToJSON)
+import           Data.Bifunctor            (Bifunctor (..))
+import           Data.Default              (Default (..))
+import           Data.Function             (on)
+import qualified Data.List                 as List
+import           Data.Map                  (Map)
+import qualified Data.Map                  as Map
+import           Data.Maybe                (isNothing, listToMaybe, mapMaybe,
+                                            maybeToList)
+import           Data.Ord                  (Down (..))
+import           Data.Set                  (Set)
+import qualified Data.Set                  as Set
+import           Data.Text                 (Text)
+import qualified Data.Text                 as Text
+import           GHC.Generics              (Generic)
 
 type ERA = BabbageEra
 
@@ -83,6 +93,14 @@ final transaction regardless of the final balance of the transaction.
 
 -}
 
+-- | The expected number of signatures that will be attached to the transaction
+newtype TransactionSignatureCount = TransactionSignatureCount{ unTransactionSignatureCount :: Word }
+  deriving stock (Eq, Ord, Show)
+  deriving newtype (Num, ToJSON, FromJSON, Enum)
+
+instance Default TransactionSignatureCount where
+  def = 1
+
 {-| Inputs needed for coin selection
 -}
 data CSInputs =
@@ -90,7 +108,7 @@ data CSInputs =
     { csiUtxo         :: UTxO ERA -- ^ UTXOs that we need to know about
     , csiTxBody       :: TxBodyContent BuildTx ERA -- ^ Tx body to balance
     , csiChangeOutput :: C.TxOut C.CtxTx C.BabbageEra -- ^ Change output -- see Note [Change Output]
-    , csiNumWitnesses :: Word -- ^ How many shelley key witnesses there will be
+    , csiNumWitnesses :: TransactionSignatureCount -- ^ How many shelley witnesses there will be
     }
 
 makeLensesFor
@@ -119,46 +137,58 @@ data BalancingError =
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-balancingError :: C.TxBodyErrorAutoBalance -> BalancingError
-balancingError = BalancingError . Text.pack . C.displayError
+balancingError :: MonadError BalancingError m => Either C.TxBodyErrorAutoBalance a -> m a
+balancingError = either (throwError . BalancingError . Text.pack . C.displayError) pure
+
+-- | Messages that are produced during coin selection and balancing
+data TxBalancingMessage =
+  SelectingCoins
+  | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
+  | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
+  | Txfee{ fee :: C.Lovelace } -- ^ The transaction fee
+  | TxRemainingBalance{ remainingBalance :: C.Value } -- ^ The remaining balance (after paying the fee)
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (ToJSON)
 
 {-| Perform transaction balancing
 -}
-balanceTransactionBody :: SystemStart -> EraHistory CardanoMode -> C.BundledProtocolParameters C.BabbageEra -> Set PoolId -> CSInputs -> Either BalancingError (C.BalancedTxBody ERA, BalanceChanges)
-balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs{csiUtxo, csiTxBody, csiChangeOutput, csiNumWitnesses} = do
+balanceTransactionBody :: (MonadError BalancingError m) => Tracer m TxBalancingMessage -> SystemStart -> EraHistory CardanoMode -> C.BundledProtocolParameters C.BabbageEra -> Set PoolId -> CSInputs -> m (C.BalancedTxBody ERA, BalanceChanges)
+balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools CSInputs{csiUtxo, csiTxBody, csiChangeOutput, csiNumWitnesses=TransactionSignatureCount numWits} = do
   let mkChangeOutputFor i = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId ?~ i
       changeOutputSmall = mkChangeOutputFor 1
       changeOutputLarge = mkChangeOutputFor ((2^(64 :: Integer)) - 1)
+
+  traceWith tracer StartBalancing{numInputs = csiTxBody ^. L.txIns . to length, numOutputs = csiTxBody ^. L.txOuts . to length}
+
   -- append output instead of prepending
   txbody0 <-
-    first (balancingError . C.TxBodyError) $ C.createAndValidateTransactionBody $ csiTxBody & appendTxOut changeOutputSmall
+    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody $ csiTxBody & appendTxOut changeOutputSmall
 
-  exUnitsMap <- first (balancingError . C.TxBodyErrorValidityInterval) $
+  exUnitsMap <- balancingError . first C.TxBodyErrorValidityInterval $
                 C.evaluateTransactionExecutionUnits
                 systemStart (C.toLedgerEpochInfo eraHistory)
                 protocolParams
                 csiUtxo
                 txbody0
 
-  exUnitsMap' <- first balancingError $
+  traceWith tracer $ ExUnitsMap $ fmap (second (first C.displayError)) $ Map.toList exUnitsMap
+
+  exUnitsMap' <- balancingError $
     case Map.mapEither id exUnitsMap of
       (failures, exUnitsMap') ->
         handleExUnitsErrors C.ScriptValid failures exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
 
   let txbodycontent1 = substituteExecutionUnits exUnitsMap' csiTxBody
+      txbodycontent1' = txbodycontent1 & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
   -- append output instead of prepending
-  txbody1 <- first (balancingError . C.TxBodyError)
-              $ C.createAndValidateTransactionBody
-              $ txbodycontent1
-                  & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1))
-                  & over L.txOuts (|> changeOutputLarge)
+  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody txbodycontent1'
 
-  let !t_fee = C.evaluateTransactionFee protocolParams txbody1 csiNumWitnesses 0
+  let !t_fee = C.evaluateTransactionFee protocolParams txbody1 numWits 0
+  traceWith tracer Txfee{fee = t_fee}
 
-  txbody2 <- first (balancingError . C.TxBodyError)
-              $ C.createAndValidateTransactionBody
-              $ txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeOutput
+  let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeOutput
+  txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody txbodycontent2
 
   -- TODO: If there are any stake pool unregistration certificates in the transaction
   -- then we need to provide a @Map StakeCredential Lovelace@ here.
@@ -167,8 +197,11 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
 
   let !balance = C.evaluateTransactionBalance protocolParams stakePools unregPoolStakeBalance csiUtxo txbody2
 
+  traceWith tracer TxRemainingBalance{remainingBalance = view L._TxOutValue balance}
+
   mapM_ (`checkMinUTxOValue` protocolParams) $ C.txOuts txbodycontent1
 
+  -- debug "balanceTransactionBody: changeOutputBalance"
   changeOutputBalance <- case balance of
     C.TxOutAdaOnly _ b -> do
       let op = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId <>~ (Just $ C.lovelaceToQuantity b)
@@ -176,8 +209,10 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
       pure op
     C.TxOutValue _ v -> do
       case C.valueToLovelace v of
-        -- FIXME: Support non Ada assets
-        Nothing -> Left $ balancingError $ C.TxBodyErrorNonAdaAssetsUnbalanced v
+        -- FIXME: Support non Ada assets. This isn't as easy as just adding @v@ to the change output,
+        --        because any non-Ada that are not present in the original change output will increase
+        --        the output's size, so the fee will need to be computed again.
+        Nothing -> balancingError $ Left $ C.TxBodyErrorNonAdaAssetsUnbalanced v
         Just lvl  ->  do
           let op = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId <>~ (Just $ C.lovelaceToQuantity lvl)
           balanceCheck protocolParams op
@@ -186,65 +221,40 @@ balanceTransactionBody systemStart eraHistory protocolParams stakePools CSInputs
   let finalBodyContent =
         txbodycontent1
           & set L.txFee t_fee
-          & over L.txOuts (accountForNoChange changeOutputBalance)
+          & appendTxOut changeOutputBalance
 
-  txbody3 <- first (balancingError . C.TxBodyError) $ C.createAndValidateTransactionBody finalBodyContent
+  txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody finalBodyContent
 
-  balances <- maybe (Left ComputeBalanceChangeError) Right (balanceChanges csiUtxo finalBodyContent)
+  balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
   let mkBalancedBody b = C.BalancedTxBody finalBodyContent b changeOutputBalance t_fee
   return (mkBalancedBody txbody3, balances)
 
 checkMinUTxOValue
-  :: C.TxOut C.CtxTx C.BabbageEra
+  :: MonadError BalancingError m
+  => C.TxOut C.CtxTx C.BabbageEra
   -> C.BundledProtocolParameters C.BabbageEra
-  -> Either BalancingError ()
+  -> m ()
 checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
   let minUTxO  = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txout pparams'
   if C.txOutValueToLovelace v >= minUTxO
-  then Right ()
-  else Left (CheckMinUtxoValueError txout minUTxO)
+  then pure ()
+  else throwError (CheckMinUtxoValueError txout minUTxO)
 
 appendTxOut :: C.TxOut C.CtxTx C.BabbageEra -> C.TxBodyContent C.BuildTx ERA -> C.TxBodyContent C.BuildTx ERA
 appendTxOut out = over L.txOuts (|> out)
 
-accountForNoChange :: C.TxOut C.CtxTx C.BabbageEra -> [C.TxOut C.CtxTx C.BabbageEra] -> [C.TxOut C.CtxTx C.BabbageEra]
-accountForNoChange change@(C.TxOut _ balance _ _) rest =
-  case C.txOutValueToLovelace balance of
-    C.Lovelace 0 -> rest
-    _ ->
-      -- checks if there already exists a txout with same address
-      -- that contains only ada tokens and no datum hash. If it exists then add change
-      -- instead of creating a new txout, i.e., rest ++ [change]
-      updateRestWithChange change rest
-
 {-| Check that the output has a positive Ada balance greater than or equal to the minimum
 UTxO requirement
 -}
-balanceCheck :: C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra-> Either BalancingError ()
+balanceCheck :: MonadError BalancingError m => C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> m ()
 balanceCheck pparams output =
   let balance = view (L._TxOut . _2) output in
     if view L._TxOutValue balance == mempty
       then return ()
       else do
-        when (C.txOutValueToLovelace balance < 0) (Left . balancingError . C.TxBodyErrorAdaBalanceNegative $ C.txOutValueToLovelace balance)
-        bimap BalanceCheckError (const ()) $ checkMinUTxOValue output pparams
-
-updateRestWithChange :: C.TxOut C.CtxTx C.BabbageEra -> [C.TxOut C.CtxTx C.BabbageEra] -> [C.TxOut C.CtxTx C.BabbageEra]
-updateRestWithChange change [] = [change]
-updateRestWithChange change@(C.TxOut caddr cv _ _) (txout@(C.TxOut addr (C.TxOutAdaOnly e v) C.TxOutDatumNone _) : tl)
-  | addr == caddr =
-      (C.TxOut addr (C.TxOutAdaOnly e ((C.txOutValueToLovelace cv) <> v)) C.TxOutDatumNone C.ReferenceScriptNone) : tl
-  | otherwise = txout : (updateRestWithChange change tl)
-
-updateRestWithChange change@(C.TxOut caddr cv _ _) (txout@(C.TxOut addr (C.TxOutValue e v) C.TxOutDatumNone _) : tl)
-  | addr == caddr =
-    case C.valueToLovelace v of
-      Nothing -> txout : (updateRestWithChange change tl)
-      Just l ->
-        (C.TxOut addr (C.TxOutValue e (C.lovelaceToValue $ (C.txOutValueToLovelace cv) <> l)) C.TxOutDatumNone C.ReferenceScriptNone) : tl
-
-updateRestWithChange change (txout : tl) = txout : (updateRestWithChange change tl)
+        when (C.txOutValueToLovelace balance < 0) (balancingError $ Left $ C.TxBodyErrorAdaBalanceNegative $ C.txOutValueToLovelace balance)
+        checkMinUTxOValue output pparams
 
 handleExUnitsErrors ::
      C.ScriptValidity -- ^ Mark script as expected to pass or fail validation
@@ -351,6 +361,9 @@ calls 'balanceTransactionBody' after preparing all the required inputs.
 balanceTx ::
   (MonadBlockchain m, MonadFail m) =>
 
+  -- | Label
+  Tracer m TxBalancingMessage ->
+
   -- | Return output used for leftover funds. This output will be used for
   --   balancing, and it will be added to the transaction
   --   IF the funds locked in it (after balancing) are non zero.
@@ -364,7 +377,7 @@ balanceTx ::
 
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
-balanceTx returnUTxO0 walletUtxo txb = do
+balanceTx dbg returnUTxO0 walletUtxo txb = do
   params <- queryProtocolParameters
   pools <- queryStakePools
   let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just $ C.unbundleProtocolParams params)
@@ -375,25 +388,26 @@ balanceTx returnUTxO0 walletUtxo txb = do
             UTxO o = otherInputs
         in UTxO (Map.union (fmap fst w) o)
   (finalBody, returnUTxO1) <- either (fail . show) pure (addMissingInputs pools params combinedTxIns returnUTxO0 walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
-  csi <- prepCSInputs returnUTxO1 combinedTxIns finalBody
+  count <- signatureCountForInputs finalBody
+  csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
-  either (fail . show) pure (balanceTransactionBody start hist params pools csi)
+  runExceptT (balanceTransactionBody (natTracer lift dbg) start hist params pools csi) >>= either (fail . show) pure
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
-balanceForWallet wallet walletUtxo txb = do
+balanceForWallet :: (MonadBlockchain m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet dbg wallet walletUtxo txb = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = L.emptyTxOut walletAddress
-  balanceForWalletReturn wallet walletUtxo txOut txb
+  balanceForWalletReturn dbg wallet walletUtxo txOut txb
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadFail m) => Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
-balanceForWalletReturn wallet walletUtxo returnOutput txb = do
-  first (signForWallet wallet) <$> balanceTx returnOutput walletUtxo txb
+balanceForWalletReturn :: (MonadBlockchain m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
+  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
 
 {-| Sign a transaction with the wallet's key
 -}
@@ -509,16 +523,19 @@ using the @MonadBlockchain@ effect to query any missing UTxO information.
 -}
 prepCSInputs ::
  MonadBlockchain m
-  => C.TxOut C.CtxTx C.BabbageEra -- ^ Change address
+  => TransactionSignatureCount
+  -> C.TxOut C.CtxTx C.BabbageEra -- ^ Change address
   -> C.UTxO ERA -- ^ UTxOs that may be used for balancing
   -> C.TxBodyContent C.BuildTx C.BabbageEra -- ^ Unbalanced transaction body
   -> m CSInputs -- ^ Inputs for coin balancing
-prepCSInputs csiChangeAddress csiUtxo csiTxBody =
+prepCSInputs sigCount csiChangeAddress csiUtxo csiTxBody = do
+  -- let actualSigCount = max sigCount (_ $ keyWitnesses csiTxBody) in
   CSInputs
     <$> pure csiUtxo
     <*> pure csiTxBody
     <*> pure csiChangeAddress
-    <*> fmap (succ . fromIntegral . Set.size) (keyWitnesses csiTxBody)
+    <*> pure sigCount
+    -- <*> fmap (succ . fromIntegral . Set.size) (keyWitnesses csiTxBody)
 
 spentTxIns :: C.TxBodyContent v C.BabbageEra -> Set C.TxIn
 spentTxIns (view L.txIns -> inputs) =
@@ -534,12 +551,16 @@ requiredTxIns body =
 lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
 lookupTxIns = utxoByTxIn
 
-keyWitnesses :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
-keyWitnesses (view L.txIns -> inputs) = do
-  C.UTxO utxos <- utxoByTxIn (Set.fromList $ fst <$> inputs)
+keyWitnesses :: MonadBlockchain m => C.TxBodyContent v C.BabbageEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
+keyWitnesses (requiredTxIns -> inputs) = do
+  C.UTxO utxos <- utxoByTxIn inputs
   pure $ Set.fromList $ mapMaybe (publicKeyCredential . snd) $ Map.toList utxos
 
-publicKeyCredential :: C.TxOut C.CtxUTxO C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
+-- | The number of signatures required to spend the transaction's inputs
+signatureCountForInputs :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
+signatureCountForInputs = fmap (TransactionSignatureCount . fromIntegral . Set.size) . keyWitnesses
+
+publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
 publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)
 
 spendPubKeyTxIn :: C.TxIn -> (C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))
