@@ -72,6 +72,8 @@ test-suite convex-coin-selection-test
     QuickCheck,
     lens,
     cardano-ledger-alonzo,
+    cardano-ledger-babbage,
+    cardano-ledger-shelley,
     convex-coin-selection,
     convex-mockchain,
     convex-base,

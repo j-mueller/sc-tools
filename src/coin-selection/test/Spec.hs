@@ -6,10 +6,15 @@
 module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
+import           Cardano.Ledger.Alonzo.Rules    (AlonzoUtxoPredFailure (..))
 import           Cardano.Ledger.Alonzo.Scripts  (AlonzoScript (..),
                                                  transProtocolVersion,
                                                  validScript)
+import           Cardano.Ledger.Babbage.Rules   (BabbageUtxoPredFailure (..),
+                                                 BabbageUtxowPredFailure (..))
 import           Cardano.Ledger.Language        (Language (..))
+import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
+import           Cardano.Ledger.Shelley.Rules   (ShelleyLedgerPredFailure (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (void, when)
 import           Control.Monad.Except           (runExcept, runExceptT)
@@ -30,12 +35,17 @@ import           Convex.Class                   (MonadBlockchain (..),
 import           Convex.CoinSelection           (keyWitnesses,
                                                  publicKeyCredential)
 import qualified Convex.Lenses                  as L
+import           Convex.MockChain               (MockchainError (..),
+                                                 ValidationError (..))
 import           Convex.MockChain.CoinSelection (balanceAndSubmit,
                                                  payToOperator', paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
-import           Convex.MockChain.Utils         (mockchainSucceeds,
+import           Convex.MockChain.Utils         (mockchainFails,
+                                                 mockchainSucceeds,
+                                                 mockchainSucceedsWith,
                                                  runMockchainProp)
+import           Convex.NodeParams              (maxTxSize, protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
@@ -79,6 +89,7 @@ tests = testGroup "unit tests"
     ]
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds checkResolveDatumHash)
+    , testCase "large transactions" largeTransactionTest
     ]
   ]
 
@@ -251,3 +262,18 @@ balanceMultiAddress = do
               Just pkh <- publicKeyCredential <$> operatorReturnOutput o
               when (pkh `Set.member` txInputs) (modify (signTxOperator o))
             void (sendTx finalTx)
+
+largeTransactionTest :: Assertion
+largeTransactionTest = do
+  let largeDatum :: [Integer] = replicate 10_000 33
+      largeDatumTx = execBuildTxWallet Wallet.w1 (payToPlutusV1 Defaults.networkId txInscript largeDatum C.NoStakeAddress mempty)
+
+  -- tx fails with default parameters
+  mockchainFails largeDatumTx $ \case
+    MockchainValidationFailed (ApplyTxFailure (ApplyTxError [UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20311 16384)))])) -> pure ()
+    err -> fail $ "Unexpected failure: " <> show err
+
+  -- the tx should succeed after setting the max tx size to exactly 20311 (see the error message in the test above)
+  let protParams = Defaults.protocolParameters & maxTxSize .~ 20311
+      params' = Defaults.nodeParams & protocolParameters .~ (either (error. show) id (C.bundleProtocolParams C.BabbageEra protParams))
+  mockchainSucceedsWith params' largeDatumTx
