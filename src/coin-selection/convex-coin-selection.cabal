@@ -37,6 +37,7 @@ library
       base >= 4.14.0,
       containers >= 0.6.5,
       lens,
+      contra-tracer,
       convex-base,
       convex-mockchain,
       convex-node-client,
@@ -44,7 +45,8 @@ library
       array,
       text,
       mtl,
-      servant-client
+      servant-client,
+      data-default,
 
     -- cardano dependencies
     build-depends:
@@ -73,6 +75,8 @@ test-suite convex-coin-selection-test
     base >= 4.14.0,
     tasty,
     tasty-hunit,
+    tasty-quickcheck,
+    QuickCheck,
     lens,
     convex-coin-selection,
     convex-mockchain,
@@ -83,3 +87,6 @@ test-suite convex-coin-selection-test
     plutus-ledger-api,
     plutus-tx,
     plutus-tx-plugin,
+    cardano-ledger-core,
+    mtl,
+    transformers

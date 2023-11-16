@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.MockChain.Defaults
+      Convex.MockChain.Gen
       Convex.MockChain.Utils
       Convex.MockChain
       Convex.NodeParams
@@ -46,11 +47,13 @@ library
       transformers,
       strict-containers,
       HUnit,
+      QuickCheck,
       bytestring
 
     -- cardano dependencies
     build-depends:
       cardano-api,
+      cardano-crypto-class,
       cardano-slotting -any,
       ouroboros-consensus -any,
       cardano-ledger-core -any,
