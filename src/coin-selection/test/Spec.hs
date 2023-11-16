@@ -6,6 +6,7 @@
 module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
+import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (void, when)
 import           Control.Monad.Except           (runExceptT)
@@ -26,12 +27,17 @@ import           Convex.Class                   (MonadBlockchain (..),
 import           Convex.CoinSelection           (keyWitnesses,
                                                  publicKeyCredential)
 import qualified Convex.Lenses                  as L
+import           Convex.MockChain               (MockchainError (..),
+                                                 ValidationError (..))
 import           Convex.MockChain.CoinSelection (balanceAndSubmit,
                                                  payToOperator', paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
-import           Convex.MockChain.Utils         (mockchainSucceeds,
+import           Convex.MockChain.Utils         (mockchainFails,
+                                                 mockchainSucceeds,
+                                                 mockchainSucceedsWith,
                                                  runMockchainProp)
+import           Convex.NodeParams              (maxTxSize, protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
@@ -72,6 +78,7 @@ tests = testGroup "unit tests"
     ]
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds checkResolveDatumHash)
+    , testCase "large transactions" largeTransactionTest
     ]
   ]
 
@@ -231,3 +238,18 @@ balanceMultiAddress = do
               Just pkh <- publicKeyCredential <$> operatorReturnOutput o
               when (pkh `Set.member` txInputs) (modify (signTxOperator o))
             void (sendTx finalTx)
+
+largeTransactionTest :: Assertion
+largeTransactionTest = do
+  let largeDatum :: [Integer] = replicate 10_000 33
+      largeDatumTx = execBuildTxWallet Wallet.w1 (payToPlutusV1 Defaults.networkId txInscript largeDatum C.NoStakeAddress mempty)
+
+  -- tx fails with default parameters
+  mockchainFails largeDatumTx $ \case
+    MockchainValidationFailed (ApplyTxFailure (ApplyTxError [_])) -> pure ()
+    err -> fail $ "Unexpected failure: " <> show err
+
+  -- the tx should succeed after increasing the max. tx size
+  let requiredTxSize = 20311 -- see the error message from the test above
+      params' = Defaults.nodeParams & protocolParameters . maxTxSize .~ requiredTxSize
+  mockchainSucceedsWith params' largeDatumTx

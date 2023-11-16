@@ -42,7 +42,6 @@ library
       convex-mockchain,
       convex-node-client,
       convex-wallet,
-      array,
       text,
       mtl,
       servant-client,
@@ -52,12 +51,7 @@ library
     build-depends:
       cardano-api,
       cardano-ledger-core -any,
-      cardano-ledger-shelley,
-      cardano-ledger-alonzo,
-      cardano-ledger-babbage,
-      plutus-ledger-api,
       cardano-slotting,
-      ouroboros-consensus,
       transformers,
       mtl,
       either-result
@@ -78,6 +72,7 @@ test-suite convex-coin-selection-test
     tasty-quickcheck,
     QuickCheck,
     lens,
+    cardano-ledger-shelley,
     convex-coin-selection,
     convex-mockchain,
     convex-base,
@@ -87,6 +82,5 @@ test-suite convex-coin-selection-test
     plutus-ledger-api,
     plutus-tx,
     plutus-tx-plugin,
-    cardano-ledger-core,
     mtl,
     transformers
