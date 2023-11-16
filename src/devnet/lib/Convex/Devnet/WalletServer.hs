@@ -122,16 +122,16 @@ walletCliProcess cwd com = (proc walletExecutable strArgs){cwd} where
   config = \case
     RunWallet cfg _ _ -> configArgs cfg
     ShowAddress cfg _ -> configArgs cfg
-    _ -> []
+    _                 -> []
 
   opConfig = \case
     RunWallet _ opCfg _ -> opConfigArgs opCfg
     ShowAddress _ opCfg -> opConfigArgs opCfg
-    _ -> []
+    _                   -> []
 
   portConfig = \case
     RunWallet _ _ port -> ["--http.port", show port]
-    _ -> []
+    _                  -> []
 
   strArgs =
     mconcat
@@ -161,7 +161,7 @@ opConfigArgs OperatorConfigVerification{ocvPaymentKeyFile, ocvStakeVerificationK
 getUTxOs :: RunningWalletServer -> IO (UtxoSet CtxTx ())
 getUTxOs RunningWalletServer{rwsClient} = API.getUTxOs rwsClient >>= \case
   Left err -> error ("getUTxOs failed: " <> show err)
-  Right x -> pure x
+  Right x  -> pure x
 
 {-| Wait until the service is online (healthcheck route respons with 200)
 -}

@@ -43,9 +43,13 @@ module Convex.NodeParams(
 
 import           Cardano.Api.Shelley            (CardanoMode, EraHistory,
                                                  NetworkId (..), PoolId,
-                                                 ProtocolParameters (..))
+                                                 ProtocolParameters (..),
+                                                 ShelleyBasedEra (..),
+                                                 fromLedgerPParams,
+                                                 toLedgerPParams)
 import           Cardano.Ledger.Babbage.PParams (PParams)
 import           Cardano.Slotting.Time          (SlotLength, SystemStart)
+import           Control.Lens                   (Lens', lens)
 import           Control.Lens.TH                (makeLensesFor)
 import           Convex.Era                     (ERA)
 import           Data.Set                       as Set (Set)
@@ -63,13 +67,21 @@ data NodeParams =
 
 makeLensesFor
   [ ("npNetworkId", "networkId")
-  , ("npProtocolParameters", "protocolParameters")
   , ("npSystemStart", "systemStart")
   , ("npEraHistory", "eraHistory")
   , ("npStakePools", "stakePools")
   , ("npSlotLength", "slotLength")
-  , ("npLedgerParams", "ledgerProtocolParameters")
   ] ''NodeParams
+
+protocolParameters :: Lens' NodeParams ProtocolParameters
+protocolParameters = lens get set where
+  get = npProtocolParameters
+  set nps protParams = nps{npProtocolParameters = protParams, npLedgerParams = toLedgerPParams ShelleyBasedEraBabbage protParams}
+
+ledgerProtocolParameters :: Lens' NodeParams (PParams ERA)
+ledgerProtocolParameters = lens get set where
+  get = npLedgerParams
+  set nps protParams = nps{npLedgerParams = protParams, npProtocolParameters = fromLedgerPParams ShelleyBasedEraBabbage protParams}
 
 makeLensesFor
   [ ("protocolParamProtocolVersion", "protocolVersion")
