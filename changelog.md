@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename `Convex.CoinSelection.CardanoAPI` to `Convex.CoinSelection`
 - Added a `Tracer m TxBalancingMessage` argument to the coin selection functions. This prints out useful information about decisions taken during coin selection and balancing. Instantiate with `mempty` to ignore the messages.
 - Changed the `protocolParameters`, `ledgerProtocolParameters` lenses in `Convex.NodeParams` to update the other field too (making sure they are always in sync)
+- Export `Convex.Wallet.MockWallet.w4`
 
 ### Added
 
