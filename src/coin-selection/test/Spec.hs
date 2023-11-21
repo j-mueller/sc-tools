@@ -12,9 +12,10 @@ import           Control.Monad                  (void, when)
 import           Control.Monad.Except           (runExceptT)
 import           Control.Monad.State.Strict     (execStateT, modify)
 import           Control.Monad.Trans.Class      (MonadTrans (..))
-import           Convex.BuildTx                 (BuildTxT, assetValue,
-                                                 execBuildTx', execBuildTxT,
-                                                 mintPlutusV1, payToAddress,
+import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
+                                                 assetValue, execBuildTx',
+                                                 execBuildTxT, mintPlutusV1,
+                                                 payToAddress,
                                                  payToAddressTxOut,
                                                  payToPlutusV1, payToPlutusV2,
                                                  payToPlutusV2Inline,
@@ -42,9 +43,11 @@ import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
-import           Convex.Wallet.Operator         (operatorPaymentCredential,
+import           Convex.Wallet.Operator         (oPaymentKey,
+                                                 operatorPaymentCredential,
                                                  operatorReturnOutput,
-                                                 signTxOperator)
+                                                 signTxOperator,
+                                                 verificationKey)
 import           Data.Foldable                  (traverse_)
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
@@ -210,34 +213,41 @@ execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.ledgerProtocolParameters)
   C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet (tx L.emptyTx)
 
--- | Balance a transaction using
--- a list of operators
+-- | Balance a transaction using a list of operators
+--   Check that the fees are calculated correctly to spend outputs from different addresses
+--   and to consider the required signatures
 balanceMultiAddress :: Property
 balanceMultiAddress = do
   let gen = (,) <$> Gen.operator <*> fmap (take 20) (Gen.listOf Gen.operator)
   QC.forAll gen $ \(op, operators) ->
     QC.forAll (Gen.chooseInteger (5_000_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Lovelace -> nAmount) ->
-      classify (null operators) "1 operator"
-        $ classify (length operators > 0 && length operators <= 9) "2-10 operators"
-        $ classify (length operators > 9) "10+ operators"
-        $ runMockchainProp $ lift $ do
-            -- send Ada to each operator
-            traverse_ (payToOperator' mempty (C.lovelaceToValue $ 2_500_000 + nAmount) Wallet.w2) (op:operators)
+      QC.forAll (Gen.sublistOf (op:operators)) $ \requiredSignatures ->
+        classify (null operators) "1 operator"
+          $ classify (length operators > 0 && length operators <= 9) "2-9 operators"
+          $ classify (length operators > 9) "10+ operators"
+          $ classify (length requiredSignatures == 0) "0 required signatures"
+          $ classify (length requiredSignatures > 0 && length requiredSignatures <= 9) "1-9 required signatures"
+          $ classify (length requiredSignatures > 9) "10+ required signatures"
+          $ runMockchainProp $ lift $ do
+              -- send Ada to each operator
+              traverse_ (payToOperator' mempty (C.lovelaceToValue $ 2_500_000 + nAmount) Wallet.w2) (op:operators)
 
-            -- send the entire amount back to Wallet.w2
-            walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
-            let tx = execBuildTx' $ do
-                      payToAddress walletAddr $ C.lovelaceToValue nAmount
-                      setMinAdaDepositAll Defaults.ledgerProtocolParameters
+              -- send the entire amount back to Wallet.w2
+              walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
+              let tx = execBuildTx' $ do
+                        payToAddress walletAddr $ C.lovelaceToValue nAmount
+                        traverse_ addRequiredSignature (fmap (C.verificationKeyHash . verificationKey . oPaymentKey) requiredSignatures)
+                        setMinAdaDepositAll Defaults.ledgerProtocolParameters
 
-            -- balance the tx using all of the operators' addressses
-            balancedTx <- runExceptT (balancePaymentCredentials mempty (operatorPaymentCredential op) (operatorPaymentCredential <$> operators) Nothing tx) >>= either (fail . show) pure
-            txInputs <- let C.Tx (C.TxBody txBody) _ = balancedTx in keyWitnesses txBody
-            -- add the required operators' signatures
-            finalTx <- flip execStateT balancedTx $ flip traverse_ (op:operators) $ \o -> do
-              Just pkh <- publicKeyCredential <$> operatorReturnOutput o
-              when (pkh `Set.member` txInputs) (modify (signTxOperator o))
-            void (sendTx finalTx)
+              -- balance the tx using all of the operators' addressses
+              balancedTx <- runExceptT (balancePaymentCredentials mempty (operatorPaymentCredential op) (operatorPaymentCredential <$> operators) Nothing tx) >>= either (fail . show) pure
+              txInputs <- let C.Tx (C.TxBody txBody) _ = balancedTx in keyWitnesses txBody
+              let (Set.fromList -> extraWits) = let C.Tx (C.TxBody txBody) _ = balancedTx in view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) txBody
+              -- add the required operators' signatures
+              finalTx <- flip execStateT balancedTx $ flip traverse_ (op:operators) $ \o -> do
+                Just pkh <- publicKeyCredential <$> operatorReturnOutput o
+                when (pkh `Set.member` txInputs || (C.verificationKeyHash . verificationKey $ oPaymentKey o) `Set.member` extraWits) (modify (signTxOperator o))
+              void (sendTx finalTx)
 
 largeTransactionTest :: Assertion
 largeTransactionTest = do
