@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move `Convex.BuildTx` from `convex-coin-selection` to `convex-base`
 - Added a `Tracer m TxBalancingMessage` argument to the coin selection functions. This prints out useful information about decisions taken during coin selection and balancing. Instantiate with `mempty` to ignore the messages.
 - Export `Convex.Wallet.MockWallet.w4`
+- The balancing algorithm now correctly calculates the number of required signatures when computing the transaction fee
 
 ### Added
 
