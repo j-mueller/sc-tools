@@ -388,7 +388,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
             UTxO o = otherInputs
         in UTxO (Map.union (fmap fst w) o)
   (finalBody, returnUTxO1) <- either (fail . show) pure (addMissingInputs pools params combinedTxIns returnUTxO0 walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
-  count <- signatureCountForInputs finalBody
+  count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
@@ -529,13 +529,11 @@ prepCSInputs ::
   -> C.TxBodyContent C.BuildTx C.BabbageEra -- ^ Unbalanced transaction body
   -> m CSInputs -- ^ Inputs for coin balancing
 prepCSInputs sigCount csiChangeAddress csiUtxo csiTxBody = do
-  -- let actualSigCount = max sigCount (_ $ keyWitnesses csiTxBody) in
   CSInputs
     <$> pure csiUtxo
     <*> pure csiTxBody
     <*> pure csiChangeAddress
     <*> pure sigCount
-    -- <*> fmap (succ . fromIntegral . Set.size) (keyWitnesses csiTxBody)
 
 spentTxIns :: C.TxBodyContent v C.BabbageEra -> Set C.TxIn
 spentTxIns (view L.txIns -> inputs) =
@@ -557,8 +555,14 @@ keyWitnesses (requiredTxIns -> inputs) = do
   pure $ Set.fromList $ mapMaybe (publicKeyCredential . snd) $ Map.toList utxos
 
 -- | The number of signatures required to spend the transaction's inputs
-signatureCountForInputs :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
-signatureCountForInputs = fmap (TransactionSignatureCount . fromIntegral . Set.size) . keyWitnesses
+--   and to satisfy the "extra key witnesses" constraint
+requiredSignatureCount :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
+requiredSignatureCount content = do
+  keyWits <- keyWitnesses content
+  let hsh (C.PaymentKeyHash h) = h
+      extraSigs = view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) content
+      allSigs = Set.union keyWits (Set.fromList $ fmap hsh extraSigs)
+  pure $ TransactionSignatureCount $ fromIntegral $ Set.size allSigs
 
 publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
 publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)
