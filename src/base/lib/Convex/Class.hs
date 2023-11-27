@@ -252,9 +252,7 @@ runQuery' qry = runQuery qry >>= \case
     let msg = "runQuery': Era mismatch: " <> show err
     logWarnS msg
     throwError $ FailWith msg
-  Right result' -> MonadBlockchainCardanoNodeT $ do
-    logInfoS "runQuery': Success"
-    pure result'
+  Right result' -> pure result'
 
 instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT e m) where
   sendTx tx = MonadBlockchainCardanoNodeT $ do
