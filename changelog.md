@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed the `protocolParameters`, `ledgerProtocolParameters` lenses in `Convex.NodeParams` to update the other field too (making sure they are always in sync)
 - Export `Convex.Wallet.MockWallet.w4`
 - The balancing algorithm now correctly calculates the number of required signatures when computing the transaction fee
+- Deleted spurious `runQuery'` log messages
 
 ### Added
 
