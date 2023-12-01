@@ -40,6 +40,7 @@ import qualified Convex.Devnet.NodeQueries as NodeQueries
 import           Convex.Devnet.Utils       (keysFor)
 import           Convex.Lenses             (emptyTxOut)
 import           Convex.MonadLog           (MonadLog (..))
+import           Convex.Utils              (failOnError)
 import           Convex.Utxos              (UtxoSet)
 import qualified Convex.Utxos              as Utxos
 import           Convex.Wallet             (Wallet (..), address)
@@ -105,7 +106,7 @@ balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOu
 balanceAndSubmitReturn tracer node wallet returnOutput tx = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (tx', _) <- CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx
+    (tx', _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx)
     _ <- sendTx tx'
     pure tx'
 

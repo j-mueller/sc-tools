@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export `Convex.Wallet.MockWallet.w4`
 - The balancing algorithm now correctly calculates the number of required signatures when computing the transaction fee
 - Deleted spurious `runQuery'` log messages
+- The constraints for most of the functions in `Convex.CoinSelection` have changed from `MonadFail m` to `MonadError BalanceTxError m`, allowing for better error handling
 
 ### Added
 

@@ -12,7 +12,6 @@ queries that we need for building transactions
 module Convex.Query(
   MonadUtxoQuery(..),
   utxosByPayment,
-  BalancingError(..),
   balanceTx,
 
   -- * Tx balancing for operator
@@ -47,7 +46,8 @@ import qualified Control.Monad.Trans.State.Strict   as LazyState
 import           Control.Tracer                     (Tracer, natTracer)
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT)
-import           Convex.CoinSelection               (TxBalancingMessage)
+import           Convex.CoinSelection               (BalanceTxError,
+                                                     TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MockChain                   (MockchainT, utxoSet)
 import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
@@ -100,16 +100,13 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
 
 deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWaitingT m)
 
-newtype BalancingError = BalancingError String
-  deriving stock (Eq, Ord, Show)
-
 {-| Balance the transaction body using the UTxOs locked by the payment credentials,
 returning any unused funds to the given return output
 |-}
-balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => Tracer m TxBalancingMessage -> [PaymentCredential] -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either BalancingError (BalancedTxBody BabbageEra, BalanceChanges))
+balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => Tracer m TxBalancingMessage -> [PaymentCredential] -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
 balanceTx dbg inputCredentials changeOutput txBody = do
   o <- fromApiUtxo <$> utxosByPaymentCredentials (Set.fromList inputCredentials)
-  runExceptT $ liftResult BalancingError (Convex.CoinSelection.balanceTx (natTracer (lift . lift) dbg) changeOutput o txBody)
+  runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody)
 
 newtype WalletAPIQueryT m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog)
@@ -170,6 +167,6 @@ selectOperatorUTxO operator = fmap (listToMaybe . Map.toList . C.unUTxO) (operat
 
 -- | Failures during txn balancing and submission
 data BalanceAndSubmitError =
-  BalanceError BalancingError
+  BalanceError BalanceTxError
   | SubmitError String
   deriving Show
