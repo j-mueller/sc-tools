@@ -24,6 +24,7 @@ module Convex.Utils(
   mapError,
   failOnLeft,
   failOnLeftLog,
+  failOnError,
 
   -- * Reading key files
   readSigningKeyFromFile,
@@ -217,6 +218,11 @@ failOnLeftLog f = \case
     logWarnS (f err)
     liftIO exitFailure
   Right x -> pure x
+
+{-| Call @fail@ if there is an error
+-}
+failOnError :: (MonadFail m, Show e) => ExceptT e m a -> m a
+failOnError action = runExceptT action >>= either (fail . show) pure
 
 {-| Read a serialised signing key from a file
 -}

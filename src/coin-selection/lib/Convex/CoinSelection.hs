@@ -24,6 +24,7 @@ module Convex.CoinSelection(
   changeOutput,
   numWitnesses,
   -- * Balancing
+  BalanceTxError(..),
   BalancingError(..),
   TxBalancingMessage(..),
   balanceTransactionBody,
@@ -53,7 +54,7 @@ import           Control.Lens              (_1, _2, at, makeLensesFor, over,
                                             (&), (.~), (<>~), (?~), (^.), (^..),
                                             (|>))
 import           Control.Monad             (when)
-import           Control.Monad.Except      (MonadError (..), runExceptT)
+import           Control.Monad.Except      (MonadError (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Tracer            (Tracer, natTracer, traceWith)
 import           Convex.BuildTx            (addCollateral, execBuildTx,
@@ -61,6 +62,7 @@ import           Convex.BuildTx            (addCollateral, execBuildTx,
                                             spendPublicKeyOutput)
 import           Convex.Class              (MonadBlockchain (..))
 import qualified Convex.Lenses             as L
+import           Convex.Utils              (mapError)
 import           Convex.Utxos              (BalanceChanges (..), UtxoSet (..))
 import qualified Convex.Utxos              as Utxos
 import           Convex.Wallet             (Wallet)
@@ -143,10 +145,14 @@ balancingError = either (throwError . BalancingError . Text.pack . C.displayErro
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage =
   SelectingCoins
+  | PrepareInputs{walletBalance :: C.Value, inputsBalance :: C.Value} -- ^ Gathering the @TxOut@s that the transaction spends, and the @TxOut@s that are available for balancing (from the wallet)
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
   | Txfee{ fee :: C.Lovelace } -- ^ The transaction fee
   | TxRemainingBalance{ remainingBalance :: C.Value } -- ^ The remaining balance (after paying the fee)
+  | NoNonAdaAssetsMissing -- ^ The transaction was not missing any non-Ada assets.
+  | MissingNativeAssets [(C.PolicyId, C.AssetName, C.Quantity)] -- ^ The transaction is missing some non-Ada inputs, these will be covered from the wallet's UTxOs.
+  | MissingLovelace C.Lovelace -- ^ The transaction is missing some Ada. The amount will be covered from the wallet's UTxOs.
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON)
 
@@ -355,11 +361,17 @@ txOutChange (view L._TxOut -> (fmap C.fromShelleyPaymentCredential . preview (L.
   BalanceChanges (Map.singleton addr value)
 txOutChange _ = mempty
 
+data BalanceTxError =
+  ACoinSelectionError CoinSelectionError
+  | ABalancingError BalancingError
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
 {-| Balance the transaction using the given UTXOs and return address. This
 calls 'balanceTransactionBody' after preparing all the required inputs.
 -}
 balanceTx ::
-  (MonadBlockchain m, MonadFail m) =>
+  (MonadBlockchain m, MonadError BalanceTxError m) =>
 
   -- | Label
   Tracer m TxBalancingMessage ->
@@ -383,20 +395,21 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
   let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just $ C.unbundleProtocolParams params)
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns txb)
+  traceWith dbg PrepareInputs{walletBalance = Utxos.totalBalance walletUtxo, inputsBalance = Utxos.totalBalance (Utxos.fromApiUtxo otherInputs)}
   let combinedTxIns =
         let UtxoSet w = walletUtxo
             UTxO o = otherInputs
         in UTxO (Map.union (fmap fst w) o)
-  (finalBody, returnUTxO1) <- either (fail . show) pure (addMissingInputs pools params combinedTxIns returnUTxO0 walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
+  (finalBody, returnUTxO1) <- mapError ACoinSelectionError (addMissingInputs (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
   count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
-  runExceptT (balanceTransactionBody (natTracer lift dbg) start hist params pools csi) >>= either (fail . show) pure
+  mapError ABalancingError (balanceTransactionBody (natTracer lift dbg) start hist params pools csi)
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
 balanceForWallet dbg wallet walletUtxo txb = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
@@ -405,7 +418,7 @@ balanceForWallet dbg wallet walletUtxo txb = do
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
 balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
   first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
 
@@ -442,13 +455,13 @@ runsScripts body =
 
 {-| Add inputs to ensure that the balance is strictly positive
 -}
-addMissingInputs :: Set PoolId -> C.BundledProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
-addMissingInputs poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
-  txb <- first bodyError (C.createAndValidateTransactionBody txBodyContent0)
+addMissingInputs :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> C.BundledProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
+addMissingInputs dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
+  txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody txBodyContent0)
   let bal = C.evaluateTransactionBalance ledgerPPs poolIds mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
 
-  (txBodyContent1, additionalBalance) <- addInputsForNonAdaAssets bal walletUtxo txBodyContent0
+  (txBodyContent1, additionalBalance) <- addInputsForNonAdaAssets dbg bal walletUtxo txBodyContent0
 
   let bal0 = bal <> additionalBalance
   let (returnUTxO1, C.Lovelace deposit) = addOutputForNonAdaAssets ledgerPPs returnUTxO0 bal0
@@ -464,35 +477,41 @@ addMissingInputs poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 =
       C.Lovelace l = C.selectLovelace bal0
       missingLovelace = C.Lovelace (deposit + threshold - l)
 
+  traceWith dbg (MissingLovelace missingLovelace)
   (,returnUTxO1) <$> addAdaOnlyInputsFor missingLovelace available txBodyContent1
 
 {-| Select inputs from the wallet's UTXO set to cover the given amount of lovelace.
 Will only consider inputs that have no other assets besides Ada.
 -}
-addAdaOnlyInputsFor :: C.Lovelace -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> Either CoinSelectionError (TxBodyContent BuildTx ERA)
+addAdaOnlyInputsFor :: MonadError CoinSelectionError m => C.Lovelace -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA)
 addAdaOnlyInputsFor l availableUtxo txBodyContent =
   case Wallet.selectAdaInputsCovering availableUtxo l of
-    Nothing -> Left (NotEnoughAdaOnlyOutputsFor l)
-    Just (_, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
+    Nothing -> throwError (NotEnoughAdaOnlyOutputsFor l)
+    Just (_, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
 
 {-| Examine the negative part of the transaction balance and select inputs from
 the wallet's UTXO set to cover the non-Ada assets required by it. If there are no
 non-Ada asset then no inputs will be added.
 -}
 addInputsForNonAdaAssets ::
+  MonadError CoinSelectionError m =>
+  Tracer m TxBalancingMessage ->
   C.Value ->
   UtxoSet ctx a ->
   TxBodyContent BuildTx ERA ->
-  Either CoinSelectionError (TxBodyContent BuildTx ERA, C.Value)
-addInputsForNonAdaAssets txBal availableUtxo txBodyContent
+  m (TxBodyContent BuildTx ERA, C.Value)
+addInputsForNonAdaAssets dbg txBal availableUtxo txBodyContent
   | isNothing (C.valueToLovelace $ C.valueFromList $ fst $ splitValue txBal) = do
       let nativeAsset (C.AdaAssetId, _) = Nothing
           nativeAsset (C.AssetId p n, C.Quantity q) = Just (p, n, C.Quantity (abs q))
           missingNativeAssets = mapMaybe nativeAsset (fst $ splitValue txBal)
+      traceWith dbg (MissingNativeAssets missingNativeAssets)
       case Wallet.selectMixedInputsCovering availableUtxo missingNativeAssets of
-        Nothing -> Left (NotEnoughMixedOutputsFor missingNativeAssets (Utxos.totalBalance availableUtxo) txBal)
-        Just (total, ins) -> Right (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
-  | otherwise = return (txBodyContent, mempty)
+        Nothing -> throwError (NotEnoughMixedOutputsFor missingNativeAssets (Utxos.totalBalance availableUtxo) txBal)
+        Just (total, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
+  | otherwise = do
+      traceWith dbg NoNonAdaAssetsMissing
+      return (txBodyContent, mempty)
 
 {-| Examine the positive part of the transaction balance and add an output for
 any non-Ada asset it contains. If the positive part only contains Ada then no
