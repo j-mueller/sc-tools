@@ -145,7 +145,7 @@ balancingError = either (throwError . BalancingError . Text.pack . C.displayErro
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage =
   SelectingCoins
-  | PrepareInputs{walletBalance :: C.Value, inputsBalance :: C.Value} -- ^ Gathering the @TxOut@s that the transaction spends, and the @TxOut@s that are available for balancing (from the wallet)
+  | PrepareInputs{walletBalance :: C.Value, transactionBalance :: C.Value} -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
   | Txfee{ fee :: C.Lovelace } -- ^ The transaction fee
@@ -395,7 +395,6 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
   let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just $ C.unbundleProtocolParams params)
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns txb)
-  traceWith dbg PrepareInputs{walletBalance = Utxos.totalBalance walletUtxo, inputsBalance = Utxos.totalBalance (Utxos.fromApiUtxo otherInputs)}
   let combinedTxIns =
         let UtxoSet w = walletUtxo
             UTxO o = otherInputs
@@ -460,7 +459,10 @@ addMissingInputs dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyConten
   txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody txBodyContent0)
   let bal = C.evaluateTransactionBalance ledgerPPs poolIds mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
-
+  traceWith dbg PrepareInputs
+    { walletBalance      = Utxos.totalBalance walletUtxo
+    , transactionBalance = bal
+    }
   (txBodyContent1, additionalBalance) <- addInputsForNonAdaAssets dbg bal walletUtxo txBodyContent0
 
   let bal0 = bal <> additionalBalance
