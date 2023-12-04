@@ -32,6 +32,7 @@ import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
                                                  setMinAdaDepositAll,
                                                  spendPlutusV1, spendPlutusV2,
                                                  spendPlutusV2Ref)
+import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain (resolveDatumHash))
 import           Convex.CoinSelection           (BalanceTxError, keyWitnesses,
@@ -91,6 +92,7 @@ tests = testGroup "unit tests"
     , testCase "using a reference script" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds $ failOnError mintingPlutus)
     , testCase "making payments with tokens" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens))
+    , testCase "making payments with tokens (2)" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens2))
     ]
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
@@ -178,6 +180,20 @@ spendTokens _ = do
   _ <- nativeAssetPaymentTo 51 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 100 Wallet.w2 Wallet.w3
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
+
+spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
+spendTokens2 txi = do
+  let q  = 98
+      wTo = Wallet.w2
+      wFrom = Wallet.w1
+      vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
+      tx = execBuildTx' $ do
+            payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+            BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
+            mintPlutusV1 mintingScript () "assetName" (-2)
+            setMinAdaDepositAll Defaults.bundledProtocolParameters
+  void $ wTo `paymentTo` wFrom
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wFrom tx
 
 nativeAssetPaymentTo :: (MonadMockchain m, MonadFail m, MonadError BalanceTxError m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
