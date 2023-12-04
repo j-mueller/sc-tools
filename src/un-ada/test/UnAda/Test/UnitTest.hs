@@ -9,13 +9,16 @@ tests
 
 import qualified Cardano.Api.Shelley            as C
 import           Control.Monad                  (void)
+import           Control.Monad.Except           (MonadError)
 import           Convex.BuildTx                 (execBuildTx', payToAddress,
                                                  setMinAdaDepositAll)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
+import           Convex.CoinSelection           (BalanceTxError)
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.MockChain.Utils         (mockchainSucceeds)
+import           Convex.Utils                   (failOnError)
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
@@ -47,9 +50,9 @@ tests = testGroup "unit tests"
   ]
 
 canMintUnAda :: Assertion
-canMintUnAda = mockchainSucceeds mintSomeUnAda
+canMintUnAda = mockchainSucceeds (failOnError mintSomeUnAda)
 
-mintSomeUnAda :: (MonadFail m, MonadMockchain m) => m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
+mintSomeUnAda :: (MonadFail m, MonadError BalanceTxError m, MonadMockchain m) => m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
 mintSomeUnAda = do
   let tx = execBuildTx' (mintUnAda Defaults.networkId 1 10_000_000)
   _ <- Wallet.w2 `paymentTo` Wallet.w1
@@ -59,7 +62,7 @@ mintSomeUnAda = do
   getUnAdaOutput mintingTx
 
 canBurnUnAda :: Assertion
-canBurnUnAda = mockchainSucceeds $ do
+canBurnUnAda = mockchainSucceeds $ failOnError $ do
   (txi, (txo, st)) <- mintSomeUnAda
 
   let tx' = execBuildTx' (burnUnAda Defaults.networkId 0 txi txo st 3_000_000)
@@ -67,7 +70,7 @@ canBurnUnAda = mockchainSucceeds $ do
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   balanceAndSubmit mempty Wallet.w1 tx' >>= getUnAdaOutput
 
-unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
+unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadError BalanceTxError m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
   let vl = unLovelaceValue q
       tx = execBuildTx'
