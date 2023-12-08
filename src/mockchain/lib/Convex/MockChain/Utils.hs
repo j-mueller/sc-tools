@@ -11,13 +11,14 @@ module Convex.MockChain.Utils(
   mockchainFailsWith,
 
   -- * Running mockchain actions in QuickCheck tests
-  runMockchainProp
+  runMockchainProp,
+  runMockchainPropWith
   ) where
 
-import           Convex.MockChain          (MockChainState, MockchainError,
-                                            MockchainIO, MockchainT,
-                                            initialStateFor, runMockchain,
-                                            runMockchain0IOWith)
+import           Convex.MockChain          (InitialUTXOs, MockChainState (..),
+                                            MockchainError, MockchainIO,
+                                            MockchainT, initialStateFor,
+                                            runMockchain, runMockchain0IOWith)
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.NodeParams         (NodeParams)
 import qualified Convex.Wallet.MockWallet  as Wallet
@@ -59,10 +60,24 @@ mockchainFailsWith params action handleError =
 {-| Run the 'Mockchain' action as a QuickCheck property, considering all 'MockchainError'
 as test failures.
 -}
-runMockchainProp :: forall a. (Testable a) => PropertyM (MockchainT Identity) a -> Property
-runMockchainProp =
-  let iState = initialStateFor Defaults.nodeParams Wallet.initialUTxOs
+runMockchainPropWith ::
+  forall a. (Testable a)
+  => NodeParams
+  -- ^ Node parameters to use for the mockchain
+  -> InitialUTXOs
+  -- ^ Initial distribution
+  -> PropertyM (MockchainT Identity) a
+  -- ^ The mockchain action to run
+  -> Property
+runMockchainPropWith nodeParams utxos =
+  let iState = initialStateFor nodeParams utxos
       resultToProp :: Either MockchainError (Property, MockChainState) -> Property
       resultToProp (Right (prop, _)) = prop
       resultToProp (Left err)        = counterexample (show err) $ property False
-  in monadic (\a -> resultToProp $ runMockchain a Defaults.nodeParams iState)
+  in monadic (\a -> resultToProp $ runMockchain a nodeParams iState)
+
+{-| Run the 'Mockchain' action as a QuickCheck property, using the default node params
+    and initial distribution, and considering all 'MockchainError's as test failures.
+-}
+runMockchainProp :: forall a. (Testable a) => PropertyM (MockchainT Identity) a -> Property
+runMockchainProp = runMockchainPropWith Defaults.nodeParams Wallet.initialUTxOs
