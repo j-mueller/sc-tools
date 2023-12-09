@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `Convex.Devnet.CardanoNode.withCardanoNodeDevnetConfig` and associated types for modifications to the genesis config files. Includes `allowLargeTransactions` for large transactions.
 - MonadLog instance for `MockchainT`
 - A mockchain test that shows how to increase the maximum tx size
+- `Convex.MockChain.Utils.runMockchainPropWith` to run a mockchain action in a quickcheck property with custom node params and initial distribution
 
 ### Deleted
 
