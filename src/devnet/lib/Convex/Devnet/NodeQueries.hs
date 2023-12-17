@@ -60,20 +60,20 @@ instance Exception QueryException
 
 -- | Get the 'SystemStart' from the node
 querySystemStart ::
-  NetworkId ->
-    -- ^ network Id to use for node query
-  FilePath ->
-    -- ^ Node socket
-  IO SystemStart
+  NetworkId
+  -- ^ network Id to use for node query
+  -> FilePath
+  -- ^ Node socket
+  -> IO SystemStart
 querySystemStart = queryLocalState C.QuerySystemStart
 
 -- | Get the 'EraHistory' from the node
 queryEraHistory ::
-  NetworkId ->
-    -- ^ network Id to use for node query
-  FilePath ->
-    -- ^ Node socket
-  IO (EraHistory CardanoMode)
+  NetworkId
+  -- ^ network Id to use for node query
+  -> FilePath
+  -- ^ Node socket
+  -> IO (EraHistory CardanoMode)
 queryEraHistory = queryLocalState (C.QueryEraHistory C.CardanoModeIsMultiEra)
 
 queryLocalState :: QueryInMode CardanoMode b -> NetworkId -> FilePath -> IO b
@@ -99,11 +99,11 @@ queryTipBlock = queryLocalState C.QueryChainBlockNo
 
 -- | Get the tip (slot no. and block hash) from the node
 queryTip ::
-  NetworkId ->
-    -- ^ network Id to use for node query
-  FilePath ->
-    -- ^ Node socket
-  IO (SlotNo, SlotLength, C.Hash C.BlockHeader)
+  NetworkId
+  -- ^ network Id to use for node query
+  -> FilePath
+  -- ^ Node socket
+  -> IO (SlotNo, SlotLength, C.Hash C.BlockHeader)
 queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) networkId socket >>= \case
   C.ChainPointAtGenesis -> failure "queryTip: chain point at genesis"
   C.ChainPoint slot hsh -> getSlotLength slot >>= (\i -> pure (slot, i, hsh))
@@ -118,11 +118,11 @@ queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) ne
 
 -- | Get the slot no of the current tip from the node
 queryTipSlotNo ::
-  NetworkId ->
-    -- ^ network Id to use for node query
-  FilePath ->
-    -- ^ Node socket
-  IO (SlotNo, SlotLength)
+  NetworkId
+  -- ^ network Id to use for node query
+  -> FilePath
+  -- ^ Node socket
+  -> IO (SlotNo, SlotLength)
 queryTipSlotNo networkId socket = queryTip networkId socket >>= (\(s, l, _) -> pure (s, l))
 
 -- | Query UTxO for all given addresses at given point.
