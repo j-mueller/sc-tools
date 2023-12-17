@@ -131,10 +131,12 @@ deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 -}
 balancePaymentCredentials ::
   (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) =>
-  Tracer m TxBalancingMessage ->
-  C.PaymentCredential -> -- ^ Primary payment credential, used for return output
-  [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
-  Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+  Tracer m TxBalancingMessage
+  -> C.PaymentCredential -- ^ Primary payment credential, used for return output
+  -> [C.PaymentCredential] -- ^ Other payment credentials, used for balancing
+  -> Maybe (C.TxOut C.CtxTx C.BabbageEra)
+  -> C.TxBodyContent C.BuildTx C.BabbageEra
+  -> m (C.Tx C.BabbageEra)
 balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
   output <- maybe (returnOutputFor primaryCred) pure returnOutput
   (C.BalancedTxBody txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody)
