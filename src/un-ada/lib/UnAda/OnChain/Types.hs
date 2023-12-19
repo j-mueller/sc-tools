@@ -9,25 +9,24 @@ module UnAda.OnChain.Types(
   UnAdaState(..),
   BuiltinData(
     UnAdaStateBuiltin,
-    -- * Script context
+    -- Script context
     ScriptContext,
     txInfo,
     purpose,
-    -- * Matching on tx info
+    -- Matching on tx info
     TxInfoV2,
     inputs,
     referenceInputs,
     outputs,
     fee,
     rest8,
-    -- * Validity intervals
+    -- Validity intervals
     FinitePOSIXTimeRange,
     fiFrom,
     fiTo,
     FiniteExtended,
     ItvlBound,
-
-    -- * UnAda context
+    -- UnAda context
     UnAdaContext,
     uacValueMinted,
     uacValidRange
