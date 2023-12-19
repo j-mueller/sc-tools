@@ -109,4 +109,5 @@ jobs:
         run: |
           cabal build -j all
           cabal test all
+          cabal haddock -j convex-node-client convex-coin-selection convex-devnet convex-wallet convex-base convex-mockchain           
 
