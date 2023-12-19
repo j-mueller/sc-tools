@@ -51,7 +51,7 @@ import           Control.Monad.Reader                              (MonadTrans,
                                                                     lift)
 import qualified Control.Monad.State                               as LazyState
 import qualified Control.Monad.State.Strict                        as StrictState
-import           Control.Monad.Trans.Except                        (ExceptT)
+import           Control.Monad.Trans.Except                        (ExceptT (..))
 import           Control.Monad.Trans.Except.Result                 (ResultT)
 import           Convex.Era                                        (ERA)
 import qualified Convex.Era                                        as Ledger.Era
@@ -223,10 +223,9 @@ instance Show e => Show (MonadBlockchainError e) where
 newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT (LocalNodeConnectInfo CardanoMode) (ExceptT (MonadBlockchainError e) m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
-instance MonadError e m => MonadError e (MonadBlockchainCardanoNodeT e m) where
-  throwError = lift . throwError
-  catchError m _ = m
-
+instance Monad m => MonadError e (MonadBlockchainCardanoNodeT e m) where
+  throwError = MonadBlockchainCardanoNodeT . throwError . MonadBlockchainError
+  catchError (MonadBlockchainCardanoNodeT action) handler = MonadBlockchainCardanoNodeT $ catchError action (\case { MonadBlockchainError e -> unMonadBlockchainCardanoNodeT (handler e); e' -> throwError e' })
 
 runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo CardanoMode -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runExceptT (runReaderT action info)

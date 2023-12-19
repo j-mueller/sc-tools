@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The balancing algorithm now correctly calculates the number of required signatures when computing the transaction fee
 - Deleted spurious `runQuery'` log messages
 - The constraints for most of the functions in `Convex.CoinSelection` have changed from `MonadFail m` to `MonadError BalanceTxError m`, allowing for better error handling
+- Relaxed the `MonadError` instance of `MonadBlockchainCardanoNodeT` by removing the `MonadError e m` constraint; fixed the implementation of `catchError`
 
 ### Added
 
