@@ -127,15 +127,11 @@ foldClient initialState env applyBlock =
 foldClient' ::
   forall s w.
   Monoid w =>
-  -- | Initial state
-  s ->
-  -- | Node connection data
-  Env ->
-  -- | Rollback
-  (ChainPoint -> w -> s -> IO (w, s)) ->
-  -- | Fold
-  (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe (w, s))) -> -- ^ Fold
-  PipelinedLedgerStateClient
+  s -- ^ Initial state
+  -> Env -- ^ Node connection data
+  -> (ChainPoint -> w -> s -> IO (w, s)) -- ^ Rollback
+  -> (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe (w, s))) -- ^ Fold
+  -> PipelinedLedgerStateClient
 foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
 
 -- NB: The code below was adapted from https://input-output-hk.github.io/cardano-node/cardano-api/src/Cardano.Api.LedgerState.html#foldBlocks
@@ -221,20 +217,16 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
 type History a = Seq (SlotNo, a)
 
 -- | Add a new state to the history
-pushHistoryState
-  :: -- | Environement used to get the security param, k.
-    Env
-     -- | History of k items.
-  -> History a
-     -- | Slot number of the new item.
-  -> SlotNo
-     -- | New item to add to the history
-  -> a
-  -- | ( The new history with the new item appended
+pushHistoryState ::
+  Env -- ^ Environement used to get the security param, k.
+  -> History a -- ^ History of k items.
+  -> SlotNo -- ^ Slot number of the new item.
+  -> a -- ^ New item to add to the history
+  -> (History a, History a)
+  -- ^ ( The new history with the new item appended
   --   , Any exisiting items that are now past the security parameter
   --      and hence can no longer be rolled back.
   --   )
-  -> (History a, History a)
 
 pushHistoryState env hist ix st
   = Seq.splitAt

@@ -109,4 +109,5 @@ jobs:
         run: |
           cabal build -j all
           cabal test all
+          cabal haddock -j all
 

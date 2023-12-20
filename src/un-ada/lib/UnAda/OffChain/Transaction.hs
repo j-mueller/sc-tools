@@ -35,11 +35,11 @@ mintUnAda n currentTime q =
 
 addOutputFor ::
   MonadBuildTx m =>
-  NetworkId ->
-  POSIXTime ->
-    -- ^ Current time
-  Quantity ->
-  m ()
+  NetworkId
+  -> POSIXTime
+  -- ^ Current time
+  -> Quantity
+  -> m ()
 addOutputFor n spendAfter q =
   let vl = lovelaceToValue (quantityToLovelace q)
       dt = UnAdaState{spendAfter, mps = mintingPolicyHash}

@@ -519,10 +519,10 @@ any non-Ada asset it contains. If the positive part only contains Ada then no
 output is added.
 -}
 addOutputForNonAdaAssets ::
-  Core.PParams Ledger.Era.ERA -> -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
-  C.TxOut C.CtxTx C.BabbageEra -> -- ^ Address of the newly created output
-  C.Value -> -- ^ The balance of the transaction
-  (C.TxOut C.CtxTx C.BabbageEra, C.Lovelace) -- ^ The modified transaction body and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
+  Core.PParams Ledger.Era.ERA -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
+  -> C.TxOut C.CtxTx C.BabbageEra -- ^ Address of the newly created output
+  -> C.Value -- ^ The balance of the transaction
+  -> (C.TxOut C.CtxTx C.BabbageEra, C.Lovelace) -- ^ The modified transaction body and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
 addOutputForNonAdaAssets pparams returnUTxO (C.valueFromList . snd . splitValue -> positives)
   | isNothing (C.valueToLovelace positives) =
       let vlWithoutAda = positives & set (L._Value . at C.AdaAssetId) Nothing

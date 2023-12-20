@@ -104,6 +104,16 @@ source-repository-package
   location: https://github.com/j-mueller/csv
   tag: b2f00d7819ff62cb80532adfbc28dbc1046d3d96
 
+
+-- The plugin will typically fail when producing Haddock documentation. However,
+-- in this instance you can simply tell it to defer any errors to runtime (which
+-- will never happen since you're building documentation).
+--
+-- So, any package using 'PlutusTx.compile' in the code for which you need to
+-- generate haddock documentation should use the following 'haddock-options'.
+package un-ada
+    haddock-options: "--optghc=-fplugin-opt PlutusTx.Plugin:defer-errors"
+
 -- -------------------------------------------------------------------------
 -- Constraints tweaking
 
