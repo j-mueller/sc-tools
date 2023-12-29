@@ -358,10 +358,11 @@ setMinAdaDeposit params txOut =
 
 minAdaDeposit :: CLedger.PParams (C.ShelleyLedgerEra C.BabbageEra) -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
 minAdaDeposit params txOut =
-  let txo = txOut
-              -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
-              -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
-              & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just $ C.Quantity 3_000_000) Just)
+  let minAdaValue = C.Quantity 3_000_000
+      txo = txOut
+            -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
+            -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
+            & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minAdaValue) (Just . max minAdaValue))
   in fromMaybe (C.Quantity 0) $ do
         k <- either (const Nothing) pure (CC.calculateMinimumUTxO txo params)
         C.Lovelace l <- C.valueToLovelace k
