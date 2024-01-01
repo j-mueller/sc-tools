@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deleted spurious `runQuery'` log messages
 - The constraints for most of the functions in `Convex.CoinSelection` have changed from `MonadFail m` to `MonadError BalanceTxError m`, allowing for better error handling
 - Relaxed the `MonadError` instance of `MonadBlockchainCardanoNodeT` by removing the `MonadError e m` constraint; fixed the implementation of `catchError`
+- `Convex.BuildTx`: Ensure that at least 3 Ada is present when computing minimum UTxO value in `minAdaDeposit`.
 
 ### Added
 
