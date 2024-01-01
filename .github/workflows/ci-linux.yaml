@@ -6,108 +6,55 @@ on:
       - '.github/workflows/ci-linux.yaml'
       - 'cabal.project'
       - '*/src/**'
+
+# INFO: The following configuration block ensures that only one build runs per branch,
+# which may be desirable for projects with a costly build process.
+# Remove this block from the CI workflow to let each CI job run to completion.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # install deps.
-      - name: install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsystemd-dev
-
-      # cache libsodium
-      - name: cache libsodium-1.0.18
-        id: libsodium
-        uses: actions/cache@v2
+      - uses: actions/checkout@v4
+      - name: Setup haskell and with cached dependencies
+        uses: ./.github/actions/haskell-setup-cached
         with:
-          path: ~/libsodium-stable
-          key: ${{ runner.os }}-libsodium-1.0.18
+          fail-on-cache-miss: false
 
-      # install libsodium with cache
-      - name: Install cache libsodium-1.0.18
-        if: steps.libsodium.outputs.cache-hit == 'true'
-        run: cd ~/libsodium-stable && ./configure && make -j2 && sudo make install
+  build-all:
+    needs: build
+    runs-on: ubuntu-latest      
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup haskell and with cached dependencies
+        uses: ./.github/actions/haskell-setup-cached
+      - name: Build all
+        run: cabal build -j all
+        
+  build-documentation:
+    needs: build
+    runs-on: ubuntu-latest      
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup haskell and with cached dependencies
+        uses: ./.github/actions/haskell-setup-cached
+      - name: Build documentation
+        run: cabal haddock -j all
+        
 
-      # download & install libsodium without cache
-      - name: Install libsodium
-        if: steps.libsodium.outputs.cache-hit != 'true'
+  test-all:
+    needs: build
+    runs-on: ubuntu-latest      
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup haskell and with cached dependencies
+        uses: ./.github/actions/haskell-setup-cached
+      - name: Install integration test dependencies
         run: |
-          wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable.tar.gz
-          tar -xvzf libsodium-1.0.18-stable.tar.gz -C ~
-          cd ~/libsodium-stable
-          ./configure
-          make -j2 && make check
-          sudo make install
-          cd -
-
-      # cache secp256K1
-      - name: cache libsecp256k1
-        id: libsecp256k1
-        uses: actions/cache@v2
-        with:
-          path: ~/secp256k1
-          key: libsecp256k1
-
-      # install libsecp256k1 with cache
-      - name: Install cache libsecp256k1
-        if: steps.libsecp256k1.outputs.cache-hit == 'true'
-        run: |
-          cd ~/secp256k1
-          ./autogen.sh
-          ./configure --enable-module-schnorrsig --enable-experimental
-          make
-          sudo make install
-          cd -
-
-      # download & install secp256k1
-      - name: Install libsecp256k1
-        if: steps.libsecp256k1.outputs.cache-hit != 'true'
-        run: |
-          git clone https://github.com/bitcoin-core/secp256k1 ~/secp256k1
-          cd ~/secp256k1
-          git checkout ac83be33
-          ./autogen.sh
-          ./configure --enable-module-schnorrsig --enable-experimental
-          make
-          sudo make install
-          cd -
-
-      # set up environment variables
-      - name: Setup environment variables
-        run: |
-          echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-
-      - uses: actions/checkout@v2
-
-      - uses: haskell/actions/setup@v2
-        id: setuphaskell
-        with:
-          ghc-version: '8.10' # Resolves to the latest point release of GHC 8.10
-          cabal-version: '3.6.0.0' # Exact version of Cabal
-
-      - name: Cache .cabal
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.setuphaskell.outputs.cabal-store }}
-          key: cabal-${{ hashFiles('cabal.project') }}
-
-      - name: Set up cabal.project.local
-        run: |
-          echo "package cardano-crypto-praos" > cabal.project.local
-          echo "  flags: -external-libsodium-vrf" >> cabal.project.local
-
-      - name: Build dependencies for integration test
-        run: |
-          cabal update
           cabal install -j cardano-node cardano-cli --overwrite-policy=always
           cabal install -j convex-wallet --overwrite-policy=always
-          echo "/home/runner/.cabal/bin" >> $GITHUB_PATH
-
-      - name: build & test
-        run: |
-          cabal build -j all
-          cabal test all
-          cabal haddock -j all
-
+      - name: Test all
+        run: cabal test all

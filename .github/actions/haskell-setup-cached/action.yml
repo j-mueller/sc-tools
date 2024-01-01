@@ -1,0 +1,38 @@
+name: Setup cached deps haskell
+description: Setup haskell with cached dependencies
+inputs:
+  fail-on-cache-miss:
+    description: Fail the action if cache entry is not found.
+    default: true
+    required: false
+
+runs:
+  using: composite
+  steps:
+      - name: Setup libsodium and libsecp256k1
+        uses: ./.github/actions/setup-security-libs
+      - name: Set up cabal.project.local
+        shell: bash
+        run: |
+          echo "package cardano-crypto-praos" >> cabal.project.local
+          echo "  flags: -external-libsodium-vrf" >> cabal.project.local
+      - uses: haskell-actions/setup@v2
+        id: setup
+        with:
+          ghc-version: '8.10'
+          cabal-version: '3.6.0.0'
+      - name: Cached Dependencies
+        uses: actions/cache@v3
+        id: cabal-cache
+        continue-on-error: false
+        with:
+          fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
+          path: |
+            cabal.project.local
+            ${{ steps.setup.outputs.cabal-store }}
+          key: ${{ hashFiles('**/*.cabal', '**/cabal.project', 'cabal.project.local') }}          
+      - name: Install dependencies
+        if: steps.cabal-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: cabal build all --only-dependencies
+
