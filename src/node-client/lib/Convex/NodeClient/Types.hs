@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedStrings  #-}
 module Convex.NodeClient.Types(
   PipelinedLedgerStateClient(..),
-  ClientBlock,
   runNodeClient,
   protocols,
   -- * Sync points
@@ -16,7 +15,6 @@ module Convex.NodeClient.Types(
 
 import           Cardano.Api                                          (BlockInMode (..),
                                                                        BlockNo (..),
-                                                                       CardanoMode,
                                                                        ChainPoint (..),
                                                                        ChainSyncClientPipelined,
                                                                        ChainTip (..),
@@ -38,7 +36,7 @@ import qualified Ouroboros.Network.Protocol.ChainSync.ClientPipelined as CSP
 -}
 newtype PipelinedLedgerStateClient =
   PipelinedLedgerStateClient
-    { getPipelinedLedgerStateClient :: ChainSyncClientPipelined (BlockInMode CardanoMode) ChainPoint ChainTip IO ()
+    { getPipelinedLedgerStateClient :: ChainSyncClientPipelined BlockInMode ChainPoint ChainTip IO ()
     }
 
 runNodeClient ::
@@ -47,7 +45,7 @@ runNodeClient ::
   -- | Path to local cardano-node socket. This is the path specified by the @--socket-path@ command line option when running the node.
   -> FilePath
   -- | Client
-  -> (LocalNodeConnectInfo CardanoMode -> Env -> IO PipelinedLedgerStateClient)
+  -> (LocalNodeConnectInfo -> Env -> IO PipelinedLedgerStateClient)
   -- | Final state
   -> ExceptT InitialLedgerStateError IO ()
 runNodeClient nodeConfigFilePath socketPath client = do
@@ -55,7 +53,7 @@ runNodeClient nodeConfigFilePath socketPath client = do
   c <- liftIO (client connectInfo env)
   lift $ connectToLocalNode connectInfo (protocols c)
 
-protocols :: PipelinedLedgerStateClient -> LocalNodeClientProtocolsInMode CardanoMode
+protocols :: PipelinedLedgerStateClient -> LocalNodeClientProtocolsInMode
 protocols client =
   LocalNodeClientProtocols {
     localChainSyncClient    = LocalChainSyncClientPipelined (chainSyncClient client),
@@ -64,12 +62,10 @@ protocols client =
     localTxMonitoringClient = Nothing
   }
 
-chainSyncClient :: PipelinedLedgerStateClient -> ChainSyncClientPipelined (BlockInMode CardanoMode) ChainPoint ChainTip IO ()
+chainSyncClient :: PipelinedLedgerStateClient -> ChainSyncClientPipelined BlockInMode ChainPoint ChainTip IO ()
 chainSyncClient PipelinedLedgerStateClient{getPipelinedLedgerStateClient} = CSP.ChainSyncClientPipelined $
   let CSP.ChainSyncClientPipelined{CSP.runChainSyncClientPipelined} = getPipelinedLedgerStateClient
   in runChainSyncClientPipelined
-
-type ClientBlock = BlockInMode CardanoMode
 
 fromChainTip :: ChainTip -> WithOrigin BlockNo
 fromChainTip ct = case ct of

@@ -10,8 +10,7 @@ module Convex.NodeClient.WaitForTxnClient(
   runMonadBlockchainWaitingT
 ) where
 
-import           Cardano.Api                (BlockInMode, CardanoMode,
-                                             ChainPoint, Env,
+import           Cardano.Api                (BlockInMode, ChainPoint, Env,
                                              LocalNodeConnectInfo, TxId)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
@@ -32,7 +31,7 @@ import qualified Convex.NodeQueries         as NodeQueries
 {-| Start a 'waitForTxnClient' in a separate thread. Returns a TMVar that will contain the block that has the given
 transaction.
 -}
-runWaitForTxn :: LocalNodeConnectInfo CardanoMode -> Env -> TxId -> IO (TMVar (BlockInMode CardanoMode))
+runWaitForTxn :: LocalNodeConnectInfo -> Env -> TxId -> IO (TMVar BlockInMode)
 runWaitForTxn connectInfo env txi = do
   tip' <- NodeQueries.queryTip connectInfo
   tmv <- atomically newEmptyTMVar
@@ -41,15 +40,15 @@ runWaitForTxn connectInfo env txi = do
 
 {-| Scan the new blocks until the transaction appears
 -}
-waitForTxnClient :: TMVar (BlockInMode CardanoMode) -> ChainPoint -> TxId -> Env -> PipelinedLedgerStateClient
+waitForTxnClient :: TMVar BlockInMode -> ChainPoint -> TxId -> Env -> PipelinedLedgerStateClient
 waitForTxnClient tmv cp txId env =
   resumingClient [cp] $ \_ ->
     foldClient () env (applyBlock tmv txId)
 
-applyBlock :: TMVar (BlockInMode CardanoMode) -> TxId -> CatchingUp -> () -> BlockInMode CardanoMode -> IO (Maybe ())
+applyBlock :: TMVar BlockInMode -> TxId -> CatchingUp -> () -> BlockInMode -> IO (Maybe ())
 applyBlock tmv txi _ () block = do
   case block of
-    C.BlockInMode blck C.BabbageEraInCardanoMode ->
+    C.BlockInMode C.BabbageEra blck ->
       if checkTxIds txi blck
         then do
           liftIO $ atomically $ putTMVar tmv block
@@ -63,10 +62,10 @@ checkTxIds txi ((C.Block _ txns)) = any (checkTxId txi) txns
 checkTxId :: TxId -> C.Tx C.BabbageEra -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
-newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo CardanoMode, Env) m a }
+newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail)
 
-runMonadBlockchainWaitingT :: LocalNodeConnectInfo CardanoMode -> Env -> MonadBlockchainWaitingT m a -> m a
+runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT m a -> m a
 runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)
 
 instance MonadError e m => MonadError e (MonadBlockchainWaitingT m) where

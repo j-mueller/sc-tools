@@ -27,7 +27,6 @@ import           Cardano.Api                                           (Block (.
                                                                         BlockHeader (..),
                                                                         BlockInMode (..),
                                                                         BlockNo (..),
-                                                                        CardanoMode,
                                                                         ChainPoint (..),
                                                                         ChainTip (..),
                                                                         Env,
@@ -41,8 +40,7 @@ import           Convex.NodeClient.ChainTip                            (JSONBloc
                                                                         blockHeaderPoint)
 import           Convex.NodeClient.Resuming                            (ResumingFrom)
 import qualified Convex.NodeClient.Resuming                            as R
-import           Convex.NodeClient.Types                               (ClientBlock,
-                                                                        PipelinedLedgerStateClient (..),
+import           Convex.NodeClient.Types                               (PipelinedLedgerStateClient (..),
                                                                         fromChainTip)
 import           Data.Aeson                                            (FromJSON,
                                                                         ToJSON)
@@ -113,7 +111,7 @@ foldClient ::
   -- | Node connection data
   Env ->
   -- | Fold
-  (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe s)) ->
+  (CatchingUp -> s -> BlockInMode -> IO (Maybe s)) ->
   PipelinedLedgerStateClient
 foldClient initialState env applyBlock =
   foldClient' @s @()
@@ -134,7 +132,7 @@ foldClient' ::
   -- | Rollback
   (ChainPoint -> w -> s -> IO (w, s)) ->
   -- | Fold
-  (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe (w, s))) -> -- ^ Fold
+  (CatchingUp -> s -> BlockInMode -> IO (Maybe (w, s))) -> -- ^ Fold
   PipelinedLedgerStateClient
 foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
 
@@ -150,7 +148,7 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
       -> WithOrigin BlockNo
       -> Nat n -- Number of requests inflight.
       -> History (w, s)
-      -> CSP.ClientPipelinedStIdle n ClientBlock ChainPoint ChainTip IO ()
+      -> CSP.ClientPipelinedStIdle n BlockInMode ChainPoint ChainTip IO ()
     clientIdle_RequestMoreN clientTip_ serverTip_ n history
       = case pipelineDecisionMax pipelineSize n clientTip_ serverTip_  of
           Collect -> case n of
@@ -160,11 +158,11 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
     clientNextN
       :: Nat n
       -> History (w, s)
-      -> ClientStNext n ClientBlock ChainPoint ChainTip IO ()
+      -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n history =
       ClientStNext {
           recvMsgRollForward = \newBlock serverChainTip -> do
-              let BlockInMode (Block bh@(BlockHeader slotNo _blockHash currBlockNo) _) _ = newBlock
+              let BlockInMode _ (Block bh@(BlockHeader slotNo _blockHash currBlockNo) _) = newBlock
                   newClientTip = At currBlockNo
                   newServerTip = fromChainTip serverChainTip
                   cu = if newClientTip == newServerTip
@@ -199,7 +197,7 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
 
     clientIdle_DoneN
       :: Nat n
-      -> IO (ClientPipelinedStIdle n ClientBlock ChainPoint ChainTip IO ())
+      -> IO (ClientPipelinedStIdle n BlockInMode ChainPoint ChainTip IO ())
     clientIdle_DoneN n = case n of
       Succ predN -> do
         return $ CollectResponse Nothing (clientNext_DoneN predN) -- Ignore remaining message responses
@@ -208,7 +206,7 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
 
     clientNext_DoneN
       :: Nat n
-      -> ClientStNext n ClientBlock ChainPoint ChainTip IO ()
+      -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNext_DoneN n =
       ClientStNext {
           recvMsgRollForward = \_ _ -> clientIdle_DoneN n

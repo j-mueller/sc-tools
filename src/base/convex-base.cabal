@@ -54,7 +54,7 @@ library
       either-result
       
     build-depends:
-      cardano-api == 8.8.0.0,
+      cardano-api,
       cardano-ledger-core,
       cardano-crypto-wrapper,
 
@@ -73,4 +73,5 @@ library
       serialise,
       bytestring,
       dlist,
-      either-result
+      either-result,
+      strict-sop-core

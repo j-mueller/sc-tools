@@ -82,6 +82,5 @@ test-suite convex-coin-selection-test
     containers,
     plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib},
     plutus-ledger-api,
-    cardano-ledger-core,
     mtl,
     transformers

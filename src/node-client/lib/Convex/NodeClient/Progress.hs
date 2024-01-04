@@ -14,8 +14,7 @@ import           Cardano.Api                                           (Block (.
 import qualified Cardano.Api                                           as CAPI
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Control.Monad                                         (when)
-import           Convex.NodeClient.Types                               (ClientBlock,
-                                                                        PipelinedLedgerStateClient (..),
+import           Convex.NodeClient.Types                               (PipelinedLedgerStateClient (..),
                                                                         fromChainTip)
 import qualified Data.Text                                             as Text
 import           Data.Time                                             (diffUTCTime,
@@ -40,17 +39,17 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
       :: WithOrigin BlockNo
       -> WithOrigin BlockNo
       -> Nat n -- Number of requests inflight.
-      -> CSP.ClientPipelinedStIdle n ClientBlock ChainPoint ChainTip IO ()
+      -> CSP.ClientPipelinedStIdle n BlockInMode ChainPoint ChainTip IO ()
     clientIdle_RequestMoreN clientTip serverTip n
       = case pipelineDecisionMax pipelineSize n clientTip serverTip  of
           Collect -> case n of
             Succ predN -> CSP.CollectResponse Nothing (clientNextN predN)
           _ -> CSP.SendMsgRequestNextPipelined (clientIdle_RequestMoreN clientTip serverTip (Succ n))
 
-    clientNextN :: Nat n -> ClientStNext n ClientBlock ChainPoint ChainTip IO ()
+    clientNextN :: Nat n -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n =
       ClientStNext {
-          recvMsgRollForward = \(BlockInMode block@(Block (BlockHeader _ _ currBlockNo@(BlockNo blockNo)) _) _) serverChainTip -> do
+          recvMsgRollForward = \(BlockInMode _era block@(Block (BlockHeader _ _ currBlockNo@(BlockNo blockNo)) _)) serverChainTip -> do
             let newClientTip = At currBlockNo
                 newServerTip = fromChainTip serverChainTip
             when (blockNo `mod` 10_000 == 0) $ do
@@ -72,7 +71,7 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
             return (clientIdle_RequestMoreN newClientTip newServerTip n)
         }
 
-    clientIdle_DoneN :: Nat n -> IO (ClientPipelinedStIdle n ClientBlock ChainPoint ChainTip IO ())
+    clientIdle_DoneN :: Nat n -> IO (ClientPipelinedStIdle n BlockInMode ChainPoint ChainTip IO ())
     clientIdle_DoneN n = case n of
       Succ predN -> do
         putStrLn "Chain Sync: done! (Ignoring remaining responses)"
@@ -81,7 +80,7 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
         putStrLn "Chain Sync: done!"
         return $ SendMsgDone ()
 
-    clientNext_DoneN :: Nat n -> ClientStNext n ClientBlock ChainPoint ChainTip IO ()
+    clientNext_DoneN :: Nat n -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNext_DoneN n =
       ClientStNext {
           recvMsgRollForward = \_ _ -> clientIdle_DoneN n

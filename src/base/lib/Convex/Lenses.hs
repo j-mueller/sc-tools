@@ -18,7 +18,8 @@ module Convex.Lenses(
   txMintValue,
   txFee,
   txFee',
-  txValidityRange,
+  txValidityLowerBound,
+  txValidityUpperBound,
   txMetadata,
   txProtocolParams,
   txInsCollateral,
@@ -45,7 +46,6 @@ module Convex.Lenses(
   -- ** Validity intervals
   _TxValidityNoLowerBound,
   _TxValidityLowerBound,
-  _TxValidityNoUpperBound,
   _TxValidityUpperBound,
   _TxValidityFiniteRange,
 
@@ -100,7 +100,7 @@ import qualified Cardano.Ledger.Hashes              as Hashes
 import qualified Cardano.Ledger.Keys                as Keys
 import           Cardano.Ledger.Shelley.API         (Coin, LedgerEnv (..), UTxO,
                                                      UTxOState (..))
-import           Cardano.Ledger.Shelley.Governance  (EraGovernance (GovernanceState))
+import           Cardano.Ledger.Shelley.Governance  (GovState)
 import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
                                                      updateStakeDistribution)
 import           Control.Lens                       (Iso', Lens', Prism', iso,
@@ -125,8 +125,9 @@ emptyTx =
     , C.txOuts = []
     , C.txTotalCollateral = C.TxTotalCollateralNone
     , C.txReturnCollateral = C.TxReturnCollateralNone
-    , C.txFee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra 0
-    , C.txValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+    , C.txFee = C.TxFeeExplicit C.ShelleyBasedEraBabbage 0
+    , C.txValidityLowerBound = C.TxValidityNoLowerBound
+    , C.txValidityUpperBound = C.TxValidityUpperBound C.ShelleyBasedEraBabbage Nothing
     , C.txMetadata = C.TxMetadataNone
     , C.txAuxScripts = C.TxAuxScriptsNone
     , C.txExtraKeyWits = C.TxExtraKeyWitnessesNone
@@ -136,14 +137,14 @@ emptyTx =
     , C.txUpdateProposal = C.TxUpdateProposalNone
     , C.txMintValue = C.TxMintNone
     , C.txScriptValidity = C.TxScriptValidityNone
-    , C.txGovernanceActions = C.TxGovernanceActionsNone
-    , C.txVotes = C.TxVotesNone
+    , C.txProposalProcedures = Nothing
+    , C.txVotingProcedures = Nothing
     }
 
 {-| A transaction output with no value
 -}
 emptyTxOut :: AddressInEra BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
-emptyTxOut addr = C.TxOut addr (C.lovelaceToTxOutValue 0) C.TxOutDatumNone C.ReferenceScriptNone
+emptyTxOut addr = C.TxOut addr (C.lovelaceToTxOutValue C.ShelleyBasedEraBabbage 0) C.TxOutDatumNone C.ReferenceScriptNone
 
 type TxIn v = (C.TxIn, BuildTxWith v (C.Witness C.WitCtxTxIn BabbageEra))
 
@@ -168,18 +169,23 @@ txFee' = lens get set_ where
   get           = C.txFee
   set_ body fee = body{C.txFee = fee}
 
-txValidityRange :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e, C.TxValidityUpperBound e)
-txValidityRange = lens get set_ where
-  get = C.txValidityRange
-  set_ body range = body{C.txValidityRange = range}
+txValidityUpperBound :: Lens' (C.TxBodyContent v e) (C.TxValidityUpperBound e)
+txValidityUpperBound = lens get set_ where
+  get = C.txValidityUpperBound
+  set_ body range = body{C.txValidityUpperBound = range}
+
+txValidityLowerBound :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e)
+txValidityLowerBound = lens get set_ where
+  get = C.txValidityLowerBound
+  set_ body range = body{C.txValidityLowerBound = range}
 
 txFee :: Lens' (C.TxBodyContent v BabbageEra) C.Lovelace
 txFee = lens get set_ where
   get :: C.TxBodyContent v BabbageEra -> C.Lovelace
-  get b = case C.txFee b of { C.TxFeeExplicit C.TxFeesExplicitInBabbageEra t_fee -> t_fee; C.TxFeeImplicit{} -> error "not possible in babbage era" }
-  set_ body fee = body{C.txFee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra fee}
+  get b = case C.txFee b of { C.TxFeeExplicit C.ShelleyBasedEraBabbage t_fee -> t_fee }
+  set_ body fee = body{C.txFee = C.TxFeeExplicit C.ShelleyBasedEraBabbage fee}
 
-txProtocolParams :: Lens' (C.TxBodyContent v e) (BuildTxWith v (Maybe C.ProtocolParameters))
+txProtocolParams :: Lens' (C.TxBodyContent v e) (BuildTxWith v (Maybe (C.LedgerProtocolParameters e)))
 txProtocolParams = lens get set_ where
   get = C.txProtocolParams
   set_ body params = body{C.txProtocolParams = params}
@@ -216,7 +222,7 @@ _TxExtraKeyWitnesses = iso from to where
   from (C.TxExtraKeyWitnesses _ keys) = keys
 
   to []   = C.TxExtraKeyWitnessesNone
-  to keys = C.TxExtraKeyWitnesses C.ExtraKeyWitnessesInBabbageEra keys
+  to keys = C.TxExtraKeyWitnesses C.AlonzoEraOnwardsBabbage keys
 
 txAuxScripts :: Lens' (C.TxBodyContent v BabbageEra) (C.TxAuxScripts BabbageEra)
 txAuxScripts = lens get set_ where
@@ -230,7 +236,7 @@ _TxAuxScripts = iso from to where
     C.TxAuxScriptsNone -> []
     C.TxAuxScripts _ s -> s
   to s | null s = C.TxAuxScriptsNone
-       | otherwise = C.TxAuxScripts C.AuxScriptsInBabbageEra s
+       | otherwise = C.TxAuxScripts C.AllegraEraOnwardsBabbage s
 
 _TxMetadata :: Iso' (C.TxMetadataInEra BabbageEra) (Map Word64 C.TxMetadataValue)
 _TxMetadata = iso from to where
@@ -239,7 +245,7 @@ _TxMetadata = iso from to where
     C.TxMetadataNone                     -> Map.empty
     C.TxMetadataInEra _ (C.TxMetadata m) -> m
   to m | Map.null m = C.TxMetadataNone
-       | otherwise  = C.TxMetadataInEra C.TxMetadataInBabbageEra (C.TxMetadata m)
+       | otherwise  = C.TxMetadataInEra C.ShelleyBasedEraBabbage (C.TxMetadata m)
 
 _TxInsCollateral :: Iso' (C.TxInsCollateral BabbageEra) [C.TxIn]
 _TxInsCollateral = iso from to where
@@ -249,7 +255,7 @@ _TxInsCollateral = iso from to where
     C.TxInsCollateral _ xs -> xs
   to = \case
     [] -> C.TxInsCollateralNone
-    xs -> C.TxInsCollateral C.CollateralInBabbageEra xs
+    xs -> C.TxInsCollateral C.AlonzoEraOnwardsBabbage xs
 
 _TxMintValue :: Iso' (TxMintValue BuildTx BabbageEra) (Value, Map PolicyId (ScriptWitness WitCtxMint BabbageEra))
 _TxMintValue = iso from to where
@@ -259,7 +265,7 @@ _TxMintValue = iso from to where
     C.TxMintValue _ vl (C.BuildTxWith mp) -> (vl, mp)
   to (vl, mp)
     | Map.null mp && vl == mempty = C.TxMintNone
-    | otherwise                   = C.TxMintValue C.MultiAssetInBabbageEra vl (C.BuildTxWith mp)
+    | otherwise                   = C.TxMintValue C.MaryEraOnwardsBabbage vl (C.BuildTxWith mp)
 
 _TxInsReference :: Iso' (C.TxInsReference build BabbageEra) [C.TxIn]
 _TxInsReference = iso from to where
@@ -269,7 +275,7 @@ _TxInsReference = iso from to where
     C.TxInsReference _ ins -> ins
   to = \case
     [] -> C.TxInsReferenceNone
-    xs -> C.TxInsReference C.ReferenceTxInsScriptsInlineDatumsInBabbageEra xs
+    xs -> C.TxInsReference C.BabbageEraOnwardsBabbage xs
 
 
 _Value :: Iso' Value (Map AssetId Quantity)
@@ -289,7 +295,7 @@ _TxOutDatumHash = prism' from to where
   to (C.TxOutDatumHash _ h) = Just h
   to _                      = Nothing
   from :: C.Hash C.ScriptData -> TxOutDatum ctx C.BabbageEra
-  from h = C.TxOutDatumHash C.ScriptDataInBabbageEra h
+  from h = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage h
 
 _TxOutDatumInTx :: Prism' (TxOutDatum CtxTx C.BabbageEra) C.HashableScriptData
 _TxOutDatumInTx = prism' from to where
@@ -297,7 +303,7 @@ _TxOutDatumInTx = prism' from to where
   to (C.TxOutDatumInTx _ k) = Just k
   to _                      = Nothing
   from :: C.HashableScriptData -> TxOutDatum CtxTx C.BabbageEra
-  from cd = C.TxOutDatumInTx C.ScriptDataInBabbageEra cd
+  from cd = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage cd
 
 _TxOutDatumInline :: forall ctx. Prism' (TxOutDatum ctx C.BabbageEra) C.HashableScriptData
 _TxOutDatumInline = prism' from to where
@@ -305,7 +311,7 @@ _TxOutDatumInline = prism' from to where
   to (C.TxOutDatumInline _ k) = Just k
   to _                        = Nothing
   from :: C.HashableScriptData -> TxOutDatum ctx C.BabbageEra
-  from cd = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra cd
+  from cd = C.TxOutDatumInline C.BabbageEraOnwardsBabbage cd
 
 _ShelleyAddressInBabbageEra :: Prism' (C.AddressInEra C.BabbageEra) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
 _ShelleyAddressInBabbageEra = prism' from to where
@@ -372,7 +378,8 @@ _BuildTxWith = iso from to where
 _TxOutValue :: Iso' (TxOutValue BabbageEra) Value
 _TxOutValue = iso from to where
   from = C.txOutValueToValue
-  to = C.TxOutValue C.MultiAssetInBabbageEra
+  to :: Value -> TxOutValue BabbageEra
+  to = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage . C.toMaryValue
 
 slot :: Lens' (LedgerEnv era) SlotNo
 slot = lens get set_ where
@@ -382,10 +389,10 @@ slot = lens get set_ where
 {-| 'UTxOState' iso. Note that this doesn't touch the '_stakeDistro' field. This is because the
 stake distro is a function of @utxo :: UTxO era@ and can be computed by @updateStakeDistribution mempty mempty utxo@.
 -}
-_UTxOState :: forall era. (Core.EraTxOut era) => Core.PParams era -> Iso' (UTxOState era) (UTxO era, Coin, Coin, GovernanceState era)
+_UTxOState :: forall era. (Core.EraTxOut era) => Core.PParams era -> Iso' (UTxOState era) (UTxO era, Coin, Coin, GovState era, Coin)
 _UTxOState pp = iso from to where
-  from UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovernance} = (utxosUtxo, utxosDeposited, utxosFees, utxosGovernance)
-  to (utxosUtxo, utxosDeposited, utxosFees, utxosGovernance) = UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovernance, utxosStakeDistr = updateStakeDistribution pp mempty mempty utxosUtxo}
+  from UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation} = (utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation)
+  to (utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation) = UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation, utxosStakeDistr = updateStakeDistribution pp mempty mempty utxosUtxo}
 
 
 utxoState :: Lens' (LedgerState era) (UTxOState era)
@@ -469,30 +476,25 @@ _TxValidityNoLowerBound = prism' from to where
     C.TxValidityNoLowerBound -> Just ()
     _                        -> Nothing
 
-_TxValidityLowerBound :: forall era. Prism' (C.TxValidityLowerBound era) (C.ValidityLowerBoundSupportedInEra era, C.SlotNo)
+_TxValidityLowerBound :: forall era. Prism' (C.TxValidityLowerBound era) (C.AllegraEraOnwards era, C.SlotNo)
 _TxValidityLowerBound = prism' from to where
   from (s, e) = C.TxValidityLowerBound s e
   to = \case
     C.TxValidityLowerBound s e -> Just (s, e)
     _                          -> Nothing
 
-_TxValidityNoUpperBound :: forall era. Prism' (C.TxValidityUpperBound era) (C.ValidityNoUpperBoundSupportedInEra era)
-_TxValidityNoUpperBound = prism' from to where
-  from = C.TxValidityNoUpperBound
-  to = \case
-    C.TxValidityNoUpperBound k -> Just k
-    _                          -> Nothing
+_TxValidityUpperBound :: forall era. Iso' (C.TxValidityUpperBound era) (C.ShelleyBasedEra era, Maybe SlotNo)
+_TxValidityUpperBound = iso from to where
+  from :: C.TxValidityUpperBound era -> (C.ShelleyBasedEra era, Maybe SlotNo)
+  from = \case
+    C.TxValidityUpperBound k s -> (k, s)
 
-_TxValidityUpperBound :: forall era. Prism' (C.TxValidityUpperBound era) (C.ValidityUpperBoundSupportedInEra era, SlotNo)
-_TxValidityUpperBound = prism' from to where
-  from (k, s) = C.TxValidityUpperBound k s
-  to = \case
-    C.TxValidityUpperBound k s -> Just (k, s)
-    _                          -> Nothing
+  to :: (C.ShelleyBasedEra era, Maybe SlotNo) -> C.TxValidityUpperBound era
+  to (k, s) = C.TxValidityUpperBound k s
 
 _TxValidityFiniteRange :: Prism' (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra) (SlotNo, SlotNo)
 _TxValidityFiniteRange = prism' from to where
-  from (l, u) = (C.TxValidityLowerBound C.ValidityLowerBoundInBabbageEra l, C.TxValidityUpperBound C.ValidityUpperBoundInBabbageEra u)
+  from (l, u) = (C.TxValidityLowerBound C.AllegraEraOnwardsBabbage l, C.TxValidityUpperBound C.ShelleyBasedEraBabbage (Just u))
   to = \case
-    (C.TxValidityLowerBound _ l, C.TxValidityUpperBound _ u) -> Just (l, u)
+    (C.TxValidityLowerBound _ l, C.TxValidityUpperBound _ (Just u)) -> Just (l, u)
     _                                                        -> Nothing

@@ -46,7 +46,10 @@ library
       transformers,
       HUnit,
       QuickCheck,
-      bytestring
+      bytestring,
+      sop-extras,
+      strict-sop-core,
+      sop-core
 
     -- cardano dependencies
     build-depends:

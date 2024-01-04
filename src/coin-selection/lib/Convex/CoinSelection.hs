@@ -42,9 +42,11 @@ module Convex.CoinSelection(
   publicKeyCredential
   ) where
 
-import           Cardano.Api.Shelley       (BabbageEra, BuildTx, CardanoMode,
-                                            EraHistory, PoolId, TxBodyContent,
-                                            TxOut, UTxO (..))
+import qualified Cardano.Api               as Cardano.Api
+import           Cardano.Api.Pretty        (docToString)
+import           Cardano.Api.Shelley       (BabbageEra, BuildTx, EraHistory,
+                                            PoolId, TxBodyContent, TxOut,
+                                            UTxO (..))
 import qualified Cardano.Api.Shelley       as C
 import           Cardano.Ledger.Crypto     (StandardCrypto)
 import qualified Cardano.Ledger.Keys       as Keys
@@ -129,7 +131,7 @@ data CoinSelectionError =
   deriving anyclass (ToJSON, FromJSON)
 
 bodyError :: C.TxBodyError -> CoinSelectionError
-bodyError = BodyError . Text.pack . C.displayError
+bodyError = BodyError . Text.pack . docToString . C.prettyError
 
 data BalancingError =
   BalancingError Text
@@ -140,7 +142,7 @@ data BalancingError =
   deriving anyclass (ToJSON, FromJSON)
 
 balancingError :: MonadError BalancingError m => Either C.TxBodyErrorAutoBalance a -> m a
-balancingError = either (throwError . BalancingError . Text.pack . C.displayError) pure
+balancingError = either (throwError . BalancingError . Text.pack . docToString . C.prettyError) pure
 
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage =
@@ -158,7 +160,7 @@ data TxBalancingMessage =
 
 {-| Perform transaction balancing
 -}
-balanceTransactionBody :: (MonadError BalancingError m) => Tracer m TxBalancingMessage -> SystemStart -> EraHistory CardanoMode -> C.BundledProtocolParameters C.BabbageEra -> Set PoolId -> CSInputs -> m (C.BalancedTxBody ERA, BalanceChanges)
+balanceTransactionBody :: (MonadError BalancingError m) => Tracer m TxBalancingMessage -> SystemStart -> EraHistory -> C.LedgerProtocolParameters BabbageEra -> Set PoolId -> CSInputs -> m (C.BalancedTxBody ERA, BalanceChanges)
 balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools CSInputs{csiUtxo, csiTxBody, csiChangeOutput, csiNumWitnesses=TransactionSignatureCount numWits} = do
   let mkChangeOutputFor i = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId ?~ i
       changeOutputSmall = mkChangeOutputFor 1
@@ -168,16 +170,16 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
 
   -- append output instead of prepending
   txbody0 <-
-    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody $ csiTxBody & appendTxOut changeOutputSmall
+    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage $ csiTxBody & appendTxOut changeOutputSmall
 
   exUnitsMap <- balancingError . first C.TxBodyErrorValidityInterval $
-                C.evaluateTransactionExecutionUnits
+                C.evaluateTransactionExecutionUnits C.BabbageEra
                 systemStart (C.toLedgerEpochInfo eraHistory)
                 protocolParams
                 csiUtxo
                 txbody0
 
-  traceWith tracer $ ExUnitsMap $ fmap (second (first C.displayError)) $ Map.toList exUnitsMap
+  traceWith tracer $ ExUnitsMap $ fmap (second (first (docToString . C.prettyError))) $ Map.toList exUnitsMap
 
   exUnitsMap' <- balancingError $
     case Map.mapEither id exUnitsMap of
@@ -188,48 +190,39 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
       txbodycontent1' = txbodycontent1 & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
   -- append output instead of prepending
-  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody txbodycontent1'
+  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
 
-  let !t_fee = C.evaluateTransactionFee protocolParams txbody1 numWits 0
+  let !t_fee = C.evaluateTransactionFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) txbody1 numWits 0
   traceWith tracer Txfee{fee = t_fee}
 
   let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeOutput
-  txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody txbodycontent2
+  txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
 
   -- TODO: If there are any stake pool unregistration certificates in the transaction
   -- then we need to provide a @Map StakeCredential Lovelace@ here.
   -- See https://github.com/input-output-hk/cardano-api/commit/d23f964d311282b1950b2fd840bcc57ae40a0998
   let unregPoolStakeBalance = mempty
 
-  let !balance = C.evaluateTransactionBalance protocolParams stakePools unregPoolStakeBalance csiUtxo txbody2
+  let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)
 
-  traceWith tracer TxRemainingBalance{remainingBalance = view L._TxOutValue balance}
+  traceWith tracer TxRemainingBalance{remainingBalance = balance}
 
   mapM_ (`checkMinUTxOValue` protocolParams) $ C.txOuts txbodycontent1
 
   -- debug "balanceTransactionBody: changeOutputBalance"
-  changeOutputBalance <- case balance of
-    C.TxOutAdaOnly _ b -> do
+  changeOutputBalance <- case C.valueToLovelace balance of
+    Just b -> do
       let op = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId <>~ (Just $ C.lovelaceToQuantity b)
       balanceCheck protocolParams op
       pure op
-    C.TxOutValue _ v -> do
-      case C.valueToLovelace v of
-        -- FIXME: Support non Ada assets. This isn't as easy as just adding @v@ to the change output,
-        --        because any non-Ada that are not present in the original change output will increase
-        --        the output's size, so the fee will need to be computed again.
-        Nothing -> balancingError $ Left $ C.TxBodyErrorNonAdaAssetsUnbalanced v
-        Just lvl  ->  do
-          let op = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId <>~ (Just $ C.lovelaceToQuantity lvl)
-          balanceCheck protocolParams op
-          pure op
+    Nothing -> balancingError $ Left $ C.TxBodyErrorNonAdaAssetsUnbalanced balance
 
   let finalBodyContent =
         txbodycontent1
           & set L.txFee t_fee
           & appendTxOut changeOutputBalance
 
-  txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody finalBodyContent
+  txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage finalBodyContent
 
   balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
@@ -239,10 +232,10 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
 checkMinUTxOValue
   :: MonadError BalancingError m
   => C.TxOut C.CtxTx C.BabbageEra
-  -> C.BundledProtocolParameters C.BabbageEra
+  -> C.LedgerProtocolParameters BabbageEra
   -> m ()
 checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
-  let minUTxO  = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txout pparams'
+  let minUTxO  = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txout (C.unLedgerProtocolParameters pparams')
   if C.txOutValueToLovelace v >= minUTxO
   then pure ()
   else throwError (CheckMinUtxoValueError txout minUTxO)
@@ -253,7 +246,7 @@ appendTxOut out = over L.txOuts (|> out)
 {-| Check that the output has a positive Ada balance greater than or equal to the minimum
 UTxO requirement
 -}
-balanceCheck :: MonadError BalancingError m => C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> m ()
+balanceCheck :: MonadError BalancingError m => C.LedgerProtocolParameters BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> m ()
 balanceCheck pparams output =
   let balance = view (L._TxOut . _2) output in
     if view L._TxOutValue balance == mempty
@@ -392,7 +385,7 @@ balanceTx ::
 balanceTx dbg returnUTxO0 walletUtxo txb = do
   params <- queryProtocolParameters
   pools <- queryStakePools
-  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just $ C.unbundleProtocolParams params)
+  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just params)
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns txb)
   let combinedTxIns =
@@ -425,7 +418,7 @@ balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
 -}
 signForWallet :: Wallet -> C.BalancedTxBody ERA -> C.Tx ERA
 signForWallet wallet (C.BalancedTxBody _ txbody _changeOutput _fee) =
-  let wit = [C.makeShelleyKeyWitness txbody $ C.WitnessPaymentKey  (Wallet.getWallet wallet)]
+  let wit = [C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage txbody $ C.WitnessPaymentKey (Wallet.getWallet wallet)]
   in C.makeSignedTransaction wit txbody
 
 addOwnInput :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent BuildTx ERA
@@ -454,10 +447,10 @@ runsScripts body =
 
 {-| Add inputs to ensure that the balance is strictly positive
 -}
-addMissingInputs :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> C.BundledProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
+addMissingInputs :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> C.LedgerProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
 addMissingInputs dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
-  txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody txBodyContent0)
-  let bal = C.evaluateTransactionBalance ledgerPPs poolIds mempty utxo_ txb & view L._TxOutValue
+  txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txBodyContent0)
+  let bal = C.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
   traceWith dbg PrepareInputs
     { walletBalance      = Utxos.totalBalance walletUtxo
@@ -520,7 +513,7 @@ any non-Ada asset it contains. If the positive part only contains Ada then no
 output is added.
 -}
 addOutputForNonAdaAssets ::
-  C.BundledProtocolParameters BabbageEra -> -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
+  C.LedgerProtocolParameters BabbageEra -> -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
   C.TxOut C.CtxTx C.BabbageEra -> -- ^ Address of the newly created output
   C.Value -> -- ^ The balance of the transaction
   (C.TxOut C.CtxTx C.BabbageEra, C.Lovelace) -- ^ The modified transaction body and the lovelace portion of the change output's value. If no output was added then the amount will be 0.

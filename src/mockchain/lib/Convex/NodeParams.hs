@@ -29,7 +29,6 @@ module Convex.NodeParams(
   poolPledgeInfluence,
   monetaryExpansion,
   treasuryCut,
-  uTxOCostPerWord,
   costModels,
   prices,
   maxTxExUnits,
@@ -40,9 +39,10 @@ module Convex.NodeParams(
   uTxOCostPerByte
 ) where
 
-import           Cardano.Api           (BabbageEra, BundledProtocolParameters)
-import           Cardano.Api.Shelley   (CardanoMode, EraHistory, NetworkId (..),
-                                        PoolId, ProtocolParameters (..))
+import           Cardano.Api           (BabbageEra)
+import           Cardano.Api.Shelley   (EraHistory, LedgerProtocolParameters,
+                                        NetworkId (..), PoolId,
+                                        ProtocolParameters (..))
 import           Cardano.Slotting.Time (SlotLength, SystemStart)
 import           Control.Lens.TH       (makeLensesFor)
 import           Data.Set              as Set (Set)
@@ -50,9 +50,9 @@ import           Data.Set              as Set (Set)
 data NodeParams =
   NodeParams
     { npNetworkId          :: NetworkId
-    , npProtocolParameters :: BundledProtocolParameters BabbageEra
+    , npProtocolParameters :: LedgerProtocolParameters BabbageEra
     , npSystemStart        :: SystemStart
-    , npEraHistory         :: EraHistory CardanoMode
+    , npEraHistory         :: EraHistory
     , npStakePools         :: Set PoolId
     , npSlotLength         :: SlotLength
     }

@@ -11,10 +11,7 @@ module Convex.NodeQueries(
   queryProtocolParameters
 ) where
 
-import           Cardano.Api                                        (BabbageEra,
-                                                                     BundledProtocolParameters,
-                                                                     CardanoMode,
-                                                                     ChainPoint,
+import           Cardano.Api                                        (ChainPoint,
                                                                      ConsensusModeParams (..),
                                                                      Env (..),
                                                                      EpochSlots (..),
@@ -29,6 +26,7 @@ import qualified Cardano.Api                                        as CAPI
 import qualified Cardano.Chain.Genesis
 import           Cardano.Crypto                                     (RequiresNetworkMagic (..),
                                                                      getProtocolMagic)
+import           Cardano.Ledger.Core                                (PParams)
 import           Control.Monad.Except                               (MonadError,
                                                                      throwError)
 import           Control.Monad.IO.Class                             (MonadIO (..))
@@ -38,6 +36,7 @@ import qualified Ouroboros.Consensus.Cardano.CanHardFork            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras as HFC
 import qualified Ouroboros.Consensus.HardFork.Combinator.Basics     as HFC
+import           Ouroboros.Consensus.Shelley.Eras                   (StandardBabbage)
 
 {-| Load the node config file and create 'LocalNodeConnectInfo' and 'Env' values that can be used to talk to the node.
 -}
@@ -47,7 +46,7 @@ loadConnectInfo ::
   -- ^ Node config file (JSON)
   -> FilePath
   -- ^ Node socket
-  -> m (LocalNodeConnectInfo CardanoMode, Env)
+  -> m (LocalNodeConnectInfo, Env)
 loadConnectInfo nodeConfigFilePath socketPath = do
   (env, _) <- liftIO (runExceptT (CAPI.initialLedgerState (CAPI.File nodeConfigFilePath))) >>= either throwError pure
 
@@ -70,7 +69,7 @@ loadConnectInfo nodeConfigFilePath socketPath = do
       cardanoModeParams = CardanoModeParams . EpochSlots $ 10 * envSecurityParam env
 
   -- Connect to the node.
-  let connectInfo :: LocalNodeConnectInfo CardanoMode
+  let connectInfo :: LocalNodeConnectInfo
       connectInfo =
           LocalNodeConnectInfo {
             localConsensusModeParams = cardanoModeParams,
@@ -80,19 +79,19 @@ loadConnectInfo nodeConfigFilePath socketPath = do
   pure (connectInfo, env)
 
 -- | Get the system start from the local cardano node
-querySystemStart :: LocalNodeConnectInfo CardanoMode -> IO SystemStart
+querySystemStart :: LocalNodeConnectInfo -> IO SystemStart
 querySystemStart = queryLocalState CAPI.QuerySystemStart
 
 -- | Get the era history from the local cardano node
-queryEraHistory :: LocalNodeConnectInfo CardanoMode -> IO (EraHistory CardanoMode)
-queryEraHistory = queryLocalState (CAPI.QueryEraHistory CAPI.CardanoModeIsMultiEra)
+queryEraHistory :: LocalNodeConnectInfo -> IO EraHistory
+queryEraHistory = queryLocalState CAPI.QueryEraHistory
 
 -- | Get the tip from the local cardano node
-queryTip :: LocalNodeConnectInfo CardanoMode -> IO ChainPoint
-queryTip = queryLocalState (CAPI.QueryChainPoint CAPI.CardanoMode)
+queryTip :: LocalNodeConnectInfo -> IO ChainPoint
+queryTip = queryLocalState CAPI.QueryChainPoint
 
 -- | Run a local state query on the local cardano node
-queryLocalState :: CAPI.QueryInMode CardanoMode b -> LocalNodeConnectInfo CardanoMode -> IO b
+queryLocalState :: CAPI.QueryInMode b -> LocalNodeConnectInfo -> IO b
 queryLocalState query connectInfo = do
   CAPI.queryNodeLocalState connectInfo Nothing query >>= \case
     Left err -> do
@@ -100,14 +99,10 @@ queryLocalState query connectInfo = do
     Right result -> pure result
 
 -- | Get the protocol parameters from the local cardano node
-queryProtocolParameters :: LocalNodeConnectInfo CardanoMode -> IO (BundledProtocolParameters BabbageEra)
+queryProtocolParameters :: LocalNodeConnectInfo -> IO (PParams StandardBabbage)
 queryProtocolParameters connectInfo = do
-  result <- queryLocalState (CAPI.QueryInEra CAPI.BabbageEraInCardanoMode (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryProtocolParameters)) connectInfo
+  result <- queryLocalState (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryProtocolParameters)) connectInfo
   case result of
     Left err -> do
       fail ("queryProtocolParameters: failed with: " <> show err)
-    -- Right k -> pure (CAPI.bundleProtocolParams k)
-    Right x -> case CAPI.bundleProtocolParams CAPI.BabbageEra x of
-      Left err -> do
-        fail ("queryProtocolParameters: bundleProtocolParams failed with: " <> show err)
-      Right k -> pure k
+    Right x -> pure x

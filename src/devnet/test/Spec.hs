@@ -43,7 +43,7 @@ main = do
 
 checkCardanoNode :: IO ()
 checkCardanoNode =
-  let expectedVersion = "8.1.1"
+  let expectedVersion = "8.7.2"
   in getCardanoNodeVersion >>= assertBool ("cardano-node version should be " <> expectedVersion) . isInfixOf expectedVersion
 
 startLocalNode :: IO ()
@@ -81,7 +81,7 @@ runWalletServer =
 
 changeMaxTxSize :: IO ()
 changeMaxTxSize =
-  let getMaxTxSize = fmap (C.protocolParamMaxTxSize . C.unbundleProtocolParams) . queryProtocolParameters . fst . rnConnectInfo in
+  let getMaxTxSize = fmap (C.protocolParamMaxTxSize . C.fromLedgerPParams C.ShelleyBasedEraBabbage) . queryProtocolParameters . fst . rnConnectInfo in
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp mempty getMaxTxSize

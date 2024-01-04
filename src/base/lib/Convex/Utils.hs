@@ -46,7 +46,6 @@ module Convex.Utils(
 import           Cardano.Api                              (BabbageEra,
                                                            Block (..),
                                                            BlockInMode (..),
-                                                           CardanoMode,
                                                            NetworkId,
                                                            PaymentCredential (..),
                                                            PlutusScript,
@@ -103,7 +102,7 @@ unsafeScriptFromCborV1 = either error id . scriptFromCborV1
 scriptAddressV1 :: NetworkId -> PlutusScript PlutusScriptV1 -> C.AddressInEra C.BabbageEra
 scriptAddressV1 network script =
   let hash = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
-  in C.makeShelleyAddressInEra network (C.PaymentCredentialByScript hash) C.NoStakeAddress
+  in C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript hash) C.NoStakeAddress
 
 scriptFromCbor :: String -> Either String (PlutusScript PlutusScriptV2)
 scriptFromCbor cbor = do
@@ -128,14 +127,14 @@ unsafeTxFromCbor = either error id . txFromCbor
 scriptAddress :: NetworkId -> PlutusScript PlutusScriptV2 -> C.AddressInEra C.BabbageEra
 scriptAddress network script =
   let hash = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-  in C.makeShelleyAddressInEra network (C.PaymentCredentialByScript hash) C.NoStakeAddress
+  in C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript hash) C.NoStakeAddress
 
 s :: String -> String
 s = id
 
 {-| Search for interesting transactions in a block and serialise them to JSON files
 -}
-extractTx :: forall m. MonadIO m => Set C.TxId -> BlockInMode CardanoMode -> m ()
+extractTx :: forall m. MonadIO m => Set C.TxId -> BlockInMode -> m ()
 extractTx txIds =
   let extractTx' :: C.Tx C.BabbageEra -> m ()
       extractTx' tx@(C.Tx txBody _) = do
@@ -143,7 +142,7 @@ extractTx txIds =
         when (txi `Set.member` txIds) $
           void $ liftIO $ C.writeFileTextEnvelope (C.File $ show txi <> ".json") Nothing tx
   in \case
-    BlockInMode (Block _ txns) C.BabbageEraInCardanoMode ->
+    BlockInMode C.BabbageEra (Block _ txns) ->
       traverse_ extractTx' txns
     _                                                    -> pure ()
 
@@ -157,13 +156,13 @@ txnUtxos tx =
 
 {-| Convert a slot number to UTC time
 -}
-slotToUtcTime :: C.EraHistory mode -> C.SystemStart -> SlotNo -> Either String UTCTime
+slotToUtcTime :: C.EraHistory -> C.SystemStart -> SlotNo -> Either String UTCTime
 slotToUtcTime (toLedgerEpochInfo -> info) systemStart slot = epochInfoSlotToUTCTime info systemStart slot
 
 {-| Convert a UTC time to slot no. Returns the time spent and time left in this slot.
 -}
-utcTimeToSlot :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
-utcTimeToSlot (C.EraHistory _ interpreter) systemStart t = first show $
+utcTimeToSlot :: C.EraHistory -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+utcTimeToSlot (C.EraHistory interpreter) systemStart t = first show $
   Qry.interpretQuery interpreter (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
 
 utcTimeToPosixTime :: UTCTime -> PV1.POSIXTime
@@ -171,7 +170,7 @@ utcTimeToPosixTime =  transPOSIXTime . utcTimeToPOSIXSeconds
 
 {-| Convert a 'PV1.POSIXTime' to slot no. Returns the time spent and time left in this slot.
 -}
-posixTimeToSlot :: C.EraHistory mode -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+posixTimeToSlot :: C.EraHistory -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
 posixTimeToSlot eraHistory systemStart (posixSecondsToUTCTime . unTransPOSIXTime -> utcTime) =
   utcTimeToSlot eraHistory systemStart utcTime
 
@@ -180,19 +179,19 @@ Extends the interpreter range to infinity before running the query, ignoring
 any future hard forks. This avoids horizon errors for times that are in the future.
 It may still fail for times that are in the past (before the beginning of the horizin)
 -}
-utcTimeToSlotUnsafe :: C.EraHistory mode -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
-utcTimeToSlotUnsafe (C.EraHistory _ interpreter) systemStart t = first show $
+utcTimeToSlotUnsafe :: C.EraHistory -> C.SystemStart -> UTCTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+utcTimeToSlotUnsafe (C.EraHistory interpreter) systemStart t = first show $
   Qry.interpretQuery (Qry.unsafeExtendSafeZone interpreter) (Qry.wallclockToSlot (Time.toRelativeTime systemStart t))
 
 {-| Convert a 'PV1.POSIXTime' to slot no. Returns the time spent and time left in this slot.
 -}
-posixTimeToSlotUnsafe :: C.EraHistory mode -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
+posixTimeToSlotUnsafe :: C.EraHistory -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
 posixTimeToSlotUnsafe eraHistory systemStart (posixSecondsToUTCTime . unTransPOSIXTime -> utcTime) =
   utcTimeToSlotUnsafe eraHistory systemStart utcTime
 
 -- FIXME: Looks like this function is exposed by Cardano.Api in cardano-node@v1.36
-toLedgerEpochInfo :: C.EraHistory mode -> EpochInfo (Either String)
-toLedgerEpochInfo (C.EraHistory _ interpreter) =
+toLedgerEpochInfo :: C.EraHistory -> EpochInfo (Either String)
+toLedgerEpochInfo (C.EraHistory interpreter) =
   hoistEpochInfo (first show . runExcept) $
     Consensus.interpreterToEpochInfo interpreter
 

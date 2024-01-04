@@ -26,8 +26,7 @@ module Convex.Devnet.CardanoNode(
   withCardanoNodeDevnetConfig
 ) where
 
-import           Cardano.Api                      (CardanoMode, Env,
-                                                   LocalNodeConnectInfo,
+import           Cardano.Api                      (Env, LocalNodeConnectInfo,
                                                    NetworkId)
 import qualified Cardano.Api                      as C
 import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
@@ -86,7 +85,7 @@ data RunningNode = RunningNode
   { rnNodeSocket     :: FilePath -- ^ Cardano node socket
   , rnNetworkId      :: NetworkId -- ^ Network ID used by the cardano node
   , rnNodeConfigFile :: FilePath -- ^ Cardano node config file (JSON)
-  , rnConnectInfo    :: (LocalNodeConnectInfo CardanoMode, Env) -- ^ Connection info for node queries
+  , rnConnectInfo    :: (LocalNodeConnectInfo, Env) -- ^ Connection info for node queries
   }
 
 -- | Configuration parameters for a single node devnet

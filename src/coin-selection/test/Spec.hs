@@ -7,18 +7,13 @@ module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
 import           Cardano.Ledger.Alonzo.Rules    (AlonzoUtxoPredFailure (..))
-import           Cardano.Ledger.Alonzo.Scripts  (AlonzoScript (..),
-                                                 transProtocolVersion,
-                                                 validScript)
 import           Cardano.Ledger.Babbage.Rules   (BabbageUtxoPredFailure (..),
                                                  BabbageUtxowPredFailure (..))
-import           Cardano.Ledger.Language        (Language (..))
 import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
 import           Cardano.Ledger.Shelley.Rules   (ShelleyLedgerPredFailure (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (void, when)
-import           Control.Monad.Except           (MonadError, runExcept,
-                                                 runExceptT)
+import           Control.Monad.Except           (MonadError, runExceptT)
 import           Control.Monad.State.Strict     (execStateT, modify)
 import           Control.Monad.Trans.Class      (MonadTrans (..))
 import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
@@ -67,8 +62,7 @@ import qualified Scripts
 import qualified Test.QuickCheck.Gen            as Gen
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
-import           Test.Tasty.HUnit               (Assertion, assertBool,
-                                                 testCase)
+import           Test.Tasty.HUnit               (Assertion, testCase)
 import qualified Test.Tasty.QuickCheck          as QC
 import           Test.Tasty.QuickCheck          (Property, classify,
                                                  testProperty)
@@ -87,7 +81,6 @@ tests = testGroup "unit tests"
     [ testCase "paying to a plutus script" (mockchainSucceeds $ failOnError payToPlutusScript)
     , testCase "spending a plutus script output" (mockchainSucceeds $ failOnError (payToPlutusScript >>= spendPlutusScript))
     , testCase "spending a plutus script (V2) output" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusV2Script))
-    , testCase "well-formed scripts" wellFormedScripts
     , testCase "creating a reference script output" (mockchainSucceeds $ failOnError $ putReferenceScript Wallet.w1)
     , testCase "using a reference script" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusScriptReference))
     , testCase "minting a token" (mockchainSucceeds $ failOnError mintingPlutus)
@@ -102,13 +95,6 @@ tests = testGroup "unit tests"
 
 spendPublicKeyOutput :: Assertion
 spendPublicKeyOutput = mockchainSucceeds $ failOnError (Wallet.w2 `paymentTo` Wallet.w1)
-
-wellFormedScripts :: Assertion
-wellFormedScripts = do
-  let protVer = Defaults.protVer Defaults.nodeParams
-      s = Cardano.Ledger.Alonzo.Scripts.PlutusScript PlutusV2 Scripts.v2SpendingScriptSerialised
-  either (fail . show) pure (runExcept (PV2.assertScriptWellFormed (transProtocolVersion protVer) Scripts.v2SpendingScriptSerialised))
-  assertBool "validScript" (validScript protVer s)
 
 makeSeveralPayments :: Assertion
 makeSeveralPayments = mockchainSucceeds $ failOnError $ do
@@ -148,7 +134,7 @@ spendPlutusV2Script ref = do
 putReferenceScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
-      addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
       tx = execBuildTx' $
             payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
@@ -218,7 +204,7 @@ checkResolveDatumHash = do
 
   -- 1. resolve an inline datum
   let datum1 = C.unsafeHashableScriptData  (C.ScriptDataConstructor 5 [])
-      dat = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra datum1
+      dat = C.TxOutDatumInline C.BabbageEraOnwardsBabbage datum1
       txOut = payToAddressTxOut addr mempty
                 & L._TxOut . _3 .~ dat
 
@@ -237,9 +223,9 @@ checkResolveDatumHash = do
       datum3 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d3
       txo =
         C.TxOut
-          (C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript (C.hashScript (C.PlutusScript C.PlutusScriptV1 txInscript))) C.NoStakeAddress)
-          (C.TxOutValue C.MultiAssetInBabbageEra mempty)
-          (C.TxOutDatumHash C.ScriptDataInBabbageEra (C.hashScriptDataBytes datum3))
+          (C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage Defaults.networkId (C.PaymentCredentialByScript (C.hashScript (C.PlutusScript C.PlutusScriptV1 txInscript))) C.NoStakeAddress)
+          (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage mempty)
+          (C.TxOutDatumHash C.AlonzoEraOnwardsBabbage (C.hashScriptDataBytes datum3))
           C.ReferenceScriptNone
   txId <- execBuildTxWallet Wallet.w1 (prependTxOut txo)
   _ <- execBuildTxWallet Wallet.w1 (spendPlutusV1 (C.TxIn txId (C.TxIx 0)) txInscript d3 ())
@@ -298,10 +284,10 @@ largeTransactionTest = do
 
   -- tx fails with default parameters
   mockchainFails (failOnError largeDatumTx) $ \case
-    MockchainValidationFailed (ApplyTxFailure (ApplyTxError [UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20311 16384)))])) -> pure ()
+    MockchainValidationFailed (ApplyTxFailure (ApplyTxError [UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20304 16384)))])) -> pure ()
     err -> fail $ "Unexpected failure: " <> show err
 
-  -- the tx should succeed after setting the max tx size to exactly 20311 (see the error message in the test above)
-  let protParams = Defaults.protocolParameters & maxTxSize .~ 20311
-      params' = Defaults.nodeParams & protocolParameters .~ (either (error. show) id (C.bundleProtocolParams C.BabbageEra protParams))
+  -- the tx should succeed after setting the max tx size to exactly 20304 (see the error message in the test above)
+  let protParams = Defaults.protocolParameters & maxTxSize .~ 20304
+      params' = Defaults.nodeParams & protocolParameters .~ (either (error. show) id (C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage protParams))
   mockchainSucceedsWith params' (failOnError largeDatumTx)

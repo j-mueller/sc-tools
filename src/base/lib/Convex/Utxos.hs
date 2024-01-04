@@ -59,7 +59,6 @@ module Convex.Utxos(
 
 import           Cardano.Api                   (AddressInEra, BabbageEra,
                                                 Block (..), BlockInMode (..),
-                                                CardanoMode, EraInMode (..),
                                                 HashableScriptData,
                                                 PaymentCredential,
                                                 StakeCredential, Tx (..), TxId,
@@ -379,14 +378,14 @@ inv (UtxoChange added removed) = UtxoChange removed added
 {-| Extract from a block the UTXO changes at the given address. Returns the
 'UtxoChange' itself and a set of all transactions that affected the change.
 -}
-extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> Maybe AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode CardanoMode -> [UtxoChangeEvent a]
+extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> Maybe AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode -> [UtxoChangeEvent a]
 extract ex cred state = DList.toList . \case
-  BlockInMode block BabbageEraInCardanoMode -> extractBabbage ex state cred block
+  BlockInMode C.BabbageEra block -> extractBabbage ex state cred block
   _                                         -> mempty
 
 {-| Extract from a block the UTXO changes at the given address
 -}
-extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode CardanoMode -> UtxoChange C.CtxTx ()
+extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode -> UtxoChange C.CtxTx ()
 extract_ a b = foldMap fromEvent . extract (\_ -> const $ Just ()) (Just a) b
 
 {-| Extract from a transaction the UTXO changes at the given address}
@@ -406,8 +405,8 @@ extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
       allOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody' scriptData
 
       txReds = case scriptData of
-              C.TxBodyScriptData C.ScriptDataInBabbageEra _ r -> unRedeemers r
-              _                                               -> mempty
+              C.TxBodyScriptData _ _ r -> unRedeemers r
+              _                        -> mempty
 
       checkInput :: (Word64, TxIn) -> Maybe (TxIn, ((C.TxOut C.CtxTx C.BabbageEra, a), Maybe (HashableScriptData, ExecutionUnits)))
       checkInput (idx, txIn) = fmap (txIn,) $ do

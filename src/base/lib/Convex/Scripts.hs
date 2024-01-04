@@ -14,16 +14,16 @@ module Convex.Scripts(
 
 ) where
 
-import           Cardano.Api                        (PlutusScript)
-import qualified Cardano.Api.Shelley                as C
-import           Cardano.Ledger.Alonzo.Scripts.Data (Data (..))
-import           Codec.Serialise                    (serialise)
-import           Data.ByteString.Lazy               (toStrict)
-import           Data.ByteString.Short              (toShort)
-import           Ouroboros.Consensus.Shelley.Eras   (StandardBabbage)
-import           PlutusLedgerApi.Common             (serialiseCompiledCode)
-import qualified PlutusLedgerApi.V1                 as PV1
-import           PlutusTx.Code                      (CompiledCode)
+import           Cardano.Api                      (PlutusScript)
+import qualified Cardano.Api.Shelley              as C
+import           Cardano.Ledger.Plutus.Data       (Data (..))
+import           Codec.Serialise                  (serialise)
+import           Data.ByteString.Lazy             (toStrict)
+import           Data.ByteString.Short            (toShort)
+import           Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
+import           PlutusLedgerApi.Common           (serialiseCompiledCode)
+import qualified PlutusLedgerApi.V1               as PV1
+import           PlutusTx.Code                    (CompiledCode)
 
 {-| Get the 'PlutusScript' of a 'CompiledCode'
 -}

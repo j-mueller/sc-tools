@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE TypeOperators      #-}
 {-# LANGUAGE ViewPatterns       #-}
 {-| Minimal mockchain
 -}
@@ -35,7 +36,7 @@ module Convex.MockChain(
   evaluateTx,
   applyTransaction,
   -- * Plutus scripts
-  ScriptContext,
+  PlutusWithContext(..),
   fullyAppliedScript,
   -- * Mockchain implementation
   MockchainError(..),
@@ -69,15 +70,10 @@ import           Cardano.Api.Shelley                   (AddressInEra,
                                                         SlotNo, Tx,
                                                         TxBody (ShelleyTxBody))
 import qualified Cardano.Api.Shelley                   as Cardano.Api
-import           Cardano.Ledger.Alonzo.Language        (Language (..))
+import           Cardano.Ledger.Alonzo.Plutus.TxInfo   as Ledger
 import           Cardano.Ledger.Alonzo.PlutusScriptApi (CollectError,
-                                                        collectTwoPhaseScriptInputs,
-                                                        evalScripts)
-import           Cardano.Ledger.Alonzo.Scripts         (CostModel, ExUnits)
-import           Cardano.Ledger.Alonzo.Scripts.Data    (Data)
-import qualified Cardano.Ledger.Alonzo.Scripts.Data    as Ledger
-import           Cardano.Ledger.Alonzo.TxInfo          (ScriptResult (..))
-import qualified Cardano.Ledger.Alonzo.TxInfo          as Ledger
+                                                        collectPlutusScriptsWithContext,
+                                                        evalPlutusScripts)
 import           Cardano.Ledger.Alonzo.TxWits          (unTxDats)
 import           Cardano.Ledger.Babbage                (Babbage)
 import           Cardano.Ledger.Babbage.Tx             (AlonzoTx (..),
@@ -86,6 +82,10 @@ import           Cardano.Ledger.BaseTypes              (Globals (systemStart),
                                                         ProtVer, epochInfo)
 import qualified Cardano.Ledger.Core                   as Core
 import           Cardano.Ledger.Crypto                 (StandardCrypto)
+import qualified Cardano.Ledger.Plutus.Data            as Ledger
+import           Cardano.Ledger.Plutus.Language        (BinaryPlutus (..),
+                                                        Language (..),
+                                                        Plutus (..))
 import           Cardano.Ledger.Shelley.API            (AccountState (..),
                                                         ApplyTxError, Coin (..),
                                                         GenDelegs (..),
@@ -129,7 +129,6 @@ import           Convex.Utxos                          (UtxoSet (..),
 import           Convex.Wallet                         (Wallet, addressInEra,
                                                         paymentCredential)
 import           Data.Bifunctor                        (Bifunctor (..))
-import           Data.ByteString.Short                 (ShortByteString)
 import           Data.Default                          (Default (def))
 import           Data.Foldable                         (for_, traverse_)
 import           Data.Functor.Identity                 (Identity (..))
@@ -141,30 +140,26 @@ import           PlutusLedgerApi.Common                (mkTermToEvaluate)
 import qualified PlutusLedgerApi.Common                as Plutus
 import qualified UntypedPlutusCore                     as UPLC
 
-{-| All the information needed to evaluate a Plutus script: The script itself, the
-script language, redeemers and datums, execution units required, and the cost model.
--}
-type ScriptContext era = (ShortByteString, Language, [Data era], ExUnits, CostModel)
-
 {-| Apply the plutus script to all its arguments and return a plutus
 program
 -}
-fullyAppliedScript :: NodeParams -> ScriptContext ERA -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
-fullyAppliedScript params (script, lang, arguments, _, _) = do
+fullyAppliedScript :: NodeParams -> PlutusWithContext Babbage -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+fullyAppliedScript params PlutusWithContext{pwcScript=Plutus{plutusLanguage, plutusScript}, pwcDatums} = do
   let pv = Ledger.transProtocolVersion (Defaults.protVer params)
-      pArgs = Ledger.getPlutusData <$> arguments
-      lng = case lang of
+      pArgs = Ledger.getPlutusData <$> pwcDatums
+      lng = case plutusLanguage of
               PlutusV1 -> Plutus.PlutusV1
               PlutusV2 -> Plutus.PlutusV2
               PlutusV3 -> Plutus.PlutusV3
-  appliedTerm <- first show $ mkTermToEvaluate lng pv script pArgs
+  scriptForEval <- first show $ Plutus.deserialiseScript lng pv (unBinaryPlutus plutusScript)
+  appliedTerm <- first show $ mkTermToEvaluate lng pv scriptForEval pArgs
   pure $ UPLC.Program () PLC.latestVersion appliedTerm
 
 data MockChainState =
   MockChainState
     { mcsEnv          :: MempoolEnv ERA
     , mcsPoolState    :: MempoolState ERA
-    , mcsTransactions :: [(Validated (Core.Tx ERA), [ScriptContext ERA])]
+    , mcsTransactions :: [(Validated (Core.Tx ERA), [PlutusWithContext Babbage])]
     , mcsDatums       :: Map (Hash ScriptData) ScriptData
     }
 
@@ -211,7 +206,7 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
             , ledgerAccount = AccountState (Coin 0) (Coin 0)
             }
       , mcsPoolState = LedgerState
-          { lsUTxOState = smartUTxOState (Defaults.pParams params) utxo (Coin 0) (Coin 0) def
+          { lsUTxOState = smartUTxOState (Defaults.pParams params) utxo (Coin 0) (Coin 0) def (Coin 0)
           , lsCertState = def
           }
       , mcsTransactions = []
@@ -244,7 +239,7 @@ getTxExUnits ::
   Cardano.Api.Tx Cardano.Api.BabbageEra ->
   Either ExUnitsError (Map.Map Cardano.Api.ScriptWitnessIndex Cardano.Api.ExecutionUnits)
 getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo (Cardano.Api.getTxBody -> tx) =
-  case Cardano.Api.evaluateTransactionExecutionUnits npSystemStart (Cardano.Api.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxo) tx of
+  case Cardano.Api.evaluateTransactionExecutionUnits Cardano.Api.BabbageEra npSystemStart (Cardano.Api.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxo) tx of
     Left e      -> Left (Phase1Error e)
     Right rdmrs -> traverse (either (Left . Phase2Error) Right) rdmrs
 
@@ -252,7 +247,7 @@ applyTransaction :: NodeParams -> MockChainState -> Cardano.Api.Tx Cardano.Api.B
 applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
   let currentSlot = state ^. env . L.slot
       utxoState_ = state ^. poolState . L.utxoState
-      utxo = utxoState_ ^. L._UTxOState (unbundleLedgerShelleyBasedProtocolParams Cardano.Api.ShelleyBasedEraBabbage $ npProtocolParameters params) . _1
+      utxo = utxoState_ ^. L._UTxOState (Cardano.Api.unLedgerProtocolParameters $ npProtocolParameters params) . _1
   (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.protVer params) (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
   result <- applyTx params state vtx scripts
 
@@ -263,7 +258,7 @@ applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
 
 {-| Evaluate a transaction, returning all of its script contexts.
 -}
-evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [ScriptContext ERA]
+evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [PlutusWithContext Babbage]
 evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
     (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.protVer params) (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
     _ <- applyTx params state vtx scripts
@@ -272,7 +267,7 @@ evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
     state =
       initialState params
         & env . L.slot .~ slotNo
-        & poolState . L.utxoState . L._UTxOState (unbundleLedgerShelleyBasedProtocolParams Cardano.Api.ShelleyBasedEraBabbage $ npProtocolParameters params) . _1 .~ utxo
+        & poolState . L.utxoState . L._UTxOState (Cardano.Api.unLedgerProtocolParameters $ npProtocolParameters params) . _1 .~ utxo
 
 -- | Construct a 'ValidatedTx' from a 'Core.Tx' by setting the `IsValid`
 -- flag.
@@ -292,12 +287,12 @@ constructValidated ::
   UtxoEnv Babbage ->
   UTxOState Babbage ->
   Core.Tx Babbage ->
-  m (AlonzoTx Babbage, [ScriptContext Babbage])
+  m (AlonzoTx Babbage, [PlutusWithContext Babbage])
 constructValidated pv globals (UtxoEnv _ pp _ _) st tx =
-  case collectTwoPhaseScriptInputs ei sysS pp tx utxo of
+  case collectPlutusScriptsWithContext ei sysS pp tx utxo of
     Left errs -> throwError errs
     Right sLst ->
-      let scriptEvalResult = evalScripts @Babbage pv tx sLst
+      let scriptEvalResult = evalPlutusScripts @Babbage pv tx sLst
           vTx =
             AlonzoTx
               (body tx)
@@ -316,7 +311,7 @@ applyTx ::
   NodeParams ->
   MockChainState ->
   Core.Tx ERA ->
-  [ScriptContext ERA] ->
+  [PlutusWithContext ERA] ->
   Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
@@ -392,7 +387,7 @@ addDatumHashes (Cardano.Api.Tx (ShelleyTxBody Cardano.Api.ShelleyBasedEraBabbage
     _                                  -> pure ()
 
   case scriptData of
-    Cardano.Api.TxBodyScriptData Cardano.Api.ScriptDataInBabbageEra (unTxDats -> txDats) _redeemers -> do
+    Cardano.Api.TxBodyScriptData _ (unTxDats -> txDats) _redeemers -> do
       traverse_ (insertHashableScriptData . Cardano.Api.fromAlonzoData) txDats
     _ -> pure ()
 
@@ -487,16 +482,3 @@ fromLedgerUTxO era (UTxO utxo) =
   . map (bimap Cardano.Api.fromShelleyTxIn (Cardano.Api.fromShelleyTxOut era))
   . Map.toList
   $ utxo
-
--- not exported by cardano-api
-unbundleLedgerShelleyBasedProtocolParams
-  :: Cardano.Api.ShelleyBasedEra era
-  -> Cardano.Api.BundledProtocolParameters era
-  -> Core.PParams (ShelleyLedgerEra era)
-unbundleLedgerShelleyBasedProtocolParams = \case
-  Cardano.Api.ShelleyBasedEraShelley -> \(Cardano.Api.BundleAsShelleyBasedProtocolParameters _ _ lpp) -> lpp
-  Cardano.Api.ShelleyBasedEraAllegra -> \(Cardano.Api.BundleAsShelleyBasedProtocolParameters _ _ lpp) -> lpp
-  Cardano.Api.ShelleyBasedEraMary -> \(Cardano.Api.BundleAsShelleyBasedProtocolParameters _ _ lpp) -> lpp
-  Cardano.Api.ShelleyBasedEraAlonzo -> \(Cardano.Api.BundleAsShelleyBasedProtocolParameters _ _ lpp) -> lpp
-  Cardano.Api.ShelleyBasedEraBabbage -> \(Cardano.Api.BundleAsShelleyBasedProtocolParameters _ _ lpp) -> lpp
-  Cardano.Api.ShelleyBasedEraConway -> \(Cardano.Api.BundleAsShelleyBasedProtocolParameters _ _ lpp) -> lpp
