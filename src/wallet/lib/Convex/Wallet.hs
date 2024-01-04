@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
 {-| Primitive wallet
 -}
@@ -80,20 +81,20 @@ shelleyPaymentCredential =
 {-| Sign the transaction body with the signing key and attach the signature
 to the transaction
 -}
-addSignature :: IsShelleyBasedEra era => SigningKey PaymentKey -> C.Tx era -> C.Tx era
+addSignature :: forall era. IsShelleyBasedEra era => SigningKey PaymentKey -> C.Tx era -> C.Tx era
 addSignature (C.WitnessPaymentKey -> key) tx =
   let C.Tx body wits = tx
-      wit = nub $ C.makeShelleyKeyWitness body key : wits
+      wit = nub $ C.makeShelleyKeyWitness (C.shelleyBasedEra @era) body key : wits
       stx = C.makeSignedTransaction wit body
   in stx
 
 {-| Sign the transaction body with the extended signing key and attach the signature
 to the transaction
 -}
-addSignatureExtended :: IsShelleyBasedEra era => SigningKey PaymentExtendedKey -> C.Tx era -> C.Tx era
+addSignatureExtended :: forall era. IsShelleyBasedEra era => SigningKey PaymentExtendedKey -> C.Tx era -> C.Tx era
 addSignatureExtended (C.WitnessPaymentExtendedKey -> key) tx =
   let C.Tx body wits = tx
-      wit = nub $ C.makeShelleyKeyWitness body key : wits
+      wit = nub $ C.makeShelleyKeyWitness (C.shelleyBasedEra @era) body key : wits
       stx = C.makeSignedTransaction wit body
   in stx
 
@@ -108,9 +109,9 @@ address :: NetworkId -> Wallet -> Address ShelleyAddr
 address networkId wallet =
   C.makeShelleyAddress networkId (paymentCredential wallet) C.NoStakeAddress
 
-addressInEra :: IsShelleyBasedEra era => NetworkId -> Wallet -> AddressInEra era
+addressInEra :: forall era. IsShelleyBasedEra era => NetworkId -> Wallet -> AddressInEra era
 addressInEra networkId wallet =
-  C.makeShelleyAddressInEra networkId (paymentCredential wallet) C.NoStakeAddress
+  C.makeShelleyAddressInEra (C.shelleyBasedEra @era) networkId (paymentCredential wallet) C.NoStakeAddress
 
 {-| The wallet's private key (serialised)
 -}

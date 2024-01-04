@@ -22,7 +22,6 @@ module Convex.Devnet.NodeQueries(
 import           Cardano.Api                                        (Address,
                                                                      BabbageEra,
                                                                      BlockNo,
-                                                                     CardanoMode,
                                                                      EraHistory (..),
                                                                      LocalNodeConnectInfo (..),
                                                                      NetworkId,
@@ -75,10 +74,10 @@ queryEraHistory ::
     -- ^ network Id to use for node query
   FilePath ->
     -- ^ Node socket
-  IO (EraHistory CardanoMode)
-queryEraHistory = queryLocalState (C.QueryEraHistory C.CardanoModeIsMultiEra)
+  IO EraHistory
+queryEraHistory = queryLocalState C.QueryEraHistory
 
-queryLocalState :: QueryInMode CardanoMode b -> NetworkId -> FilePath -> IO b
+queryLocalState :: QueryInMode b -> NetworkId -> FilePath -> IO b
 queryLocalState query networkId socket = do
   C.queryNodeLocalState (localNodeConnectInfo networkId socket) Nothing query >>= \case
     Left err -> do
@@ -86,7 +85,7 @@ queryLocalState query networkId socket = do
     Right result -> pure result
 
 
-localNodeConnectInfo :: NetworkId -> FilePath -> C.LocalNodeConnectInfo C.CardanoMode
+localNodeConnectInfo :: NetworkId -> FilePath -> C.LocalNodeConnectInfo
 localNodeConnectInfo localNodeNetworkId (C.File -> localNodeSocketPath) =
   C.LocalNodeConnectInfo
     { localConsensusModeParams = cardanoModeParams
@@ -94,7 +93,7 @@ localNodeConnectInfo localNodeNetworkId (C.File -> localNodeSocketPath) =
     , localNodeSocketPath
     }
 
-cardanoModeParams :: C.ConsensusModeParams C.CardanoMode
+cardanoModeParams :: C.ConsensusModeParams
 cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots
  where
   -- NOTE(AB): extracted from Parsers in cardano-cli, this is needed to run in 'cardanoMode' which
@@ -111,14 +110,14 @@ queryTip ::
   FilePath ->
     -- ^ Node socket
   IO (SlotNo, SlotLength, C.Hash C.BlockHeader)
-queryTip networkId socket = queryLocalState (C.QueryChainPoint C.CardanoMode) networkId socket >>= \case
+queryTip networkId socket = queryLocalState C.QueryChainPoint networkId socket >>= \case
   C.ChainPointAtGenesis -> failure "queryTip: chain point at genesis"
   C.ChainPoint slot hsh -> getSlotLength slot >>= (\i -> pure (slot, i, hsh))
 
   where
     getSlotLength :: SlotNo -> IO SlotLength
     getSlotLength slotNo = do
-      (EraHistory _ interpreter) <- queryEraHistory networkId socket
+      (EraHistory interpreter) <- queryEraHistory networkId socket
       case interpretQuery interpreter (slotToSlotLength slotNo) of
         Left err      -> failure $ "queryTip: Failed with " <> show err
         Right slength -> pure $ slength
@@ -139,7 +138,6 @@ queryUTxOFilter :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.Babbag
 queryUTxOFilter networkId socket flt =
   let query =
         C.QueryInEra
-          C.BabbageEraInCardanoMode
           ( C.QueryInShelleyBasedEra
               C.ShelleyBasedEraBabbage
               ( C.QueryUTxO flt)
@@ -171,7 +169,6 @@ waitForTxIn :: NetworkId -> FilePath -> TxIn -> IO ()
 waitForTxIn networkId socket txIn = do
   let query =
         C.QueryInEra
-          C.BabbageEraInCardanoMode
           ( C.QueryInShelleyBasedEra
               C.ShelleyBasedEraBabbage
               ( C.QueryUTxO
@@ -194,7 +191,6 @@ waitForTxInSpend :: NetworkId -> FilePath -> TxIn -> IO ()
 waitForTxInSpend networkId socket txIn = do
   let query =
         C.QueryInEra
-          C.BabbageEraInCardanoMode
           ( C.QueryInShelleyBasedEra
               C.ShelleyBasedEraBabbage
               ( C.QueryUTxO

@@ -5,10 +5,10 @@ module Convex.NodeClient.Resuming(
   ResumingFrom(..),
   resumingClient) where
 
-import           Cardano.Api                                          (ChainPoint (..),
+import           Cardano.Api                                          (BlockInMode,
+                                                                       ChainPoint (..),
                                                                        ChainTip (..))
-import           Convex.NodeClient.Types                              (ClientBlock,
-                                                                       PipelinedLedgerStateClient (..))
+import           Convex.NodeClient.Types                              (PipelinedLedgerStateClient (..))
 import           Network.TypedProtocol.Pipelined                      (N (Z))
 import qualified Ouroboros.Network.Protocol.ChainSync.ClientPipelined as CSP
 
@@ -29,7 +29,7 @@ resumingClient ::
   (ResumingFrom -> PipelinedLedgerStateClient) ->
   PipelinedLedgerStateClient
 resumingClient syncPoints f = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
-  let initialise :: CSP.ClientPipelinedStIdle 'Z ClientBlock ChainPoint ChainTip IO ()
+  let initialise :: CSP.ClientPipelinedStIdle 'Z BlockInMode ChainPoint ChainTip IO ()
       initialise = CSP.SendMsgFindIntersect syncPoints $
         CSP.ClientPipelinedStIntersect {
           CSP.recvMsgIntersectFound    = \chainPoint srvTip -> do

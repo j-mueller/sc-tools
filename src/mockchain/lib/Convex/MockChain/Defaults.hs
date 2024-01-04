@@ -16,10 +16,7 @@ module Convex.MockChain.Defaults(
   nodeParams
 ) where
 
-import qualified Cardano.Api                          as C
 import           Cardano.Api.Shelley                  (AnyPlutusScriptVersion (..),
-                                                       CardanoMode,
-                                                       ConsensusMode (..),
                                                        EpochNo (..),
                                                        EraHistory (EraHistory),
                                                        ExecutionUnitPrices (..),
@@ -32,6 +29,7 @@ import           Cardano.Api.Shelley                  (AnyPlutusScriptVersion (.
                                                        ShelleyBasedEra (..),
                                                        shelleyGenesisDefaults,
                                                        toLedgerPParams)
+import qualified Cardano.Api.Shelley                  as C
 import           Cardano.Ledger.Alonzo.PParams        (DowngradeAlonzoPParams (..))
 import           Cardano.Ledger.Babbage               (Babbage)
 import           Cardano.Ledger.Babbage.Core          (CoinPerByte (..),
@@ -56,9 +54,10 @@ import           Convex.NodeParams                    (NodeParams (..))
 import           Data.Map                             (fromList)
 import           Data.Maybe                           (fromMaybe)
 import           Data.Ratio                           ((%))
-import           Data.SOP.Counting                    (Exactly (..),
-                                                       nonEmptyHead)
-import           Data.SOP.Strict                      (K (K), NP (..))
+import           Data.SOP                             (K (K))
+import           Data.SOP.Counting                    (Exactly (..))
+import           Data.SOP.NonEmpty                    (nonEmptyHead)
+import           Data.SOP.Strict                      (NP (..))
 import           Data.Time.Calendar                   (fromGregorian)
 import           Data.Time.Clock                      (UTCTime (..))
 import qualified Ouroboros.Consensus.HardFork.History as Ouroboros
@@ -75,9 +74,9 @@ systemStart = SystemStart startTime
 
 -- Defaults are from plutus-apps/plutus-ledger/Ledger.Params
 
-eraHistory :: EraHistory CardanoMode
+eraHistory :: EraHistory
 eraHistory =
-  EraHistory CardanoMode (Ouroboros.mkInterpreter $ Ouroboros.summaryWithExactly list) -- $ Ouroboros.summaryWithExactly list)
+  EraHistory (Ouroboros.mkInterpreter $ Ouroboros.summaryWithExactly list) -- $ Ouroboros.summaryWithExactly list)
     where
       one = nonEmptyHead $ Ouroboros.getSummary $ Ouroboros.neverForksSummary epochSize slotLength
       list = Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
@@ -140,7 +139,6 @@ protocolParameters =
       , protocolParamPoolPledgeInfluence = 3 % 10
       , protocolParamMonetaryExpansion = 3 % 1_000
       , protocolParamTreasuryCut = 1 % 5
-      , protocolParamUTxOCostPerWord = Nothing -- Obsolete from babbage onwards
       , protocolParamCostModels = fromList
         [ (AnyPlutusScriptVersion PlutusScriptV1, defaultV1CostModel)
         , (AnyPlutusScriptVersion PlutusScriptV2, defaultV2CostModel) ]
@@ -163,10 +161,10 @@ globals :: NodeParams -> Globals
 globals params@NodeParams { npProtocolParameters, npSlotLength } = mkShelleyGlobals
   (genesisDefaultsFromParams params)
   (fixedEpochInfo epochSize npSlotLength)
-  (fromMaybe (error "globals: Invalid version") $ Version.mkVersion $ fst $ protocolParamProtocolVersion $ C.unbundleProtocolParams npProtocolParameters)
+  (fromMaybe (error "globals: Invalid version") $ Version.mkVersion $ fst $ protocolParamProtocolVersion $ C.fromLedgerPParams C.ShelleyBasedEraBabbage $ C.unLedgerProtocolParameters npProtocolParameters)
 
 protVer :: NodeParams -> ProtVer
-protVer = lederPPProtVer . C.unbundleProtocolParams . npProtocolParameters
+protVer = lederPPProtVer . C.fromLedgerPParams C.ShelleyBasedEraBabbage . C.unLedgerProtocolParameters . npProtocolParameters
 
 lederPPProtVer :: ProtocolParameters -> ProtVer
 lederPPProtVer k =
@@ -192,7 +190,7 @@ genesisDefaultsFromParams params@NodeParams { npNetworkId } = shelleyGenesisDefa
 -- | Convert `Params` to cardano-ledger `PParams`
 pParams :: NodeParams -> PParams Babbage
 pParams NodeParams { npProtocolParameters } = case npProtocolParameters of
-  C.BundleAsShelleyBasedProtocolParameters _ _ p -> p
+  C.LedgerProtocolParameters p -> p
 
 {-| 'NodeParams' with default values for testing
 -}
@@ -207,5 +205,5 @@ nodeParams =
     , npSlotLength = slotLength
     }
 
-bundledProtocolParameters :: C.BundledProtocolParameters C.BabbageEra
-bundledProtocolParameters = either (error . (<>) "nodeParams: bundleProtocolParams failed: " . show) id (C.bundleProtocolParams C.BabbageEra protocolParameters)
+bundledProtocolParameters :: C.LedgerProtocolParameters C.BabbageEra
+bundledProtocolParameters = C.LedgerProtocolParameters $ either (error . (<>) "toLedgerPParams failed: " . show) id $ C.toLedgerPParams C.ShelleyBasedEraBabbage protocolParameters

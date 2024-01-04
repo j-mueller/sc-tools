@@ -67,7 +67,7 @@ payToOperator' :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m Tx
 payToOperator' dbg value wFrom Operator{oPaymentKey} = do
   p <- queryProtocolParameters
   let addr =
-        C.makeShelleyAddressInEra Defaults.networkId
+        C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage Defaults.networkId
         (C.PaymentCredentialByKey $ C.verificationKeyHash $ verificationKey oPaymentKey)
         C.NoStakeAddress
       tx = execBuildTx' $ payToAddress addr value >> setMinAdaDepositAll p

@@ -77,7 +77,7 @@ generateSigningKey verificationKeyFile signingKeyFile = do
     C.writeFileTextEnvelope (C.File signingKeyFile) Nothing signingKey >>= either (error . show) pure
     C.writeFileTextEnvelope (C.File verificationKeyFile) Nothing (C.getVerificationKey signingKey) >>= either (error . show) pure
 
-showAddress :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => Config -> OperatorConfigVerification -> m (C.LocalNodeConnectInfo C.CardanoMode)
+showAddress :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => Config -> OperatorConfigVerification -> m C.LocalNodeConnectInfo
 showAddress Config{cardanoNodeConfigFile, cardanoNodeSocket} operatorConfig = do
   op <- liftIO (loadOperatorFilesVerification operatorConfig)
   (info_@C.LocalNodeConnectInfo{C.localNodeNetworkId}, _) <- loadConnectInfo cardanoNodeConfigFile cardanoNodeSocket

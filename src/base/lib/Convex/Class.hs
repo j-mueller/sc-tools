@@ -25,9 +25,9 @@ module Convex.Class(
 
 import qualified Cardano.Api                                       as C
 import           Cardano.Api.Shelley                               (BabbageEra,
-                                                                    CardanoMode,
                                                                     EraHistory (..),
                                                                     Hash,
+                                                                    LedgerProtocolParameters (..),
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
                                                                     PoolId,
@@ -60,7 +60,6 @@ import           Convex.Utils                                      (posixTimeToS
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
 import           Data.Set                                          (Set)
-import qualified Data.Text                                         as Text
 import           Data.Time.Clock                                   (UTCTime)
 import           GHC.Generics                                      (Generic)
 import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
@@ -73,10 +72,10 @@ import qualified PlutusLedgerApi.V1                                as PV1
 class Monad m => MonadBlockchain m where
   sendTx                  :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m (C.BundledProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
+  queryProtocolParameters :: m (LedgerProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
-  queryEraHistory         :: m (EraHistory CardanoMode)
+  queryEraHistory         :: m EraHistory
   querySlotNo             :: m (SlotNo, SlotLength, UTCTime)
                           -- ^ returns the current slot number, slot length and begin utc time for slot.
                           -- Slot 0 is returned when at genesis.
@@ -198,7 +197,7 @@ This MAY move the clock backwards!
 setTimeToValidRange :: MonadMockchain m => (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra) -> m ()
 setTimeToValidRange = \case
   (C.TxValidityLowerBound _ lowerSlot, _) -> setSlot lowerSlot
-  (_, C.TxValidityUpperBound _ upperSlot) -> setSlot (pred upperSlot)
+  (_, C.TxValidityUpperBound _ (Just upperSlot)) -> setSlot (pred upperSlot)
   _                                       -> pure ()
 
 {-| Increase the slot number by 1.
@@ -208,32 +207,27 @@ nextSlot = modifySlot (\s -> (succ s, ()))
 
 data MonadBlockchainError e =
   MonadBlockchainError e
-  | ProtocolConversionError Text.Text
   | FailWith String
   deriving stock (Eq, Functor, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-protocolConversionError :: C.ProtocolParametersConversionError -> MonadBlockchainError e
-protocolConversionError = ProtocolConversionError . C.textShow
-
 instance Show e => Show (MonadBlockchainError e) where
-  show (MonadBlockchainError e)    = show e
-  show (FailWith str)              = str
-  show (ProtocolConversionError e) = show e
+  show (MonadBlockchainError e) = show e
+  show (FailWith str)           = str
 
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
-newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT (LocalNodeConnectInfo CardanoMode) (ExceptT (MonadBlockchainError e) m) a }
+newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT LocalNodeConnectInfo (ExceptT (MonadBlockchainError e) m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
 instance Monad m => MonadError e (MonadBlockchainCardanoNodeT e m) where
   throwError = MonadBlockchainCardanoNodeT . throwError . MonadBlockchainError
   catchError (MonadBlockchainCardanoNodeT action) handler = MonadBlockchainCardanoNodeT $ catchError action (\case { MonadBlockchainError e -> unMonadBlockchainCardanoNodeT (handler e); e' -> throwError e' })
 
-runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo CardanoMode -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
+runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runExceptT (runReaderT action info)
 
-runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode CardanoMode a -> MonadBlockchainCardanoNodeT e m a
+runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT e m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
   result <- liftIO (C.queryNodeLocalState info Nothing qry)
@@ -245,7 +239,7 @@ runQuery qry = MonadBlockchainCardanoNodeT $ do
     Right result' -> do
       pure result'
 
-runQuery' :: (MonadIO m, MonadLog m, Show e1) => C.QueryInMode CardanoMode (Either e1 a) -> MonadBlockchainCardanoNodeT e2 m a
+runQuery' :: (MonadIO m, MonadLog m, Show e1) => C.QueryInMode (Either e1 a) -> MonadBlockchainCardanoNodeT e2 m a
 runQuery' qry = runQuery qry >>= \case
   Left err -> MonadBlockchainCardanoNodeT $ do
     let msg = "runQuery': Era mismatch: " <> show err
@@ -257,7 +251,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
   sendTx tx = MonadBlockchainCardanoNodeT $ do
     let txId = C.getTxId (C.getTxBody tx)
     info <- ask
-    result <- liftIO (C.submitTxToNodeLocal info (C.TxInMode tx C.BabbageEraInCardanoMode))
+    result <- liftIO (C.submitTxToNodeLocal info (C.TxInMode C.ShelleyBasedEraBabbage tx))
     -- TODO: Error should be reflected in return type of 'sendTx'
     case result of
       SubmitSuccess -> do
@@ -269,24 +263,21 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
         throwError $ FailWith msg
 
   utxoByTxIn txIns =
-    runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
+    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
 
   queryProtocolParameters = do
-    p <- runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
-    case C.bundleProtocolParams C.BabbageEra p of
-      Right x -> pure x
-      Left err -> MonadBlockchainCardanoNodeT $ throwError (protocolConversionError err)
+    LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
 
   queryStakePools =
-    runQuery' (C.QueryInEra C.BabbageEraInCardanoMode (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))
+    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))
 
   querySystemStart = runQuery C.QuerySystemStart
 
-  queryEraHistory = runQuery (C.QueryEraHistory C.CardanoModeIsMultiEra)
+  queryEraHistory = runQuery C.QueryEraHistory
 
   querySlotNo = do
-    (eraHistory@(EraHistory _ interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
-    slotNo <- runQuery (C.QueryChainPoint C.CardanoMode) >>= \case
+    (eraHistory@(EraHistory interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
+    slotNo <- runQuery C.QueryChainPoint >>= \case
                 C.ChainPointAtGenesis  -> pure $ fromIntegral (0 :: Integer)
                 C.ChainPoint slot _hsh -> pure slot
     MonadBlockchainCardanoNodeT $ do

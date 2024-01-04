@@ -1,9 +1,9 @@
 
 -- Custom repository for cardano haskell packages, see
--- https://github.com/input-output-hk/cardano-haskell-packages
+-- https://github.com/IntersectMBO/cardano-haskell-packages
 -- for more information.
 repository cardano-haskell-packages
-  url: https://input-output-hk.github.io/cardano-haskell-packages
+  url: https://chap.intersectmbo.org/
   secure: True
   root-keys:
     3e0cce471cf09815f930210f7827266fd09045445d65923e6d0238a6cd15126f
@@ -14,11 +14,14 @@ repository cardano-haskell-packages
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
 index-state:
-  , hackage.haskell.org 2023-07-22T22:41:49Z
-  , cardano-haskell-packages 2023-07-26T01:36:26Z
+  , hackage.haskell.org 2023-11-20T23:52:53Z
+  , cardano-haskell-packages 2023-12-08T09:30:26Z
 
+with-compiler: ghc-9.6.3
 
-with-compiler: ghc-9.2.8
+constraints:
+  cardano-api == 8.36.1.1,
+  cardano-node == 8.7.2
 
 packages:
   src/base
@@ -27,10 +30,3 @@ packages:
   src/mockchain
   src/coin-selection
   src/devnet
-
--- https://github.com/obsidiansystems/dependent-sum-template/issues/5
--- requires cabal 3.10
-if impl(ghc >= 9.2)
-  constraints :
-      dependent-sum-template < 0.1.2
-

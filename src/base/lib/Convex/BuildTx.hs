@@ -280,23 +280,23 @@ addAuxScript :: MonadBuildTx m => C.ScriptInEra C.BabbageEra -> m ()
 addAuxScript s = addBtx (over (L.txAuxScripts . L._TxAuxScripts) ((:) s))
 
 payToAddressTxOut :: C.AddressInEra C.BabbageEra -> C.Value -> C.TxOut C.CtxTx C.BabbageEra
-payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) C.TxOutDatumNone C.ReferenceScriptNone
+payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl) C.TxOutDatumNone C.ReferenceScriptNone
 
 payToAddress :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> C.Value -> m ()
 payToAddress addr vl = addBtx $ over L.txOuts ((:) (payToAddressTxOut addr vl))
 
 payToPublicKey :: MonadBuildTx m => NetworkId -> Hash PaymentKey -> C.Value -> m ()
 payToPublicKey network pk vl =
-  let val = C.TxOutValue C.MultiAssetInBabbageEra vl
-      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByKey pk) C.NoStakeAddress
+  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByKey pk) C.NoStakeAddress
       txo = C.TxOut addr val C.TxOutDatumNone C.ReferenceScriptNone
   in prependTxOut txo
 
 payToScriptHash :: MonadBuildTx m => NetworkId -> ScriptHash -> HashableScriptData -> C.StakeAddressReference -> C.Value -> m ()
 payToScriptHash network script datum stakeAddress vl =
-  let val = C.TxOutValue C.MultiAssetInBabbageEra vl
-      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript script) stakeAddress
-      dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra datum
+  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript script) stakeAddress
+      dat = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage datum
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in prependTxOut txo
 
@@ -314,8 +314,8 @@ payToPlutusV2 network s datum stakeRef vl =
 
 payToPlutusV2InlineBase :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> C.TxOutDatum C.CtxTx C.BabbageEra -> C.Value -> m ()
 payToPlutusV2InlineBase addr script dat vl =
-  let refScript = C.ReferenceScript C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script)
-      txo = C.TxOut addr (C.TxOutValue C.MultiAssetInBabbageEra vl) dat refScript
+  let refScript = C.ReferenceScript C.BabbageEraOnwardsBabbage (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script)
+      txo = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl) dat refScript
   in prependTxOut txo
 
 payToPlutusV2Inline :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> m ()
@@ -324,38 +324,38 @@ payToPlutusV2Inline addr script vl = payToPlutusV2InlineBase addr script C.TxOut
 {-| same as payToPlutusV2Inline but also specify an inline datum -}
 payToPlutusV2InlineWithInlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
 payToPlutusV2InlineWithInlineDatum addr script datum vl =
-  let dat = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (toHashableScriptData datum)
+  let dat = C.TxOutDatumInline C.BabbageEraOnwardsBabbage (toHashableScriptData datum)
   in payToPlutusV2InlineBase addr script dat vl
 
 {-| same as payToPlutusV2Inline but also specify a datum -}
 payToPlutusV2InlineWithDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
 payToPlutusV2InlineWithDatum addr script datum vl =
-  let dat = C.TxOutDatumInTx C.ScriptDataInBabbageEra (toHashableScriptData datum)
+  let dat = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage (toHashableScriptData datum)
   in payToPlutusV2InlineBase addr script dat vl
 
 payToPlutusV2InlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.StakeAddressReference -> C.Value -> m ()
 payToPlutusV2InlineDatum network script datum stakeRef vl =
-  let val = C.TxOutValue C.MultiAssetInBabbageEra vl
+  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl
       sh  = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-      addr = C.makeShelleyAddressInEra network (C.PaymentCredentialByScript sh) stakeRef
-      dat = C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra (toHashableScriptData datum)
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript sh) stakeRef
+      dat = C.TxOutDatumInline C.BabbageEraOnwardsBabbage (toHashableScriptData datum)
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in prependTxOut txo
 -- TODO: Functions for building outputs (Output -> Output)
 
 setScriptsValid :: MonadBuildTx m => m ()
-setScriptsValid = addBtx $ set L.txScriptValidity (C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid)
+setScriptsValid = addBtx $ set L.txScriptValidity (C.TxScriptValidity C.AlonzoEraOnwardsBabbage C.ScriptValid)
 
 {-| Set the Ada component in an output's value to at least the amount needed to cover the
 minimum UTxO deposit for this output
 -}
-setMinAdaDeposit :: C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
+setMinAdaDeposit :: C.LedgerProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
 setMinAdaDeposit params txOut =
   let minUtxo = minAdaDeposit params txOut
   in txOut & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minUtxo) (Just . max minUtxo))
 
-minAdaDeposit :: C.BundledProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
-minAdaDeposit params txOut =
+minAdaDeposit :: C.LedgerProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
+minAdaDeposit (C.LedgerProtocolParameters params) txOut =
   let minAdaValue = C.Quantity 3_000_000
       txo = txOut
             -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
@@ -367,7 +367,7 @@ minAdaDeposit params txOut =
 
 {-| Apply 'setMinAdaDeposit' to all outputs
 -}
-setMinAdaDepositAll :: MonadBuildTx m => C.BundledProtocolParameters C.BabbageEra -> m ()
+setMinAdaDepositAll :: MonadBuildTx m => C.LedgerProtocolParameters C.BabbageEra -> m ()
 setMinAdaDepositAll params = addBtx $ over (L.txOuts . mapped) (setMinAdaDeposit params)
 
 {-| Add a public key hash to the list of required signatures.

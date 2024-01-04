@@ -218,7 +218,7 @@ unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
 unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
 
 unTransTxOutValue :: PV1.Value -> Either C.SerialiseAsRawBytesError (C.TxOutValue C.BabbageEra)
-unTransTxOutValue value = C.TxOutValue C.MultiAssetInBabbageEra <$> unTransValue value
+unTransTxOutValue value = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage . C.toMaryValue <$> unTransValue value
 
 unTransValue :: PV1.Value -> Either C.SerialiseAsRawBytesError C.Value
 unTransValue =
@@ -247,7 +247,7 @@ unTransScriptDataHash (P.DatumHash bs) =
   C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) (PlutusTx.fromBuiltin bs)
 
 unTransTxOutDatumHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx C.BabbageEra)
-unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.ScriptDataInBabbageEra <$> unTransScriptDataHash datumHash
+unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage <$> unTransScriptDataHash datumHash
 
 _Interval :: Iso' (Interval a) (LowerBound a, UpperBound a)
 _Interval = iso from to where

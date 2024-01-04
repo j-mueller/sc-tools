@@ -9,7 +9,7 @@ module Convex.Wallet.NodeClient.BalanceClient(
   balanceClient
   ) where
 
-import           Cardano.Api                (BlockInMode, CardanoMode, Env)
+import           Cardano.Api                (BlockInMode, Env)
 import qualified Cardano.Api                as C
 import           Control.Concurrent.STM     (TVar, atomically, newTVarIO,
                                              writeTVar)
@@ -53,11 +53,11 @@ balanceClient logEnv ns clientEnv walletState wallet env =
 
 {-| Apply a new block
 -}
-applyBlock :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> C.PaymentCredential -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx ()) -> BlockInMode CardanoMode -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx ()))
+applyBlock :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> C.PaymentCredential -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx ()) -> BlockInMode -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx ()))
 applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
   let change = Utxos.extract_ (toShelleyPaymentCredential wallet) state block
       newUTxOs = apply state change
-      C.BlockInMode (C.getBlockHeader -> header) _ = block
+      C.BlockInMode _ (C.getBlockHeader -> header) = block
       newState = WalletState.walletState newUTxOs header
 
   when (not $ Utxos.null change) $ do
