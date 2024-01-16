@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MonadLog instance for `MockchainT`
 - A mockchain test that shows how to increase the maximum tx size
 - `Convex.MockChain.Utils.runMockchainPropWith` to run a mockchain action in a quickcheck property with custom node params and initial distribution
+- `Eq` and `Ord` instances for `Operator`
 
 ### Deleted
 
