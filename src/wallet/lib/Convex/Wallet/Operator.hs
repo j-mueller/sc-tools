@@ -44,9 +44,10 @@ import           Convex.Utils        (readSigningKeyFromFile,
                                       readStakingKeyFromFile,
                                       readVerificationKeyFromFile)
 import           Convex.Wallet       (addSignature, addSignatureExtended)
+import           Data.Function       (on)
 import           Options.Applicative (Parser, help, long, metavar, optional,
                                       strOption)
-import           PlutusLedgerApi.V1  (PubKeyHash (..))
+import           PlutusLedgerApi.V1  (PubKeyHash)
 
 data Signing
 
@@ -59,6 +60,18 @@ data PaymentExtendedKey k where
 
 deriving stock instance Show (PaymentExtendedKey Signing)
 deriving stock instance Show (PaymentExtendedKey Verification)
+
+instance Eq (PaymentExtendedKey Signing) where
+  l == r = show l == show r
+
+instance Eq (PaymentExtendedKey Verification) where
+  l == r = show l == show r
+
+instance Ord (PaymentExtendedKey Signing) where
+  compare = compare `on` show
+
+instance Ord (PaymentExtendedKey Verification) where
+  compare = compare `on` show
 
 verificationKey :: PaymentExtendedKey k -> C.VerificationKey C.PaymentKey
 verificationKey = \case
@@ -89,8 +102,23 @@ data Operator k =
 
 deriving stock instance Show (PaymentExtendedKey k) => Show (Operator k)
 
-instance Show (PaymentExtendedKey k) => Eq (Operator k) where
-  l == r = show l == show r
+instance Eq (Operator Signing) where
+  l == r =
+    oPaymentKey l == oPaymentKey r && show (oStakeKey l) == show (oStakeKey r)
+
+instance Eq (Operator Verification) where
+  l == r =
+    oPaymentKey l == oPaymentKey r && show (oStakeKey l) == show (oStakeKey r)
+
+instance Ord (Operator Signing) where
+  compare =
+    let mkT Operator{oPaymentKey, oStakeKey} = (oPaymentKey, show oStakeKey)
+    in compare `on` mkT
+
+instance Ord (Operator Verification) where
+  compare =
+    let mkT Operator{oPaymentKey, oStakeKey} = (oPaymentKey, show oStakeKey)
+    in compare `on` mkT
 
 {-| Address of the operator in a network
 -}
