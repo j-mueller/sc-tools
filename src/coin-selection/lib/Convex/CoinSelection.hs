@@ -66,6 +66,8 @@ import           Convex.Class              (MonadBlockchain (..))
 import qualified Convex.Era                as Ledger.Era
 import qualified Convex.Lenses             as L
 import           Convex.Utils              (mapError)
+import           Convex.UTxOCompatibility  (UTxOCompatibility, compatibleWith,
+                                            txCompatibility)
 import           Convex.Utxos              (BalanceChanges (..), UtxoSet (..))
 import qualified Convex.Utxos              as Utxos
 import           Convex.Wallet             (Wallet)
@@ -148,6 +150,7 @@ balancingError = either (throwError . BalancingError . Text.pack . C.displayErro
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage =
   SelectingCoins
+  | CompatibilityLevel{ compatibility :: !UTxOCompatibility, droppedTxIns :: !Int } -- ^ The plutus compatibility level applied to the wallet tx outputs
   | PrepareInputs{walletBalance :: C.Value, transactionBalance :: C.Value} -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(Text, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
@@ -391,19 +394,32 @@ balanceTx ::
 balanceTx dbg returnUTxO0 walletUtxo txb = do
   (params, ledgerPPs) <- queryProtocolParameters
   pools <- queryStakePools
+  availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
+  -- compatibility level
   let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just params)
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns txb)
   let combinedTxIns =
-        let UtxoSet w = walletUtxo
+        let UTxO w = availableUTxOs
             UTxO o = otherInputs
-        in UTxO (Map.union (fmap fst w) o)
+        in UTxO (Map.union w o)
   (finalBody, returnUTxO1) <- mapError ACoinSelectionError (addMissingInputs (natTracer lift dbg) pools ledgerPPs combinedTxIns returnUTxO0 walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
   count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
   mapError ABalancingError (balanceTransactionBody (natTracer lift dbg) start hist ledgerPPs pools csi)
+
+-- | Check the compatibility level of the transaction body
+--   and remove any incompatible UTxOs from the UTxO set.
+checkCompatibilityLevel :: Monad m => Tracer m TxBalancingMessage -> TxBodyContent BuildTx ERA -> UtxoSet C.CtxUTxO a -> m (UTxO BabbageEra)
+checkCompatibilityLevel tr txB (UtxoSet w) = do
+  let compatibility = txCompatibility txB
+      utxoIn = UTxO (fmap fst w)
+      UTxO utxoOut = compatibleWith compatibility utxoIn
+      droppedTxIns = Map.size w - Map.size utxoOut
+  traceWith tr CompatibilityLevel{compatibility, droppedTxIns}
+  pure (UTxO utxoOut)
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
