@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changes
 
+* Updated the [conway genesis configuration file](node-config/mainnet/mainnet-conway-genesis.json) for mainnet
+
 ### Added
 
 - `Eq` and `Ord` instances for `Operator`
