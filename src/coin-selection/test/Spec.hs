@@ -25,12 +25,14 @@ import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
                                                  spendPlutusV2Ref)
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadMockchain (resolveDatumHash))
+                                                 MonadMockchain (resolveDatumHash),
+                                                 getUtxo, setUtxo)
 import           Convex.CoinSelection           (BalanceTxError, keyWitnesses,
                                                  publicKeyCredential)
 import qualified Convex.Lenses                  as L
 import           Convex.MockChain               (MockchainError (..),
-                                                 ValidationError (..))
+                                                 ValidationError (..),
+                                                 fromLedgerUTxO)
 import           Convex.MockChain.CoinSelection (balanceAndSubmit,
                                                  payToOperator', paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
@@ -42,6 +44,7 @@ import           Convex.MockChain.Utils         (mockchainFails,
 import           Convex.NodeParams              (maxTxSize, protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Utils                   (failOnError)
+import qualified Convex.Utxos                   as Utxos
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
 import qualified Convex.Wallet.MockWallet       as Wallet
@@ -81,6 +84,7 @@ tests = testGroup "unit tests"
     , testCase "minting a token" (mockchainSucceeds $ failOnError mintingPlutus)
     , testCase "making payments with tokens" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens))
     , testCase "making payments with tokens (2)" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens2))
+    , testCase "spending a singleton output" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendSingletonOutput))
     ]
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
@@ -150,12 +154,13 @@ mintingPlutus = do
   let tx = execBuildTx' (mintPlutusV1 mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
 
-spendTokens :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
+spendTokens :: (MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
 spendTokens _ = do
   _ <- nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 51 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 100 Wallet.w2 Wallet.w3
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
+
 
 spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
 spendTokens2 txi = do
@@ -170,6 +175,22 @@ spendTokens2 txi = do
             setMinAdaDepositAll Defaults.ledgerProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wFrom tx
+
+-- | Put all of the Wallet 2's funds into a single UTxO with mixed assets
+--   Then make a transaction that splits this output into two
+spendSingletonOutput :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m ()
+spendSingletonOutput txi = do
+  void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
+  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  let k = Utxos.onlyCredential (Wallet.paymentCredential Wallet.w2) utxoSet
+  let totalVal = Utxos.totalBalance k
+      newOut = C.TxOut (Wallet.addressInEra Defaults.networkId Wallet.w2) (C.TxOutValue C.MultiAssetInBabbageEra totalVal) C.TxOutDatumNone C.ReferenceScriptNone
+      utxoSetMinusW2 = Utxos.removeUtxos (Map.keysSet $ Utxos._utxos k) utxoSet
+      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newOut, ())
+
+  setUtxo (C.toLedgerUTxO C.ShelleyBasedEraBabbage $ Utxos.toApiUtxo utxoSetPlusSingleOutput)
+  -- check that wallet 2 only
+  void $ nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
 
 nativeAssetPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadError BalanceTxError m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
