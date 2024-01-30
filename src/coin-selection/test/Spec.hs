@@ -171,6 +171,7 @@ spendTokens _ = do
   _ <- nativeAssetPaymentTo 100 Wallet.w2 Wallet.w3
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
 
+
 spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
 spendTokens2 txi = do
   let q  = 98
