@@ -154,12 +154,13 @@ mintingPlutus = do
   let tx = execBuildTx' (mintPlutusV1 mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 tx
 
-spendTokens :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
+spendTokens :: (MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
 spendTokens _ = do
   _ <- nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 51 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 100 Wallet.w2 Wallet.w3
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
+
 
 spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
 spendTokens2 txi = do

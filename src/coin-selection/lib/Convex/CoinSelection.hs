@@ -456,7 +456,10 @@ signForWallet wallet (C.BalancedTxBody txbody _changeOutput _fee) =
 addOwnInput :: MonadError CoinSelectionError m => TxBodyContent BuildTx ERA -> UtxoSet ctx a -> m (TxBodyContent BuildTx ERA)
 addOwnInput body (Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
   | not (List.null $ view L.txIns body) = pure body
-  | not (Map.null _utxos) = pure (execBuildTx (spendPublicKeyOutput (fst $ head $ Map.toList _utxos)) body)
+  | not (Map.null _utxos) =
+      -- Select ada-only outputs if possible
+      let availableUTxOs = List.sortOn (length . view (L._TxOut . _2 . L._TxOutValue . to C.valueToList) . fst . snd) (Map.toList _utxos)
+      in pure (execBuildTx (spendPublicKeyOutput (fst $ head availableUTxOs)) body)
   | otherwise = throwError NoWalletUTxOs
 
 -- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
