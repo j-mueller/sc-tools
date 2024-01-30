@@ -129,6 +129,8 @@ data CoinSelectionError =
   | BodyError Text
   | NotEnoughAdaOnlyOutputsFor C.Lovelace
   | NotEnoughMixedOutputsFor{ valuesNeeded :: [(C.PolicyId, C.AssetName, C.Quantity)], valueProvided :: C.Value, txBalance :: C.Value }
+  | NoWalletUTxOs -- ^ The wallet utxo set is empty
+  | NoAdaOnlyUTxOsForCollateral -- ^ The transaction body needs a collateral input, but there are no inputs that hold nothing but Ada
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
@@ -397,7 +399,11 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
         let UTxO w = availableUTxOs
             UTxO o = otherInputs
         in UTxO (Map.union w o)
-  (finalBody, returnUTxO1) <- mapError ACoinSelectionError (addMissingInputs (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo (flip setCollateral walletUtxo $ flip addOwnInput walletUtxo txb0))
+
+  (finalBody, returnUTxO1) <- mapError ACoinSelectionError $ do
+    bodyWithInputs <- addOwnInput txb0 walletUtxo
+    bodyWithCollat <- setCollateral bodyWithInputs walletUtxo
+    addMissingInputs (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
   count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
@@ -437,21 +443,33 @@ signForWallet wallet (C.BalancedTxBody _ txbody _changeOutput _fee) =
   let wit = [C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage txbody $ C.WitnessPaymentKey (Wallet.getWallet wallet)]
   in C.makeSignedTransaction wit txbody
 
-addOwnInput :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent BuildTx ERA
-addOwnInput body (Utxos.onlyAda . Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
-  | Map.null _utxos = body
-  | not (List.null $ view L.txIns body) = body
-  | otherwise = execBuildTx (spendPublicKeyOutput (fst $ head $ Map.toList _utxos)) body
+-- | If the transaction body has no inputs then we add one from the wallet's UTxO set.
+--   (we have to do this because 'C.evaluateTransactionBalance' fails on a tx body with
+--    no inputs)
+--   Throws an error if the transaction body has no inputs and the wallet UTxO set is empty.
+addOwnInput :: MonadError CoinSelectionError m => TxBodyContent BuildTx ERA -> UtxoSet ctx a -> m (TxBodyContent BuildTx ERA)
+addOwnInput body (Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
+  | not (List.null $ view L.txIns body) = pure body
+  | not (Map.null _utxos) =
+      -- Select ada-only outputs if possible
+      let availableUTxOs = List.sortOn (length . view (L._TxOut . _2 . L._TxOutValue . to C.valueToList) . fst . snd) (Map.toList _utxos)
+      in pure (execBuildTx (spendPublicKeyOutput (fst $ head availableUTxOs)) body)
+  | otherwise = throwError NoWalletUTxOs
 
-setCollateral :: TxBodyContent BuildTx ERA -> UtxoSet ctx a -> TxBodyContent BuildTx ERA
+-- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
+--   but no suitable input is provided in the wallet UTxO set.
+setCollateral :: MonadError CoinSelectionError m => TxBodyContent BuildTx ERA -> UtxoSet ctx a -> m (TxBodyContent BuildTx ERA)
 setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
-  if not (runsScripts body)
-    then body -- no script witnesses in inputs.
-    else
-      -- select the output with the largest amount of Ada
-      case listToMaybe $ List.sortOn (Down . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) . fst . snd) $ Map.toList _utxos of
-        Nothing     -> body -- TODO: Throw error
-        Just (k, _) -> execBuildTx (addCollateral k) body
+  let noScripts = not (runsScripts body)
+      hasCollateral = not (view (L.txInsCollateral . L._TxInsCollateral . to List.null) body)
+  in
+    if noScripts || hasCollateral
+      then pure body -- no script witnesses in inputs.
+      else
+        -- select the output with the largest amount of Ada
+        case listToMaybe $ List.sortOn (Down . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) . fst . snd) $ Map.toList _utxos of
+          Nothing     -> throwError NoAdaOnlyUTxOsForCollateral
+          Just (k, _) -> pure (execBuildTx (addCollateral k) body)
 
 {-| Whether the transaction runs any plutus scripts
 -}
