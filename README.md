@@ -16,9 +16,9 @@ The `main` branch uses the following versions of its major dependencies:
 
 |Name|Version|
 |--|--|
-|`cardano-node`|8.7.2|
-|`cardano-api`|8.36.1.1|
-|`ghc`|9.6.3|
+|`cardano-node`|8.7.3|
+|`cardano-api`|8.37.1.0|
+|`ghc`|9.6.4|
 |`cabal`|3.10.1.0|
 
 Support for `ghc-8.10.7` and `cardano-node-1.35.4` will be maintained for a little while in the [`node-1.35.4`](https://github.com/j-mueller/sc-tools/tree/node-1.35.4) branch.
