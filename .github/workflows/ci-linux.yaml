@@ -26,7 +26,7 @@ jobs:
       - uses: haskell-actions/setup@v2
         id: cabal-setup
         with:
-          ghc-version: '9.6.3'
+          ghc-version: '9.6.4'
           cabal-version: '3.10.1.0'
 
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
       - name: Build dependencies for integration test
         run: |
           cabal update
-          cabal install -j cardano-node-8.7.2 --overwrite-policy=always
+          cabal install -j cardano-node-8.7.3 --overwrite-policy=always
           cabal install -j cardano-cli-8.17.0.0 --overwrite-policy=always
           cabal install -j convex-wallet --overwrite-policy=always
           echo "/home/runner/.cabal/bin" >> $GITHUB_PATH
