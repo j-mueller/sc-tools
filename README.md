@@ -17,7 +17,7 @@ The `main` branch uses the following versions of its major dependencies:
 |Name|Version|
 |--|--|
 |`cardano-node`|8.7.3|
-|`cardano-api`|8.37.1.0|
+|`cardano-api`|8.36.1.1|
 |`ghc`|9.6.4|
 |`cabal`|3.10.1.0|
 

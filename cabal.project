@@ -20,6 +20,7 @@ index-state:
 with-compiler: ghc-9.6.4
 
 constraints:
+  cardano-api == 8.36.1.1,
   cardano-node == 8.7.3
 
 packages:
