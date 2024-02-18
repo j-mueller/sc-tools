@@ -38,6 +38,16 @@ source-repository-package
     trace-forward
     trace-resources
 
+-- NOTE (j-mueller, 2024-02-19): Change back to Plutonomicon/plutarch-plutus:master
+-- when plutus-1.21.0.0 is supported. Currently upstream is on 1.20.0.0
+source-repository-package
+  type: git
+  location: https://github.com/j-mueller/plutarch-plutus
+  tag: 14a3aedc67de5fb0dde6b7bd62efa32feacee3da
+  subdir:
+    .
+    plutarch-extra
+
 packages:
   src/base
   src/node-client
@@ -45,3 +55,4 @@ packages:
   src/mockchain
   src/coin-selection
   src/devnet
+  src/plutarch
