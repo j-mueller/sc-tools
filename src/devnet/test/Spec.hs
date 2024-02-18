@@ -24,7 +24,6 @@ import           Convex.NodeQueries         (queryProtocolParameters)
 import qualified Convex.Utxos               as Utxos
 import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.List                  (isInfixOf)
-import qualified Data.Text                  as Text
 import           GHC.Generics               (Generic)
 import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
 import           Test.Tasty                 (defaultMain, testGroup)
@@ -53,7 +52,7 @@ startLocalNode = do
         withTempDir "cardano-cluster" $ \tmp -> do
           withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile} -> do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
-              Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
+              Left err -> failure (show err)
               Right{}  -> pure ()
 
 makePayment :: IO ()

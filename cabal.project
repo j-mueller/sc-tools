@@ -14,13 +14,13 @@ repository cardano-haskell-packages
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
 index-state:
-  , hackage.haskell.org 2024-01-18T14:07:29Z
-  , cardano-haskell-packages 2024-01-18T14:07:29Z
+  , hackage.haskell.org 2024-02-18T12:44:28Z
+  , cardano-haskell-packages 2024-02-15T15:59:55Z
 
 with-compiler: ghc-9.6.4
 
 constraints:
-  cardano-api == 8.36.1.1,
+  cardano-api >= 8.38.0.0,
   cardano-node == 8.7.3
 
 packages:

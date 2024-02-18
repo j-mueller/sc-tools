@@ -37,6 +37,7 @@ import qualified Ouroboros.Consensus.HardFork.Combinator            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras as HFC
 import qualified Ouroboros.Consensus.HardFork.Combinator.Basics     as HFC
 import           Ouroboros.Consensus.Shelley.Eras                   (StandardBabbage)
+import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type    as T
 
 {-| Load the node config file and create 'LocalNodeConnectInfo' and 'Env' values that can be used to talk to the node.
 -}
@@ -90,10 +91,10 @@ queryEraHistory = queryLocalState CAPI.QueryEraHistory
 queryTip :: LocalNodeConnectInfo -> IO ChainPoint
 queryTip = queryLocalState CAPI.QueryChainPoint
 
--- | Run a local state query on the local cardano node
+-- | Run a local state query on the local cardano node, using the volatile tip
 queryLocalState :: CAPI.QueryInMode b -> LocalNodeConnectInfo -> IO b
 queryLocalState query connectInfo = do
-  CAPI.queryNodeLocalState connectInfo Nothing query >>= \case
+  CAPI.queryNodeLocalState connectInfo T.VolatileTip query >>= \case
     Left err -> do
       fail ("queryLocalState: Failed with " <> show err)
     Right result -> pure result
