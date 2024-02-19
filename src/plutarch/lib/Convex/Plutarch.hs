@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators     #-}
 {-| Plutarch / cardano-api interop
 -}
 module Convex.Plutarch(
@@ -13,10 +13,9 @@ import           Data.Text              (Text)
 import           Plutarch               (pcon, popaque, (#))
 import           Plutarch.Api.V1        (PScriptContext)
 import           Plutarch.Internal      (punsafeCoerce)
-import           Plutarch.Prelude       (PBool, PData, PIsData,
-                                         POpaque, PUnit (..), Term,
-                                         pfromData, pif, plam, ptraceError,
-                                         type (:-->))
+import           Plutarch.Prelude       (PBool, PData, PIsData, POpaque,
+                                         PUnit (..), Term, pfromData, pif, plam,
+                                         ptraceError, type (:-->))
 import           Plutarch.Script        (Script (..))
 import           PlutusLedgerApi.Common (serialiseUPLC)
 
