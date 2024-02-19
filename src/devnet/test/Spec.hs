@@ -7,6 +7,7 @@ module Main where
 
 import qualified Cardano.Api                as C
 import qualified Cardano.Api.Shelley        as C
+import           Control.Monad              (unless)
 import           Control.Monad.Except       (runExceptT)
 import           Convex.Devnet.CardanoNode  (NodeLog, RunningNode (..),
                                              allowLargeTransactions,
@@ -41,9 +42,12 @@ main = do
     ]
 
 checkCardanoNode :: IO ()
-checkCardanoNode =
-  let expectedVersion = "8.7.3"
-  in getCardanoNodeVersion >>= assertBool ("cardano-node version should be " <> expectedVersion) . isInfixOf expectedVersion
+checkCardanoNode = do
+  let expectedVersion = "8.8.0"
+  version <- getCardanoNodeVersion
+  let isExpected = expectedVersion `isInfixOf` version
+  unless isExpected (putStrLn version)
+  assertBool ("cardano-node version should be " <> expectedVersion) isExpected
 
 startLocalNode :: IO ()
 startLocalNode = do
