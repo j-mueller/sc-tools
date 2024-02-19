@@ -50,6 +50,7 @@ import           Data.Word                                          (Word64)
 import           Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
 import           Ouroboros.Consensus.HardFork.History               (interpretQuery,
                                                                      slotToSlotLength)
+import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type    as T
 import           Prelude
 
 data QueryException
@@ -79,7 +80,7 @@ queryEraHistory = queryLocalState C.QueryEraHistory
 
 queryLocalState :: QueryInMode b -> NetworkId -> FilePath -> IO b
 queryLocalState query networkId socket = do
-  C.queryNodeLocalState (localNodeConnectInfo networkId socket) Nothing query >>= \case
+  C.queryNodeLocalState (localNodeConnectInfo networkId socket) T.VolatileTip query >>= \case
     Left err -> do
       failure $ "querySystemStart: Failed with " <> show err
     Right result -> pure result

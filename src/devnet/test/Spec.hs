@@ -7,6 +7,7 @@ module Main where
 
 import qualified Cardano.Api                as C
 import qualified Cardano.Api.Shelley        as C
+import           Control.Monad              (unless)
 import           Control.Monad.Except       (runExceptT)
 import           Convex.Devnet.CardanoNode  (NodeLog, RunningNode (..),
                                              allowLargeTransactions,
@@ -24,7 +25,6 @@ import           Convex.NodeQueries         (queryProtocolParameters)
 import qualified Convex.Utxos               as Utxos
 import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.List                  (isInfixOf)
-import qualified Data.Text                  as Text
 import           GHC.Generics               (Generic)
 import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
 import           Test.Tasty                 (defaultMain, testGroup)
@@ -42,9 +42,12 @@ main = do
     ]
 
 checkCardanoNode :: IO ()
-checkCardanoNode =
-  let expectedVersion = "8.7.3"
-  in getCardanoNodeVersion >>= assertBool ("cardano-node version should be " <> expectedVersion) . isInfixOf expectedVersion
+checkCardanoNode = do
+  let expectedVersion = "8.8.0"
+  version <- getCardanoNodeVersion
+  let isExpected = expectedVersion `isInfixOf` version
+  unless isExpected (putStrLn version)
+  assertBool ("cardano-node version should be " <> expectedVersion) isExpected
 
 startLocalNode :: IO ()
 startLocalNode = do
@@ -53,7 +56,7 @@ startLocalNode = do
         withTempDir "cardano-cluster" $ \tmp -> do
           withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile} -> do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
-              Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
+              Left err -> failure (show err)
               Right{}  -> pure ()
 
 makePayment :: IO ()

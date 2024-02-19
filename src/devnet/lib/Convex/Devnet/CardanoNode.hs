@@ -195,7 +195,7 @@ withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nod
     waitForFile socketPath
     let rnNodeConfigFile = stateDirectory </> nodeConfigFile
     traceWith tr $ MsgSocketIsReady socketPath
-    rnConnectInfo <- runExceptT (Q.loadConnectInfo rnNodeConfigFile socketPath) >>= either (error . (<>) "Failed to load connect info: " . Text.unpack . C.renderInitialLedgerStateError) pure
+    rnConnectInfo <- runExceptT (Q.loadConnectInfo rnNodeConfigFile socketPath) >>= either (error . (<>) "Failed to load connect info: " . show) pure
     let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile, rnConnectInfo}
     action rn
 

@@ -85,6 +85,7 @@ library
       , io-classes
       , ouroboros-consensus
       , ouroboros-consensus-cardano
+      , ouroboros-network-protocols
 
       -- logging
       , contra-tracer
@@ -111,5 +112,4 @@ test-suite convex-devnet-test
     , convex-base
     , cardano-api
     , mtl
-    , text
     , aeson

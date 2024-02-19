@@ -69,7 +69,6 @@ import           Cardano.Api.Shelley           (ExecutionUnits, TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
 import qualified Cardano.Ledger.Alonzo.Scripts as Scripts
 import           Cardano.Ledger.Alonzo.TxWits  (unRedeemers)
-import qualified Cardano.Ledger.Alonzo.TxWits  as TxWitness
 import qualified Cardano.Ledger.Babbage.TxBody as Babbage.TxBody
 import qualified Cardano.Ledger.BaseTypes      as CT
 import qualified Cardano.Ledger.Credential     as Shelley
@@ -411,7 +410,7 @@ extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
       checkInput :: (Word64, TxIn) -> Maybe (TxIn, ((C.TxOut C.CtxTx C.BabbageEra, a), Maybe (HashableScriptData, ExecutionUnits)))
       checkInput (idx, txIn) = fmap (txIn,) $ do
         o <- Map.lookup txIn _utxos
-        let redeemer = fmap (bimap CS.fromAlonzoData CS.fromAlonzoExUnits) (Map.lookup (TxWitness.RdmrPtr Scripts.Spend idx) txReds)
+        let redeemer = fmap (bimap CS.fromAlonzoData CS.fromAlonzoExUnits) (Map.lookup (Scripts.AlonzoSpending $ Scripts.AsIndex $ fromIntegral idx) txReds)
         pure (o, redeemer)
 
       checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))

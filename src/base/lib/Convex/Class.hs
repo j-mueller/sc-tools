@@ -64,6 +64,7 @@ import           Data.Time.Clock                                   (UTCTime)
 import           GHC.Generics                                      (Generic)
 import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
                                                                     slotToSlotLength)
+import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type   as T
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
 import qualified PlutusLedgerApi.V1                                as PV1
 
@@ -230,7 +231,7 @@ runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runEx
 runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT e m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
-  result <- liftIO (C.queryNodeLocalState info Nothing qry)
+  result <- liftIO (C.queryNodeLocalState info T.VolatileTip qry)
   case result of
     Left err -> do
       let msg = "runQuery: Query failed: " <> show err

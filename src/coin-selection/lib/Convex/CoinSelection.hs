@@ -145,7 +145,7 @@ data BalancingError =
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-balancingError :: MonadError BalancingError m => Either C.TxBodyErrorAutoBalance a -> m a
+balancingError :: MonadError BalancingError m => Either (C.TxBodyErrorAutoBalance C.BabbageEra) a -> m a
 balancingError = either (throwError . BalancingError . Text.pack . docToString . C.prettyError) pure
 
 -- | Messages that are produced during coin selection and balancing
@@ -264,7 +264,7 @@ handleExUnitsErrors ::
      C.ScriptValidity -- ^ Mark script as expected to pass or fail validation
   -> Map C.ScriptWitnessIndex C.ScriptExecutionError
   -> Map C.ScriptWitnessIndex C.ExecutionUnits
-  -> Either C.TxBodyErrorAutoBalance (Map C.ScriptWitnessIndex C.ExecutionUnits)
+  -> Either (C.TxBodyErrorAutoBalance C.BabbageEra) (Map C.ScriptWitnessIndex C.ExecutionUnits)
 handleExUnitsErrors C.ScriptValid failuresMap exUnitsMap =
     if null failures
       then Right exUnitsMap

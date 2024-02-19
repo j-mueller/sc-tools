@@ -17,7 +17,6 @@ module Convex.MockChain.Defaults(
 ) where
 
 import           Cardano.Api.Shelley                  (AnyPlutusScriptVersion (..),
-                                                       EpochNo (..),
                                                        EraHistory (EraHistory),
                                                        ExecutionUnitPrices (..),
                                                        ExecutionUnits (..),
@@ -36,7 +35,8 @@ import           Cardano.Ledger.Babbage.Core          (CoinPerByte (..),
                                                        CoinPerWord (..))
 import           Cardano.Ledger.Babbage.PParams       (DowngradeBabbagePParams (..),
                                                        coinsPerUTxOWordToCoinsPerUTxOByte)
-import           Cardano.Ledger.BaseTypes             (ProtVer, boundRational)
+import           Cardano.Ledger.BaseTypes             (EpochInterval (..),
+                                                       ProtVer, boundRational)
 import qualified Cardano.Ledger.Binary.Version        as Version
 import           Cardano.Ledger.Core                  (PParams,
                                                        downgradePParams)
@@ -134,7 +134,7 @@ protocolParameters =
       , protocolParamStakeAddressDeposit = Lovelace 2_000_000
       , protocolParamStakePoolDeposit = Lovelace 500_000_000
       , protocolParamMinPoolCost = Lovelace 340_000_000
-      , protocolParamPoolRetireMaxEpoch = EpochNo 18
+      , protocolParamPoolRetireMaxEpoch = EpochInterval 18
       , protocolParamStakePoolTargetNum = 150
       , protocolParamPoolPledgeInfluence = 3 % 10
       , protocolParamMonetaryExpansion = 3 % 1_000

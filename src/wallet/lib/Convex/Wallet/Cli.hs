@@ -33,7 +33,6 @@ import           Convex.Wallet.Operator                 (OperatorConfigVerificat
                                                          operatorPaymentCredential)
 import qualified Convex.Wallet.WalletState              as WalletState
 import           Data.Maybe                             (fromMaybe)
-import qualified Data.Text                              as Text
 import qualified Katip                                  as K
 import           Options.Applicative                    (customExecParser,
                                                          disambiguate, helper,
@@ -60,7 +59,7 @@ runMain = do
     case result of
       Left err -> do
         logWarnS "Error in runMain"
-        logWarnS (Text.unpack $ C.renderInitialLedgerStateError err)
+        logWarnS (show err)
       Right () -> pure ()
 
 generateWallet :: (MonadIO m, MonadLog m) => m ()
