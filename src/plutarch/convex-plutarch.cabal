@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-mockchain
+name:          convex-plutarch
 version:       0.3.0.0
-synopsis:      Minimal mockchain for testing plutus scripts
+synopsis:      Plutarch - cardano-api interop
 license: Apache-2.0
 license-files:
   LICENSE
