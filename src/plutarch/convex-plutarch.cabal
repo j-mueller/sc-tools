@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-coin-selection
+name:          convex-plutarch
 version:       0.3.0.0
-synopsis:      Coin selection algorithm for Cardano transactions
+synopsis:      Plutarch - cardano-api interop
 license: Apache-2.0
 license-files:
   LICENSE
@@ -28,60 +28,33 @@ common lang
 library
     import: lang
     exposed-modules:
-      Convex.CoinSelection
-      Convex.MockChain.CoinSelection
-      Convex.Query
-      Convex.UTxOCompatibility
+      Convex.Plutarch
     hs-source-dirs: lib
     build-depends:
-      aeson,
       base >= 4.14.0,
-      containers >= 0.6.5,
-      lens,
-      contra-tracer,
-      convex-mockchain,
-      convex-base,
-      convex-node-client,
-      convex-wallet,
-      data-default,
-      servant-client,
+      plutarch,
       text
 
     -- cardano dependencies
     build-depends:
       cardano-api,
-      cardano-ledger-core -any,
-      cardano-slotting,
-      transformers,
-      mtl,
-      either-result
+      plutus-ledger-api
 
-test-suite convex-coin-selection-test
+test-suite convex-plutarch-test
   import: lang
   type: exitcode-stdio-1.0
   hs-source-dirs:     test
-  ghc-options: -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fno-specialise
   main-is:
     Spec.hs
-  other-modules:
-    Scripts
   build-depends:
     base >= 4.14.0,
     tasty,
     tasty-hunit,
-    tasty-quickcheck,
-    QuickCheck,
-    lens,
-    cardano-ledger-alonzo,
-    cardano-ledger-babbage,
-    cardano-ledger-shelley,
+    convex-plutarch,
+    plutarch,
     convex-coin-selection,
     convex-mockchain,
     convex-base,
     convex-wallet,
     cardano-api,
-    containers,
-    plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib},
-    plutus-ledger-api,
-    mtl,
-    transformers
+    text
