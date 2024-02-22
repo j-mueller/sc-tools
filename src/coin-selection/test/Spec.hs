@@ -259,7 +259,7 @@ checkResolveDatumHash = do
 execBuildTxWallet :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> BuildTxT m a -> m C.TxId
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
-  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet (tx L.emptyTx)
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet (BuildTx.buildTx tx)
 
 -- | Balance a transaction using a list of operators
 --   Check that the fees are calculated correctly to spend outputs from different addresses
