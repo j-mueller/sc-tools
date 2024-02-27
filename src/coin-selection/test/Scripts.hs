@@ -51,6 +51,6 @@ spendMatchingIndex txi =
             C.PlutusScriptV2
             (C.PScript matchingIndexScript)
             (C.ScriptDatumForTxIn $ toHashableScriptData ())
-            (toHashableScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndex txi lkp)
+            (toHashableScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi lkp)
             (C.ExecutionUnits 0 0)
   in BuildTx.setScriptsValid >> BuildTx.addInput txi witness

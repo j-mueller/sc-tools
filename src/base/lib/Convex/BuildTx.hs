@@ -10,9 +10,12 @@
 module Convex.BuildTx(
   -- * Tx Builder
   TxBuilder(..),
-  TransactionInputs,
-  lookupIndex,
-  findIndex,
+  -- ** Looking at transaction inputs
+  TransactionInputs(..),
+  lookupIndexSpending,
+  lookupIndexReference,
+  findIndexSpending,
+  findIndexReference,
   buildTx,
   buildTxWith,
   -- * Effect
@@ -75,7 +78,8 @@ import           Cardano.Api.Shelley        (Hash, HashableScriptData,
                                              NetworkId, PaymentKey,
                                              PlutusScript, PlutusScriptV1,
                                              PlutusScriptV2, ScriptHash,
-                                             WitCtxTxIn, Witness)
+                                             TxBodyContent (..), WitCtxTxIn,
+                                             Witness)
 import qualified Cardano.Api.Shelley        as C
 import           Control.Lens               (_1, _2, at, mapped, over, set,
                                              view, (&))
@@ -100,21 +104,45 @@ import           Data.List                  (nub)
 import           Data.Map                   (Map)
 import qualified Data.Map                   as Map
 import           Data.Maybe                 (fromMaybe)
+import           Data.Set                   (Set)
+import qualified Data.Set                   as Set
 import qualified PlutusLedgerApi.V1         as Plutus
 
 {-| A map of all inputs of the final transaction produced by a @TxBuilder@
 -}
-type TransactionInputs = Map C.TxIn (Witness WitCtxTxIn C.BabbageEra)
+-- TOOO: This is essentially a subset of @TxBodyContent BuildTx@. Maybe we should
+--       just make the entire @TxBodyContent BuildTx@ available to 'addInput'?
+data TransactionInputs = TransactionInputs
+  { txiSpendingInputs  :: Map C.TxIn (Witness WitCtxTxIn C.BabbageEra) -- ^ Inputs spent by the final transaction
+  , txiReferenceInputs :: Set C.TxIn -- ^ Reference inputs used by the final transaction
+  }
 
-{-| Look up the index of the @TxIn@ in the list of inputs
--}
-lookupIndex :: C.TxIn -> TransactionInputs -> Maybe Int
-lookupIndex txi = Map.lookupIndex txi
+mkTxInputs :: C.TxBodyContent C.BuildTx C.BabbageEra -> TransactionInputs
+mkTxInputs TxBodyContent{txIns, txInsReference} =
+  TransactionInputs
+    { txiSpendingInputs  = Map.fromList (fmap (view L._BuildTxWith) <$> txIns)
+    , txiReferenceInputs = Set.fromList (view L._TxInsReference txInsReference)
+    }
 
-{-| Look up the index of the @TxIn@ in the list of inputs
+{-| Look up the index of the @TxIn@ in the list of spending inputs
 -}
-findIndex :: C.TxIn -> TransactionInputs -> Int
-findIndex txi = Map.findIndex txi
+lookupIndexSpending :: C.TxIn -> TransactionInputs -> Maybe Int
+lookupIndexSpending txi = Map.lookupIndex txi . txiSpendingInputs
+
+{-| Look up the index of the @TxIn@ in the list of reference inputs
+-}
+lookupIndexReference :: C.TxIn -> TransactionInputs -> Maybe Int
+lookupIndexReference txi = Set.lookupIndex txi . txiReferenceInputs
+
+{-| Look up the index of the @TxIn@ in the list of spending inputs
+-}
+findIndexSpending :: C.TxIn -> TransactionInputs -> Int
+findIndexSpending txi = Map.findIndex txi . txiSpendingInputs
+
+{-| Look up the index of the @TxIn@ in the list of reference inputs
+-}
+findIndexReference :: C.TxIn -> TransactionInputs -> Int
+findIndexReference txi = Set.findIndex txi . txiReferenceInputs
 
 {-| A function that modifies the @TxBodyContent@, after seeing the inputs of
 the entire finished transaction (lazily).
@@ -136,7 +164,7 @@ buildTx txb = buildTxWith txb L.emptyTx
 buildTxWith :: TxBuilder -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
 buildTxWith TxBuilder{unTxBuilder} initial =
   let mp :: TransactionInputs
-      mp = Map.fromList (fmap (view L._BuildTxWith) <$> C.txIns result)
+      mp = mkTxInputs result
       result = unTxBuilder mp initial
   in result
 
@@ -284,7 +312,7 @@ can depend on the index of the @TxIn@ in the inputs of the final transaction.
 -}
 spendPlutusV2RefBase :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
 spendPlutusV2RefBase txIn refTxIn sh dat red =
-  let wit lkp = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) dat (toHashableScriptData $ red $ findIndex txIn lkp) (C.ExecutionUnits 0 0)
+  let wit lkp = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) dat (toHashableScriptData $ red $ findIndexSpending txIn lkp) (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith . C.ScriptWitness C.ScriptWitnessForSpending . wit
   in setScriptsValid >> addTxBuilder (TxBuilder $ \lkp -> (over L.txIns ((txIn, wit' lkp) :)))
 
