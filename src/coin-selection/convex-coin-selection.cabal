@@ -66,6 +66,7 @@ test-suite convex-coin-selection-test
     Spec.hs
   other-modules:
     Scripts
+    Scripts.MatchingIndex
   build-depends:
     base >= 4.14.0,
     tasty,

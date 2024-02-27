@@ -15,8 +15,9 @@ import           Cardano.Api            (BabbageEra, CtxTx, NetworkId, Quantity,
 import qualified Cardano.Api.Shelley    as C
 import           Control.Lens           (_1, _2, _3, preview, set, to, view,
                                          (^.))
-import           Convex.BuildTx         (MonadBuildTx (..), mintPlutusV2,
-                                         payToPlutusV2, spendPlutusV2)
+import           Convex.BuildTx         (MonadBuildTx (..), addBtx,
+                                         mintPlutusV2, payToPlutusV2,
+                                         spendPlutusV2)
 import qualified Convex.Lenses          as L
 import           Convex.Scripts         (fromScriptData)
 import           Convex.Utils           (txnUtxos)

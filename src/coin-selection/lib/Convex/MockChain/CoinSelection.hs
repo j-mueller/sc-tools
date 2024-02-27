@@ -16,13 +16,13 @@ import           Cardano.Api.Shelley       (BabbageEra, BuildTx, TxBodyContent,
 import qualified Cardano.Api.Shelley       as C
 import           Control.Monad.Except      (MonadError)
 import           Control.Tracer            (Tracer)
-import           Convex.BuildTx            (execBuildTx, execBuildTx',
+import           Convex.BuildTx            (buildTx, execBuildTx, execBuildTx',
                                             payToAddress, setMinAdaDepositAll)
 import           Convex.Class              (MonadBlockchain (..),
                                             MonadMockchain)
 import           Convex.CoinSelection      (BalanceTxError, TxBalancingMessage)
 import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.Lenses             (emptyTx, emptyTxOut)
+import           Convex.Lenses             (emptyTxOut)
 import qualified Convex.MockChain          as MockChain
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)
@@ -53,7 +53,7 @@ balanceAndSubmitReturn dbg wallet returnOutput tx = do
 -}
 paymentTo :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> Wallet -> m (C.Tx CoinSelection.ERA)
 paymentTo wFrom wTo = do
-  let tx = execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000)) emptyTx
+  let tx = buildTx $ execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000))
   balanceAndSubmit mempty wFrom tx
 
 {-| Pay 100 Ada from one of the seed addresses to an @Operator@
