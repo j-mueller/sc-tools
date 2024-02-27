@@ -65,6 +65,7 @@ test-suite convex-coin-selection-test
     Spec.hs
   other-modules:
     Scripts
+    Scripts.MatchingIndex
   build-depends:
     base >= 4.14.0,
     tasty,
@@ -83,5 +84,7 @@ test-suite convex-coin-selection-test
     containers,
     plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib},
     plutus-ledger-api,
+    plutus-tx,
+    plutus-tx-plugin,
     mtl,
     transformers

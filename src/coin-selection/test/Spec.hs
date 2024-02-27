@@ -12,7 +12,7 @@ import           Cardano.Ledger.Babbage.Rules   (BabbageUtxoPredFailure (..),
 import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
 import           Cardano.Ledger.Shelley.Rules   (ShelleyLedgerPredFailure (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
-import           Control.Monad                  (void, when)
+import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
 import           Control.Monad.State.Strict     (execStateT, modify)
 import           Control.Monad.Trans.Class      (MonadTrans (..))
@@ -90,6 +90,7 @@ tests = testGroup "unit tests"
     , testCase "making payments with tokens" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens))
     , testCase "making payments with tokens (2)" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens2))
     , testCase "spending a singleton output" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendSingletonOutput))
+    , testCase "spend an output locked by the matching index script" (mockchainSucceeds $ failOnError matchingIndex)
     ]
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
@@ -259,7 +260,7 @@ checkResolveDatumHash = do
 execBuildTxWallet :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> BuildTxT m a -> m C.TxId
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
-  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet (tx L.emptyTx)
+  C.getTxId . C.getTxBody <$> balanceAndSubmit mempty wallet (BuildTx.buildTx tx)
 
 -- | Balance a transaction using a list of operators
 --   Check that the fees are calculated correctly to spend outputs from different addresses
@@ -312,3 +313,14 @@ largeTransactionTest = do
   let protParams = Defaults.protocolParameters & maxTxSize .~ 20304
       params' = Defaults.nodeParams & protocolParameters .~ (either (error. show) id (C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage protParams))
   mockchainSucceedsWith params' (failOnError largeDatumTx)
+
+matchingIndex :: (MonadMockchain m, MonadError BalanceTxError m) => m ()
+matchingIndex = do
+  let txBody = execBuildTx' (payToPlutusV2 Defaults.networkId Scripts.matchingIndexScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+      tx     = C.TxIn <$> (C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
+
+  -- create three separate tx outputs that are locked by the matching index script
+  inputs <- replicateM 3 tx
+
+  -- Spend the outputs in a single transaction
+  void (balanceAndSubmit mempty Wallet.w1 $ execBuildTx' $ traverse_ Scripts.spendMatchingIndex inputs)
