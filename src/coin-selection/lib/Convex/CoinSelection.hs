@@ -58,8 +58,8 @@ import           Control.Monad             (when)
 import           Control.Monad.Except      (MonadError (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Tracer            (Tracer, natTracer, traceWith)
-import           Convex.BuildTx            (addCollateral, execBuildTx,
-                                            setMinAdaDeposit,
+import           Convex.BuildTx            (addCollateral, buildTxWith,
+                                            execBuildTx, setMinAdaDeposit,
                                             spendPublicKeyOutput)
 import qualified Convex.CardanoApi         as CC
 import           Convex.Class              (MonadBlockchain (..))
@@ -459,7 +459,7 @@ addOwnInput body (Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
   | not (Map.null _utxos) =
       -- Select ada-only outputs if possible
       let availableUTxOs = List.sortOn (length . view (L._TxOut . _2 . L._TxOutValue . to C.valueToList) . fst . snd) (Map.toList _utxos)
-      in pure (execBuildTx (spendPublicKeyOutput (fst $ head availableUTxOs)) body)
+      in pure $ buildTxWith (execBuildTx (spendPublicKeyOutput (fst $ head availableUTxOs))) body
   | otherwise = throwError NoWalletUTxOs
 
 -- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
@@ -475,7 +475,7 @@ setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
         -- select the output with the largest amount of Ada
         case listToMaybe $ List.sortOn (Down . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) . fst . snd) $ Map.toList _utxos of
           Nothing     -> throwError NoAdaOnlyUTxOsForCollateral
-          Just (k, _) -> pure (execBuildTx (addCollateral k) body)
+          Just (k, _) -> pure $ buildTxWith (execBuildTx (addCollateral k)) body
 
 {-| Whether the transaction runs any plutus scripts
 -}

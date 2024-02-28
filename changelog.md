@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move `Convex.BuildTx` and `Convex.CoinSelection.CardanoAPI` from `convex-coin-selection` to `convex-base`
 - Rename `Convex.CoinSelection.CardanoAPI` to `Convex.CoinSelection`
 * When selecting public-key UTxOs during coin selection, outputs that are incompatible with PlutusV1 scripts are excluded.
+* Fixed a bug in coin selection where the wallet's mixed inputs were not considered for a `TxBodyContent` with zero inputs
+* `Convex.BuildTx`: Added the option to look at all of a transaction's inputs when building a transaction
+
 - Added a `Tracer m TxBalancingMessage` argument to the coin selection functions. This prints out useful information about decisions taken during coin selection and balancing. Instantiate with `mempty` to ignore the messages.
 - Changed the `protocolParameters`, `ledgerProtocolParameters` lenses in `Convex.NodeParams` to update the other field too (making sure they are always in sync)
 - Export `Convex.Wallet.MockWallet.w4`
