@@ -153,7 +153,7 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
       = case pipelineDecisionMax pipelineSize n clientTip_ serverTip_  of
           Collect -> case n of
             Succ predN -> CSP.CollectResponse Nothing (clientNextN predN history)
-          _ -> CSP.SendMsgRequestNextPipelined (clientIdle_RequestMoreN clientTip_ serverTip_ (Succ n) history)
+          _ -> CSP.SendMsgRequestNextPipelined (pure ()) (clientIdle_RequestMoreN clientTip_ serverTip_ (Succ n) history)
 
     clientNextN
       :: Nat n
