@@ -43,7 +43,6 @@ module Convex.CoinSelection(
   ) where
 
 import qualified Cardano.Api               as Cardano.Api
-import           Cardano.Api.Pretty        (docToString)
 import           Cardano.Api.Shelley       (BabbageEra, BuildTx, EraHistory,
                                             PoolId, TxBodyContent, TxOut,
                                             UTxO (..))
@@ -135,7 +134,7 @@ data CoinSelectionError =
   deriving anyclass (ToJSON, FromJSON)
 
 bodyError :: C.TxBodyError -> CoinSelectionError
-bodyError = BodyError . Text.pack . docToString . C.prettyError
+bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
 data BalancingError =
   BalancingError Text
@@ -146,7 +145,7 @@ data BalancingError =
   deriving anyclass (ToJSON, FromJSON)
 
 balancingError :: MonadError BalancingError m => Either (C.TxBodyErrorAutoBalance C.BabbageEra) a -> m a
-balancingError = either (throwError . BalancingError . Text.pack . docToString . C.prettyError) pure
+balancingError = either (throwError . BalancingError . Text.pack . C.docToString . C.prettyError) pure
 
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage =
@@ -184,7 +183,7 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
                 csiUtxo
                 txbody0
 
-  traceWith tracer $ ExUnitsMap $ fmap (second (first (docToString . C.prettyError))) $ Map.toList exUnitsMap
+  traceWith tracer $ ExUnitsMap $ fmap (second (first (C.docToString . C.prettyError))) $ Map.toList exUnitsMap
 
   exUnitsMap' <- balancingError $
     case Map.mapEither id exUnitsMap of

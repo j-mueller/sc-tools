@@ -44,7 +44,7 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
       = case pipelineDecisionMax pipelineSize n clientTip serverTip  of
           Collect -> case n of
             Succ predN -> CSP.CollectResponse Nothing (clientNextN predN)
-          _ -> CSP.SendMsgRequestNextPipelined (clientIdle_RequestMoreN clientTip serverTip (Succ n))
+          _ -> CSP.SendMsgRequestNextPipelined (pure ()) (clientIdle_RequestMoreN clientTip serverTip (Succ n))
 
     clientNextN :: Nat n -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n =
