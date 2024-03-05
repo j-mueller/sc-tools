@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.CoinSelection
+      Convex.CoinSelection.Class
       Convex.MockChain.CoinSelection
       Convex.Query
       Convex.UTxOCompatibility
@@ -37,6 +38,7 @@ library
       aeson,
       base >= 4.14.0,
       containers >= 0.6.5,
+      exceptions,
       lens,
       contra-tracer,
       convex-mockchain,
