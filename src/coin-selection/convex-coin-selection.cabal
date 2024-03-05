@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.CoinSelection
+      Convex.CoinSelection.Class
       Convex.MockChain.CoinSelection
       Convex.Query
       Convex.UTxOCompatibility
@@ -43,6 +44,7 @@ library
       convex-mockchain,
       convex-node-client,
       convex-wallet,
+      exceptions,
       text,
       mtl,
       servant-client,
