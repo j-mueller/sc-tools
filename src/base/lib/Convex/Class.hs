@@ -197,9 +197,9 @@ This MAY move the clock backwards!
 -}
 setTimeToValidRange :: MonadMockchain m => (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra) -> m ()
 setTimeToValidRange = \case
-  (C.TxValidityLowerBound _ lowerSlot, _) -> setSlot lowerSlot
+  (C.TxValidityLowerBound _ lowerSlot, _)        -> setSlot lowerSlot
   (_, C.TxValidityUpperBound _ (Just upperSlot)) -> setSlot (pred upperSlot)
-  _                                       -> pure ()
+  _                                              -> pure ()
 
 {-| Increase the slot number by 1.
 -}

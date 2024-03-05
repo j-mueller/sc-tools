@@ -380,7 +380,7 @@ inv (UtxoChange added removed) = UtxoChange removed added
 extract :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> Maybe AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode -> [UtxoChangeEvent a]
 extract ex cred state = DList.toList . \case
   BlockInMode C.BabbageEra block -> extractBabbage ex state cred block
-  _                                         -> mempty
+  _                              -> mempty
 
 {-| Extract from a block the UTXO changes at the given address
 -}

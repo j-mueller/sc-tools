@@ -40,7 +40,7 @@ data UTxOCompatibility =
 compatibleWith :: UTxOCompatibility -> UTxO BabbageEra -> UTxO BabbageEra
 compatibleWith = \case
   PlutusV1Compatibility -> deleteInlineDatums
-  AnyCompatibility -> id
+  AnyCompatibility      -> id
 
 {-| Delete UTxOs that have inline datums, as this is not supported by Plutus V1
 -}
