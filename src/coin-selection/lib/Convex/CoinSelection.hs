@@ -126,7 +126,7 @@ makeLensesFor
 data CoinSelectionError =
   UnsupportedBalance (C.TxOutValue ERA)
   | BodyError Text
-  | NotEnoughAdaOnlyOutputsFor C.Lovelace
+  | NotEnoughInputsFor{ lovelaceRequired :: C.Lovelace, lovelaceFound :: C.Lovelace, inputsPolicy :: MixedInputsPolicy }
   | NotEnoughMixedOutputsFor{ valuesNeeded :: [(C.PolicyId, C.AssetName, C.Quantity)], valueProvided :: C.Value, txBalance :: C.Value }
   | NoWalletUTxOs -- ^ The wallet utxo set is empty
   | NoAdaOnlyUTxOsForCollateral -- ^ The transaction body needs a collateral input, but there are no inputs that hold nothing but Ada
@@ -151,7 +151,7 @@ balancingError = either (throwError . BalancingError . Text.pack . C.docToString
 data TxBalancingMessage =
   SelectingCoins
   | CompatibilityLevel{ compatibility :: !UTxOCompatibility, droppedTxIns :: !Int } -- ^ The plutus compatibility level applied to the wallet tx outputs
-  | PrepareInputs{walletBalance :: C.Value, transactionBalance :: C.Value} -- ^ Preparing to balance the transaction using the available wallet balance
+  | PrepareInputs{walletBalance :: C.Value, transactionBalance :: C.Value, mixedInputsPolicy :: !MixedInputsPolicy } -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
   | Txfee{ fee :: C.Lovelace } -- ^ The transaction fee
@@ -478,16 +478,26 @@ runsScripts body =
       minting   = body ^. (L.txMintValue . L._TxMintValue . _2)
   in not (null scriptIns && Map.null minting)
 
-{-| Add inputs to ensure that the balance is strictly positive
+{-| Whether to include mixed inputs (inputs that have other native tokens besides Ada)
+-}
+data MixedInputsPolicy
+  = IncludeMixedInputs -- ^ Include both Ada-only and mixed inputs
+  | ExcludeMixedInputs -- ^ Restrict the search to Ada-only inputs
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+{-| Add inputs to ensure that the balance is strictly positive.
 -}
 addMissingInputs :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> C.LedgerProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
 addMissingInputs dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
+  let mixedInputsPolicy = ExcludeMixedInputs
   txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txBodyContent0)
   let bal = C.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
   traceWith dbg PrepareInputs
     { walletBalance      = Utxos.totalBalance walletUtxo
     , transactionBalance = bal
+    , mixedInputsPolicy
     }
   (txBodyContent1, additionalBalance) <- addInputsForNonAdaAssets dbg bal walletUtxo txBodyContent0
 
@@ -506,16 +516,22 @@ addMissingInputs dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyConten
       missingLovelace = C.Lovelace (deposit + threshold - l)
 
   traceWith dbg (MissingLovelace missingLovelace)
-  (,returnUTxO1) <$> addAdaOnlyInputsFor missingLovelace available txBodyContent1
+
+  -- TODO: Make it possible to select non-Ada inputs. Needs to adjust the change output.
+  (,returnUTxO1) <$> addAdaOnlyInputsFor mixedInputsPolicy missingLovelace available txBodyContent1
 
 {-| Select inputs from the wallet's UTXO set to cover the given amount of lovelace.
 Will only consider inputs that have no other assets besides Ada.
 -}
-addAdaOnlyInputsFor :: MonadError CoinSelectionError m => C.Lovelace -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA)
-addAdaOnlyInputsFor l availableUtxo txBodyContent =
-  case Wallet.selectAdaInputsCovering availableUtxo l of
-    Nothing -> throwError (NotEnoughAdaOnlyOutputsFor l)
-    Just (_, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
+addAdaOnlyInputsFor :: MonadError CoinSelectionError m => MixedInputsPolicy -> C.Lovelace -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA)
+addAdaOnlyInputsFor inputsPolicy lovelaceRequired availableUtxo txBodyContent =
+  let availableInputs = case inputsPolicy of
+        IncludeMixedInputs -> availableUtxo
+        ExcludeMixedInputs -> Utxos.onlyAda availableUtxo
+      lovelaceFound = C.selectLovelace $ Utxos.totalBalance availableInputs
+  in case Wallet.selectAnyInputsCovering availableInputs lovelaceRequired of
+      Nothing -> throwError NotEnoughInputsFor{ lovelaceRequired, lovelaceFound, inputsPolicy}
+      Just (_, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
 
 {-| Examine the negative part of the transaction balance and select inputs from
 the wallet's UTXO set to cover the non-Ada assets required by it. If there are no
