@@ -24,6 +24,8 @@ module Convex.Lenses(
   txScriptValidity,
   txAuxScripts,
   txExtraKeyWits,
+  txWithdrawals,
+  txCertificates,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -40,6 +42,8 @@ module Convex.Lenses(
   _TxMetadata,
   _TxAuxScripts,
   _TxExtraKeyWitnesses,
+  _TxWithdrawals,
+  _TxCertificates,
 
   -- ** Validity intervals
   _TxValidityNoLowerBound,
@@ -207,6 +211,16 @@ txExtraKeyWits = lens get set_ where
   get = C.txExtraKeyWits
   set_ body k = body{C.txExtraKeyWits = k}
 
+txWithdrawals :: Lens' (C.TxBodyContent v BabbageEra) (C.TxWithdrawals v BabbageEra)
+txWithdrawals = lens get set_ where
+  get = C.txWithdrawals
+  set_ body k = body{C.txWithdrawals = k}
+
+txCertificates :: Lens' (C.TxBodyContent v BabbageEra) (C.TxCertificates v BabbageEra)
+txCertificates = lens get set_ where
+  get = C.txCertificates
+  set_ body k = body{C.txCertificates = k}
+
 _TxExtraKeyWitnesses :: Iso' (C.TxExtraKeyWitnesses BabbageEra) [C.Hash C.PaymentKey]
 _TxExtraKeyWitnesses = iso from to where
   from :: C.TxExtraKeyWitnesses BabbageEra -> [C.Hash C.PaymentKey]
@@ -215,6 +229,25 @@ _TxExtraKeyWitnesses = iso from to where
 
   to []   = C.TxExtraKeyWitnessesNone
   to keys = C.TxExtraKeyWitnesses C.ExtraKeyWitnessesInBabbageEra keys
+
+_TxWithdrawals :: Iso' (C.TxWithdrawals v BabbageEra) [(C.StakeAddress, C.Lovelace, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
+_TxWithdrawals = iso from to where
+  from :: C.TxWithdrawals v BabbageEra -> [(C.StakeAddress, C.Lovelace, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
+  from C.TxWithdrawalsNone    = []
+  from (C.TxWithdrawals _ xs) = xs
+
+  to [] = C.TxWithdrawalsNone
+  to xs = C.TxWithdrawals C.WithdrawalsInBabbageEra xs
+
+_TxCertificates :: Iso' (C.TxCertificates BuildTx BabbageEra) ([C.Certificate], Map C.StakeCredential (C.Witness C.WitCtxStake BabbageEra))
+_TxCertificates = iso from to where
+  from :: C.TxCertificates BuildTx BabbageEra -> ([C.Certificate], (Map C.StakeCredential (C.Witness C.WitCtxStake BabbageEra)))
+  from C.TxCertificatesNone                     = ([], Map.empty)
+  from (C.TxCertificates _ x (C.BuildTxWith y)) = (x, y)
+
+  to :: ([C.Certificate], Map C.StakeCredential (C.Witness C.WitCtxStake BabbageEra)) -> C.TxCertificates BuildTx BabbageEra
+  to ([], mp) | Map.null mp = C.TxCertificatesNone
+  to (x, y) = C.TxCertificates C.CertificatesInBabbageEra x (C.BuildTxWith y)
 
 txAuxScripts :: Lens' (C.TxBodyContent v BabbageEra) (C.TxAuxScripts BabbageEra)
 txAuxScripts = lens get set_ where

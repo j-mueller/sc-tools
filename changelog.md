@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Convex.MockChain.Utils.runMockchainPropWith` to run a mockchain action in a quickcheck property with custom node params and initial distribution
 - `Eq` and `Ord` instances for `Operator`
 - `Convex.CoinSelection.Class`: An effect for balancing transactions
+- `Convex.Lenses`: Added lenses for staking certificates, withdrawals, proposal procedures and voting procedures and isos for certificates and withdrawals
+- `Convex.BuildTx`: Added functions for withdrawals, certificates and stake witnesses
 
 ### Deleted
 
