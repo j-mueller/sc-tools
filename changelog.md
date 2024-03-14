@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Updated the [conway genesis configuration file](node-config/mainnet/mainnet-conway-genesis.json) for mainnet
 * When selecting public-key UTxOs during coin selection, outputs that are incompatible with PlutusV1 scripts are excluded.
 * Fixed a bug in coin selection where the wallet's mixed inputs were not considered for a `TxBodyContent` with zero inputs
+* Improved the coin selection algorithm to correctly select mixed inputs for covering the transaction fees. Previously, only pure Ada inputs were considered for the fees.
 
 ### Added
 

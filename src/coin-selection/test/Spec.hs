@@ -14,6 +14,7 @@ import           Cardano.Ledger.Shelley.Rules   (ShelleyLedgerPredFailure (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
+import           Control.Monad.IO.Class         (MonadIO (..))
 import           Control.Monad.State.Strict     (execStateT, modify)
 import           Control.Monad.Trans.Class      (MonadTrans (..))
 import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
@@ -79,6 +80,7 @@ tests = testGroup "unit tests"
     [ testCase "spending a public key output" spendPublicKeyOutput
     , testCase "making several payments" makeSeveralPayments
     , testProperty "balance transactions with many addresses" balanceMultiAddress
+    , testCase "build a transaction without Ada-only inputs" buildTxMixedInputs
     ]
   , testGroup "scripts"
     [ testCase "paying to a plutus script" (mockchainSucceeds $ failOnError payToPlutusScript)
@@ -298,6 +300,31 @@ balanceMultiAddress = do
                 Just pkh <- publicKeyCredential <$> operatorReturnOutput o
                 when (pkh `Set.member` txInputs || (C.verificationKeyHash . verificationKey $ oPaymentKey o) `Set.member` extraWits) (modify (signTxOperator o))
               void (sendTx finalTx)
+
+buildTxMixedInputs :: Assertion
+buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
+  testWallet <- liftIO Wallet.generateWallet
+  -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
+  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
+      newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
+      txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
+  setUtxo
+    $ C.toLedgerUTxO C.ShelleyBasedEraBabbage
+    $ Utxos.toApiUtxo
+    $ utxoSet
+      <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newUTxO, ())
+      <> Utxos.singleton (C.TxIn txi $ C.TxIx 1001) (newUTxO, ())
+
+  -- pay 'utxoVal' to wallet 1.
+  -- this requires both outputs to be included in the final transaction
+  -- so that there is enough Ada for the transaction fees.
+  void
+    $ balanceAndSubmit mempty testWallet
+    $ BuildTx.buildTx
+    $ BuildTx.execBuildTx
+    $ payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal
+
 
 largeTransactionTest :: Assertion
 largeTransactionTest = do
