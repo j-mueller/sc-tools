@@ -60,6 +60,11 @@ module Convex.BuildTx(
   payToPlutusV2InlineWithInlineDatum,
   payToPlutusV2InlineWithDatum,
 
+  -- ** Staking
+  addWithdrawal,
+  addCertificate,
+  addStakeWitness,
+
   -- ** Minting and burning tokens
   mintPlutusV1,
   mintPlutusV2,
@@ -489,3 +494,23 @@ prependTxOut txOut = addBtx (over L.txOuts ((:) txOut))
 -}
 addOutput :: MonadBuildTx m => C.TxOut C.CtxTx C.BabbageEra -> m ()
 addOutput txOut = addBtx (over (L.txOuts . L.reversed) ((:) txOut))
+
+{-| Add a stake rewards withdrawal to the transaction
+-}
+addWithdrawal :: MonadBuildTx m => C.StakeAddress -> C.Lovelace -> C.Witness C.WitCtxStake C.BabbageEra -> m ()
+addWithdrawal address amount witness =
+  let withdrawal = (address, amount, C.BuildTxWith witness)
+  in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
+
+{-| Add a certificate (stake delegation, stake pool registration, etc)
+to the transaction
+-}
+addCertificate :: MonadBuildTx m => C.Certificate C.BabbageEra -> m ()
+addCertificate cert =
+  addBtx (over (L.txCertificates . L._TxCertificates . _1) ((:) cert))
+
+{-| Add a stake witness to the transaction
+-}
+addStakeWitness :: MonadBuildTx m => C.StakeCredential -> C.Witness C.WitCtxStake C.BabbageEra -> m ()
+addStakeWitness credential witness =
+  addBtx (set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just witness))
