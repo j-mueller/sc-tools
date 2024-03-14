@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Eq` and `Ord` instances for `Operator`
 - `Convex.BuildTx`: Added the option to look at all of a transaction's inputs when building a transaction
 - `Convex.CoinSelection.Class`: An effect for balancing transactions
+- `Convex.Lenses`: Added lenses for staking certificates, withdrawals, proposal procedures and voting procedures and isos for certificates and withdrawals
+- `Convex.BuildTx`: Added functions for withdrawals, certificates and stake witnesses
 
 ### Deleted
 
