@@ -52,8 +52,8 @@ import qualified Cardano.Ledger.Keys       as Keys
 import           Cardano.Slotting.Time     (SystemStart)
 import           Control.Lens              (_1, _2, at, makeLensesFor, over,
                                             preview, set, to, traversed, view,
-                                            (&), (.~), (<>~), (?~), (^.), (^..),
-                                            (|>))
+                                            (%~), (&), (.~), (<>~), (?~), (^.),
+                                            (^..), (|>))
 import           Control.Monad             (when)
 import           Control.Monad.Except      (MonadError (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
@@ -126,8 +126,8 @@ makeLensesFor
 data CoinSelectionError =
   UnsupportedBalance (C.TxOutValue ERA)
   | BodyError Text
-  | NotEnoughInputsFor{ lovelaceRequired :: C.Lovelace, lovelaceFound :: C.Lovelace, inputsPolicy :: MixedInputsPolicy }
-  | NotEnoughMixedOutputsFor{ valuesNeeded :: [(C.PolicyId, C.AssetName, C.Quantity)], valueProvided :: C.Value, txBalance :: C.Value }
+  | NotEnoughInputsFor{ lovelaceRequired :: C.Lovelace, lovelaceFound :: C.Lovelace }
+  | NotEnoughMixedOutputsFor{ valuesNeeded :: C.Value, valueProvided :: C.Value, txBalance :: C.Value }
   | NoWalletUTxOs -- ^ The wallet utxo set is empty
   | NoAdaOnlyUTxOsForCollateral -- ^ The transaction body needs a collateral input, but there are no inputs that hold nothing but Ada
   deriving stock (Show, Generic)
@@ -151,13 +151,13 @@ balancingError = either (throwError . BalancingError . Text.pack . C.docToString
 data TxBalancingMessage =
   SelectingCoins
   | CompatibilityLevel{ compatibility :: !UTxOCompatibility, droppedTxIns :: !Int } -- ^ The plutus compatibility level applied to the wallet tx outputs
-  | PrepareInputs{walletBalance :: C.Value, transactionBalance :: C.Value, mixedInputsPolicy :: !MixedInputsPolicy } -- ^ Preparing to balance the transaction using the available wallet balance
+  | PrepareInputs{availableBalance :: C.Value, transactionBalance :: C.Value } -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
   | Txfee{ fee :: C.Lovelace } -- ^ The transaction fee
   | TxRemainingBalance{ remainingBalance :: C.Value } -- ^ The remaining balance (after paying the fee)
-  | NoNonAdaAssetsMissing -- ^ The transaction was not missing any non-Ada assets.
-  | MissingNativeAssets [(C.PolicyId, C.AssetName, C.Quantity)] -- ^ The transaction is missing some non-Ada inputs, these will be covered from the wallet's UTxOs.
+  | NoAssetsMissing -- ^ The transaction was not missing any assets
+  | MissingAssets C.Value -- ^ The transaction is missing some inputs, these will be covered from the wallet's UTxOs.
   | MissingLovelace C.Lovelace -- ^ The transaction is missing some Ada. The amount will be covered from the wallet's UTxOs.
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON)
@@ -402,7 +402,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
   (finalBody, returnUTxO1) <- mapError ACoinSelectionError $ do
     bodyWithInputs <- addOwnInput txb0 walletUtxo
     bodyWithCollat <- setCollateral bodyWithInputs walletUtxo
-    addMissingInputs (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
+    balancePositive (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
   count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
@@ -478,94 +478,65 @@ runsScripts body =
       minting   = body ^. (L.txMintValue . L._TxMintValue . _2)
   in not (null scriptIns && Map.null minting)
 
-{-| Whether to include mixed inputs (inputs that have other native tokens besides Ada)
+{-| Add inputs to ensure that the balance is strictly positive. After calling @balancePositive@
+* The amount of Ada provided by the transaction's inputs minus (the amount of Ada produced by the transaction's outputs plus the change output) is greater than zero
+* For all native tokens @t@, the amount of @t@ provided by the transaction's inputs minus (the amount of @t@ produced by the transaction's outputs plus the change output plus the delta of @t@ minted / burned) is equal to zero
 -}
-data MixedInputsPolicy
-  = IncludeMixedInputs -- ^ Include both Ada-only and mixed inputs
-  | ExcludeMixedInputs -- ^ Restrict the search to Ada-only inputs
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving anyclass (ToJSON, FromJSON)
-
-{-| Add inputs to ensure that the balance is strictly positive.
--}
-addMissingInputs :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> C.LedgerProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
-addMissingInputs dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
-  let mixedInputsPolicy = ExcludeMixedInputs
+balancePositive :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> C.LedgerProtocolParameters BabbageEra -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
+balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
   txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txBodyContent0)
   let bal = C.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
+
+  -- minimum positive balance (in lovelace) that must be available to cover
+  -- * minimum deposit on the ada-only change output, if required, and
+  -- * transaction fee, incl. script fee if required
+  -- we set it to rather large value to ensure that we can build a valid transaction.
+  let threshold = negate (if runsScripts txBodyContent0 then 8_000_000 else 2_500_000)
+      balance = bal & L._Value . at C.AdaAssetId %~ maybe (Just threshold) (Just . (+) threshold)
+
   traceWith dbg PrepareInputs
-    { walletBalance      = Utxos.totalBalance walletUtxo
-    , transactionBalance = bal
-    , mixedInputsPolicy
+    { availableBalance   = Utxos.totalBalance available
+    , transactionBalance = balance
     }
-  (txBodyContent1, additionalBalance) <- addInputsForNonAdaAssets dbg bal walletUtxo txBodyContent0
+  (txBodyContent1, additionalBalance) <- addInputsForAssets dbg balance available txBodyContent0
 
-  let bal0 = bal <> additionalBalance
-  let (returnUTxO1, C.Lovelace deposit) = addOutputForNonAdaAssets ledgerPPs returnUTxO0 bal0
+  let bal0 = balance <> additionalBalance
+  let (returnUTxO1, _deposit) = addOutputForNonAdaAssets ledgerPPs returnUTxO0 bal0
 
-      -- minimum positive balance (in lovelace) that must be available to cover
-      -- * minimum deposit on the ada-only change output, if required, and
-      -- * transaction fee, incl. script fee if required
-      -- we set it to rather large value to ensure that we can build a valid transaction.
-  let threshold =
-        if runsScripts txBodyContent1
-          then 8_000_000
-          else 2_500_000
-      C.Lovelace l = C.selectLovelace bal0
-      missingLovelace = C.Lovelace (deposit + threshold - l)
-
-  traceWith dbg (MissingLovelace missingLovelace)
-
-  -- TODO: Make it possible to select non-Ada inputs. Needs to adjust the change output.
-  (,returnUTxO1) <$> addAdaOnlyInputsFor mixedInputsPolicy missingLovelace available txBodyContent1
-
-{-| Select inputs from the wallet's UTXO set to cover the given amount of lovelace.
-Will only consider inputs that have no other assets besides Ada.
--}
-addAdaOnlyInputsFor :: MonadError CoinSelectionError m => MixedInputsPolicy -> C.Lovelace -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA)
-addAdaOnlyInputsFor inputsPolicy lovelaceRequired availableUtxo txBodyContent =
-  let availableInputs = case inputsPolicy of
-        IncludeMixedInputs -> availableUtxo
-        ExcludeMixedInputs -> Utxos.onlyAda availableUtxo
-      lovelaceFound = C.selectLovelace $ Utxos.totalBalance availableInputs
-  in case Wallet.selectAnyInputsCovering availableInputs lovelaceRequired of
-      Nothing -> throwError NotEnoughInputsFor{ lovelaceRequired, lovelaceFound, inputsPolicy}
-      Just (_, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins))
+  pure (txBodyContent1, returnUTxO1)
 
 {-| Examine the negative part of the transaction balance and select inputs from
-the wallet's UTXO set to cover the non-Ada assets required by it. If there are no
-non-Ada asset then no inputs will be added.
+the wallet's UTXO set to cover the assets required by it. If there are no
+assets missing then no inputs will be added.
 -}
-addInputsForNonAdaAssets ::
+addInputsForAssets ::
   MonadError CoinSelectionError m =>
   Tracer m TxBalancingMessage ->
-  C.Value ->
-  UtxoSet ctx a ->
-  TxBodyContent BuildTx ERA ->
-  m (TxBodyContent BuildTx ERA, C.Value)
-addInputsForNonAdaAssets dbg txBal availableUtxo txBodyContent
-  | isNothing (C.valueToLovelace $ C.valueFromList $ fst $ splitValue txBal) = do
-      let nativeAsset (C.AdaAssetId, _) = Nothing
-          nativeAsset (C.AssetId p n, C.Quantity q) = Just (p, n, C.Quantity (abs q))
-          missingNativeAssets = mapMaybe nativeAsset (fst $ splitValue txBal)
-      traceWith dbg (MissingNativeAssets missingNativeAssets)
-      case Wallet.selectMixedInputsCovering availableUtxo missingNativeAssets of
-        Nothing -> throwError (NotEnoughMixedOutputsFor missingNativeAssets (Utxos.totalBalance availableUtxo) txBal)
-        Just (total, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
-  | otherwise = do
-      traceWith dbg NoNonAdaAssetsMissing
+  C.Value -> -- ^ The balance of the transaction
+  UtxoSet ctx a -> -- ^ UTxOs that we can spend to cover the negative part of the balance
+  TxBodyContent BuildTx ERA -> -- ^ Transaction body
+  m (TxBodyContent BuildTx ERA, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
+addInputsForAssets dbg txBal availableUtxo txBodyContent
+  | null (fst $ splitValue txBal) = do
+      traceWith dbg NoAssetsMissing
       return (txBodyContent, mempty)
+  | otherwise = do
+      let missingAssets = fmap (second abs) $ fst $ splitValue txBal
+      traceWith dbg (MissingAssets $ C.valueFromList missingAssets)
+      case Wallet.selectMixedInputsCovering availableUtxo missingAssets of
+        Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance availableUtxo) txBal)
+        Just (total, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
 
-{-| Examine the positive part of the transaction balance and add an output for
-any non-Ada asset it contains. If the positive part only contains Ada then no
-output is added.
+{-| Examine the positive part of the transaction balance and add any non-Ada assets it contains
+to the provided change output. If the positive part only contains Ada then the
+change output is returned unmodified.
 -}
 addOutputForNonAdaAssets ::
   C.LedgerProtocolParameters BabbageEra -> -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
-  C.TxOut C.CtxTx C.BabbageEra -> -- ^ Address of the newly created output
+  C.TxOut C.CtxTx C.BabbageEra -> -- ^ Change output. Overflow non-Ada assets will be added to this output's value.
   C.Value -> -- ^ The balance of the transaction
-  (C.TxOut C.CtxTx C.BabbageEra, C.Lovelace) -- ^ The modified transaction body and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
+  (C.TxOut C.CtxTx C.BabbageEra, C.Lovelace) -- ^ The modified change output and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
 addOutputForNonAdaAssets pparams returnUTxO (C.valueFromList . snd . splitValue -> positives)
   | isNothing (C.valueToLovelace positives) =
       let vlWithoutAda = positives & set (L._Value . at C.AdaAssetId) Nothing
