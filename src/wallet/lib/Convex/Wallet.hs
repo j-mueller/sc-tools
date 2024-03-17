@@ -141,17 +141,14 @@ selectAnyInputsCovering UtxoSet{_utxos} (C.Lovelace target) =
 {-| Select inputs that cover the given amount of non-Ada
 assets.
 -}
-selectMixedInputsCovering :: UtxoSet ctx a -> [(C.PolicyId, C.AssetName, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
+selectMixedInputsCovering :: UtxoSet ctx a -> [(C.AssetId, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
 selectMixedInputsCovering UtxoSet{_utxos} xs =
   let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
       coversTarget (candidateVl, _txIns) =
-        all (\(policyId, assetName, quantity) -> C.selectAsset candidateVl (C.AssetId policyId assetName) >= quantity) xs
-      requiredAssets = foldMap (\(p, a, _) -> Set.singleton (p, a)) xs
-      nonAdaAssets = \case
-        C.AdaAssetId  -> Set.empty
-        C.AssetId p n -> Set.singleton (p, n)
+        all (\(assetId, quantity) -> C.selectAsset candidateVl assetId >= quantity) xs
+      requiredAssets = foldMap (\(a, _) -> Set.singleton a) xs
       relevantValue (txIn, view (L._TxOut . _2 . L._TxOutValue) -> txOutValue) =
-        let providedAssets = foldMap (nonAdaAssets . fst) (C.valueToList txOutValue)
+        let providedAssets = foldMap (Set.singleton . fst) (C.valueToList txOutValue)
         in if Set.null (Set.intersection requiredAssets providedAssets)
           then Nothing
           else Just (txOutValue, txIn)
