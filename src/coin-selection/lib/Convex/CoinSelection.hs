@@ -496,9 +496,9 @@ balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
 
   -- minimum positive balance (in lovelace) that must be available to cover
-  -- * minimum deposit on the ada-only change output, if required, and
-  -- * transaction fee, incl. script fee if required
-  -- we set it to rather large value to ensure that we can build a valid transaction.
+  -- the minimum deposit on the ada-only change output, if required, and
+  -- the transaction fee, incl. script fee if required.
+  -- We set it to rather large value to ensure that we can build a valid transaction.
   let threshold = negate (if runsScripts txBodyContent0 then 8_000_000 else 2_500_000)
       balance = bal & L._Value . at C.AdaAssetId %~ maybe (Just threshold) (Just . (+) threshold)
 
@@ -518,12 +518,12 @@ the wallet's UTXO set to cover the assets required by it. If there are no
 assets missing then no inputs will be added.
 -}
 addInputsForAssets ::
-  MonadError CoinSelectionError m =>
-  Tracer m TxBalancingMessage ->
-  C.Value -> -- ^ The balance of the transaction
-  UtxoSet ctx a -> -- ^ UTxOs that we can spend to cover the negative part of the balance
-  TxBodyContent BuildTx ERA -> -- ^ Transaction body
-  m (TxBodyContent BuildTx ERA, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
+  MonadError CoinSelectionError m
+  => Tracer m TxBalancingMessage
+  -> C.Value -- ^ The balance of the transaction
+  -> UtxoSet ctx a -- ^ UTxOs that we can spend to cover the negative part of the balance
+  -> TxBodyContent BuildTx ERA -- ^ Transaction body
+  -> m (TxBodyContent BuildTx ERA, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
 addInputsForAssets dbg txBal availableUtxo txBodyContent
   | null (fst $ splitValue txBal) = do
       traceWith dbg NoAssetsMissing
