@@ -56,6 +56,7 @@ import           Control.Monad.Trans.Except.Result                 (ResultT)
 import           Convex.Era                                        (ERA)
 import qualified Convex.Era                                        as Ledger.Era
 import           Convex.MonadLog                                   (MonadLog (..),
+                                                                    MonadLogIgnoreT (..),
                                                                     logInfoS,
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
@@ -83,6 +84,8 @@ class Monad m => MonadBlockchain m where
                           -- ^ returns the current slot number, slot length and begin utc time for slot.
                           -- Slot 0 is returned when at genesis.
   networkId               :: m NetworkId -- ^ Get the network id
+
+deriving newtype instance MonadBlockchain m => MonadBlockchain (MonadLogIgnoreT m)
 
 instance MonadBlockchain m => MonadBlockchain (ResultT m) where
   sendTx = lift . sendTx
@@ -144,6 +147,8 @@ class MonadBlockchain m => MonadMockchain m where
   all datums that were part of transactions submitted with @sendTx@.
   -}
   resolveDatumHash :: Hash ScriptData -> m (Maybe ScriptData)
+
+deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
 instance MonadMockchain m => MonadMockchain (ResultT m) where
   modifySlot = lift . modifySlot
