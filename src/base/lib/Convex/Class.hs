@@ -4,10 +4,12 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 {-| Typeclass for blockchain operations
 -}
 module Convex.Class(
   MonadBlockchain(..),
+  singleUTxO,
   MonadMockchain(..),
   MonadBlockchainError(..),
   getSlot,
@@ -60,7 +62,9 @@ import           Convex.Utils                                      (posixTimeToS
                                                                     slotToUtcTime)
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
+import qualified Data.Map                                          as Map
 import           Data.Set                                          (Set)
+import qualified Data.Set                                          as Set
 import           Data.Time.Clock                                   (UTCTime)
 import           GHC.Generics                                      (Generic)
 import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
@@ -134,6 +138,12 @@ instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
   networkId = lift networkId
+
+-- | Look up  a single UTxO
+singleUTxO :: MonadBlockchain m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO C.BabbageEra))
+singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
+  C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
+  _ -> pure Nothing
 
 {-| Modify the mockchain internals
 -}

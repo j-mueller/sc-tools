@@ -50,7 +50,7 @@ import qualified Cardano.Api.Shelley       as C
 import           Cardano.Ledger.Crypto     (StandardCrypto)
 import qualified Cardano.Ledger.Keys       as Keys
 import           Cardano.Slotting.Time     (SystemStart)
-import           Control.Lens              (_1, _2, at, makeLensesFor, over,
+import           Control.Lens              (_1, _2, _3, at, makeLensesFor, over,
                                             preview, set, to, traversed, view,
                                             (%~), (&), (.~), (<>~), (?~), (^.),
                                             (^..), (|>))
@@ -474,9 +474,13 @@ setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
 -}
 runsScripts :: TxBodyContent BuildTx ERA -> Bool
 runsScripts body =
-  let scriptIns = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
-      minting   = body ^. (L.txMintValue . L._TxMintValue . _2)
-  in not (null scriptIns && Map.null minting)
+  let scriptIns   = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
+      minting     = body ^. (L.txMintValue . L._TxMintValue . _2)
+      certificates = body ^.. (L.txCertificates . L._TxCertificates . _2 . traversed . L._ScriptWitness)
+      withdrawals  = body ^.. (L.txWithdrawals . L._TxWithdrawals . traversed . _3 . L._BuildTxWith . L._ScriptWitness)
+
+  in
+    not (null scriptIns && Map.null minting && null withdrawals && null certificates)
 
 {-| Add inputs to ensure that the balance is strictly positive. After calling @balancePositive@
 * The amount of Ada provided by the transaction's inputs minus (the amount of Ada produced by the transaction's outputs plus the change output) is greater than zero
