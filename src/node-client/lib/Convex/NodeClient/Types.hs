@@ -26,7 +26,7 @@ import           Cardano.Api                                          (BlockInMo
                                                                        LocalNodeClientProtocols (..),
                                                                        LocalNodeClientProtocolsInMode,
                                                                        LocalNodeConnectInfo (..),
-                                                                       connectToLocalNode)
+                                                                       connectToLocalNode, LedgerState, initialLedgerState)
 import           Cardano.Slotting.Slot                                (WithOrigin (At, Origin))
 import           Control.Monad.IO.Class                               (MonadIO (..))
 import           Control.Monad.Trans.Class                            (lift)
@@ -44,11 +44,12 @@ newtype PipelinedLedgerStateClient =
 runNodeClient ::
   FilePath -- ^ Path to the cardano-node config file (e.g. <path to cardano-node project>/configuration/cardano/mainnet-config.json)
   -> FilePath -- ^ Path to local cardano-node socket. This is the path specified by the @--socket-path@ command line option when running the node.
-  -> (LocalNodeConnectInfo CardanoMode -> Env -> IO PipelinedLedgerStateClient) -- ^ Client
+  -> (LocalNodeConnectInfo CardanoMode -> LedgerState -> Env -> IO PipelinedLedgerStateClient) -- ^ Client
   -> ExceptT InitialLedgerStateError IO () -- ^ Final state
 runNodeClient nodeConfigFilePath socketPath client = do
   (connectInfo, env) <- loadConnectInfo nodeConfigFilePath socketPath
-  c <- liftIO (client connectInfo env)
+  ledgerState0 <- snd <$> initialLedgerState nodeConfigFilePath
+  c <- liftIO (client connectInfo ledgerState0 env)
   lift $ connectToLocalNode connectInfo (protocols c)
 
 protocols :: PipelinedLedgerStateClient -> LocalNodeClientProtocolsInMode CardanoMode

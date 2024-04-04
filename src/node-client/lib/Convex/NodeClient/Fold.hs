@@ -7,6 +7,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-| A node client that applies a fold to the stream of blocks.
 Unlike 'foldBlocks' from 'Cardano.Api', this one supports rollbacks.
 -}
@@ -30,10 +31,14 @@ import           Cardano.Api                                           (Block (.
                                                                         CardanoMode,
                                                                         ChainPoint (..),
                                                                         ChainTip (..),
-                                                                        Env,
+                                                                        Env (..),
                                                                         SlotNo,
+                                                                        LedgerEvent,
+                                                                        LedgerState (..),
+                                                                        ValidationMode (..),
                                                                         chainTipToChainPoint,
-                                                                        envSecurityParam)
+                                                                        envSecurityParam,
+                                                                        applyBlock)
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONBlockNo (..),
                                                                         JSONChainPoint (..),
@@ -110,17 +115,20 @@ foldClient ::
   forall s.
   -- | Initial state
   s ->
+  -- | Initial ledger state
+  LedgerState ->
   -- | Node connection data
   Env ->
   -- | Fold
-  (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe s)) ->
+  (CatchingUp -> s -> LedgerState -> [LedgerEvent] -> BlockInMode CardanoMode -> IO (Maybe s)) ->
   PipelinedLedgerStateClient
-foldClient initialState env applyBlock =
+foldClient initialState initialLedgerState env accumulate =
   foldClient' @s @()
     initialState
+    initialLedgerState
     env
     (\_ _ !s -> pure ((), s))
-    (\c !s -> fmap (fmap pure) . applyBlock c s)
+    (\c !s ls le -> fmap (fmap pure) . accumulate c s ls le)
 
 {-| A variant of 'foldClient' with more detailed control over rollbacks.
 -}
@@ -128,11 +136,12 @@ foldClient' ::
   forall s w.
   Monoid w =>
   s -- ^ Initial state
+  -> LedgerState -- ^ Initial ledger state
   -> Env -- ^ Node connection data
   -> (ChainPoint -> w -> s -> IO (w, s)) -- ^ Rollback
-  -> (CatchingUp -> s -> BlockInMode CardanoMode -> IO (Maybe (w, s))) -- ^ Fold
+  -> (CatchingUp -> s -> LedgerState -> [LedgerEvent] -> BlockInMode CardanoMode -> IO (Maybe (w, s))) -- ^ Fold
   -> PipelinedLedgerStateClient
-foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
+foldClient' initialState initialLedgerState env applyRollback accumulate = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
 
 -- NB: The code below was adapted from https://input-output-hk.github.io/cardano-node/cardano-api/src/Cardano.Api.LedgerState.html#foldBlocks
 
@@ -159,37 +168,49 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
       -> ClientStNext n ClientBlock ChainPoint ChainTip IO ()
     clientNextN n history =
       ClientStNext {
-          recvMsgRollForward = \newBlock serverChainTip -> do
-              let BlockInMode (Block bh@(BlockHeader slotNo _blockHash currBlockNo) _) _ = newBlock
-                  newClientTip = At currBlockNo
+          recvMsgRollForward = \newBlock@(BlockInMode bim@(Block bh@(BlockHeader slotNo _blockHash currBlockNo) _) _era ) serverChainTip -> do
+              let newClientTip = At currBlockNo
                   newServerTip = fromChainTip serverChainTip
                   cu = if newClientTip == newServerTip
                         then caughtUpWithNode serverChainTip
                         else catchingUpWithNode (blockHeaderPoint bh) (Just currBlockNo) (Just $ chainTipToChainPoint serverChainTip)
-                  currentState =
+                  (currentLedgerState, currentLedgerEvents, (_, currentState)) =
                     case Seq.viewl history of
-                      (_, (_, x)) Seq.:< _ -> x
+                      (_, ledgerState, ledgerEvents, s) Seq.:< _ -> (ledgerState, ledgerEvents, s)
                       Seq.EmptyL           -> error "foldClient: clientNextN: Impossible - empty history!"
+                  
+                  -- TODO: Do we need full validation here?
+                  newLedgerStateE = applyBlock env currentLedgerState FullValidation bim
 
-              newState <- applyBlock cu currentState newBlock
+              newState <- accumulate
+                            cu
+                            currentState
+                            currentLedgerState
+                            currentLedgerEvents
+                            newBlock
+
               case newState of
                 Nothing -> do
                   clientIdle_DoneN n
                 Just !s' -> do
-                  let (newHistory, _) = pushHistoryState env history slotNo s'
-                  return (clientIdle_RequestMoreN newClientTip newServerTip n newHistory)
+                  case newLedgerStateE of
+                    Left _  -> clientIdle_DoneN n
+                    Right (newLedgerState, newLedgerEvents) -> do
+                      let (newHistory, _) = pushHistoryState env history slotNo newLedgerState newLedgerEvents s'
+                      return (clientIdle_RequestMoreN newClientTip newServerTip n newHistory)
+
         , recvMsgRollBackward = \chainPoint serverChainTip -> do
             let newClientTip = Origin
                 newServerTip = fromChainTip serverChainTip
                 (rolledBack, truncatedHistory) = case chainPoint of
-                    ChainPointAtGenesis -> (Seq.empty, initialHistory)
+                    ChainPointAtGenesis -> (Seq.empty, initialHistory initialLedgerState)
                     ChainPoint slotNo _ -> rollbackStateHistory history slotNo
-                (lastSlotNo, currentState) =
+                (lastSlotNo, lastLedgerState, lastLedgerEvents, currentState) =
                     case Seq.viewl truncatedHistory of
-                      (n', (_, x)) Seq.:< _ -> (n', x)
+                      (n', state, events, (_, x)) Seq.:< _ -> (n', state, events, x)
                       Seq.EmptyL      -> error "foldClient: clientNextN: Impossible - empty history after rollback!"
-            !rolledBackState <- applyRollback chainPoint (foldMap (fst . snd) rolledBack) currentState
-            let (newHistory, _) = pushHistoryState env truncatedHistory lastSlotNo rolledBackState
+            !rolledBackState <- applyRollback chainPoint (foldMap (\(_, _, _, (s, _)) -> s) rolledBack) currentState
+            let (newHistory, _) = pushHistoryState env truncatedHistory lastSlotNo lastLedgerState lastLedgerEvents rolledBackState
             return (clientIdle_RequestMoreN newClientTip newServerTip n newHistory)
         }
 
@@ -211,16 +232,18 @@ foldClient' initialState env applyRollback applyBlock = PipelinedLedgerStateClie
         , recvMsgRollBackward = \_ _ -> clientIdle_DoneN n
         }
 
-  return (clientIdle_RequestMoreN Origin Origin Zero initialHistory)
+  return (clientIdle_RequestMoreN Origin Origin Zero (initialHistory initialLedgerState))
 
 -- | A history of the last @k@ states
-type History a = Seq (SlotNo, a)
+type History a = Seq (SlotNo, LedgerState, [LedgerEvent], a)
 
 -- | Add a new state to the history
 pushHistoryState ::
   Env -- ^ Environement used to get the security param, k.
   -> History a -- ^ History of k items.
   -> SlotNo -- ^ Slot number of the new item.
+  -> LedgerState -- ^ Ledger state of the new item.
+  -> [LedgerEvent] -- ^ Ledger events of the new item.
   -> a -- ^ New item to add to the history
   -> (History a, History a)
   -- ^ ( The new history with the new item appended
@@ -228,15 +251,16 @@ pushHistoryState ::
   --      and hence can no longer be rolled back.
   --   )
 
-pushHistoryState env hist ix st
+pushHistoryState env hist ix lst le st
   = Seq.splitAt
       (fromIntegral $ envSecurityParam env + 1)
-      ((ix, st) Seq.:<| hist)
+      ((ix, lst, le, st) Seq.:<| hist)
 
 -- | Split the history into bits that have been rolled back (1st elemnt) and
 --   bits that have not been rolled back (2nd element)
 rollbackStateHistory :: History a -> SlotNo -> (History a, History a)
-rollbackStateHistory hist maxInc = Seq.spanl ((> maxInc) . (\(x,_) -> x)) hist
+rollbackStateHistory hist maxInc = Seq.spanl ((> maxInc) . (\(x,_,_,_) -> x)) hist
 
-initialStateHistory :: a -> History a
-initialStateHistory a = Seq.singleton (0, a)
+initialStateHistory :: a -> LedgerState -> History a
+initialStateHistory a initialLedgerState = Seq.singleton (0, initialLedgerState, [], a)
+
