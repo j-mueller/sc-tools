@@ -30,7 +30,7 @@ import           Cardano.Api                                           (Block (.
                                                                         CardanoMode,
                                                                         ChainPoint (..),
                                                                         ChainTip (..),
-                                                                        Env (..),
+                                                                        Env,
                                                                         SlotNo,
                                                                         LedgerEvent,
                                                                         LedgerState (..),
