@@ -7,7 +7,6 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-| A node client that applies a fold to the stream of blocks.
 Unlike 'foldBlocks' from 'Cardano.Api', this one supports rollbacks.
 -}
