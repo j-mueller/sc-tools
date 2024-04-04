@@ -304,8 +304,8 @@ substituteExecutionUnits exUnitsMap =
       case Map.lookup idx exUnitsMap of
         Nothing ->
           Left $ C.TxBodyErrorScriptWitnessIndexMissingFromExecUnitsMap idx exUnitsMap
-        Just exunits -> Right $ C.PlutusScriptWitness langInEra version script
-                                            datum redeemer exunits
+        Just exunits -> Right $ C.PlutusScriptWitness langInEra version script datum redeemer exunits
+
 -- | same behaviour as in Cardano.Api.TxBody.
 mapTxScriptWitnesses
   :: (forall witctx. C.ScriptWitnessIndex
@@ -397,9 +397,8 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
               [ (stakecred, C.ScriptWitness ctx <$> witness')
                 -- The certs are indexed in list order
               | (ix, cert) <- zip [0..] certs
-              , stakecred  <- maybeToList (selectStakeCredential cert)
-              , C.ScriptWitness ctx witness
-                           <- maybeToList (Map.lookup stakecred witnesses)
+              , stakecred <- maybeToList (selectStakeCredential cert)
+              , C.ScriptWitness ctx witness <- maybeToList (Map.lookup stakecred witnesses)
               , let witness' = f (C.ScriptWitnessIndexCertificate ix) witness
               ]
       in C.TxCertificates supported certs . C.BuildTxWith . Map.fromList <$>
@@ -439,15 +438,17 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
             Right . C.TxMintValue supported value . C.BuildTxWith
               $ Map.fromList final
 
--- This relies on the TxId Ord instance being consistent with the
--- Ledger.TxId Ord instance via the toShelleyTxId conversion
--- This is checked by prop_ord_distributive_TxId
+{-| This relies on the TxId Ord instance being consistent with the
+Ledger.TxId Ord instance via the toShelleyTxId conversion.
+This is checked by prop_ord_distributive_TxId
+-}
 orderTxIns :: [(C.TxIn, v)] -> [(C.TxIn, v)]
 orderTxIns = List.sortBy (compare `on` fst)
 
--- This relies on the StakeAddress Ord instance being consistent with the
--- Shelley.RewardAcnt Ord instance via the toShelleyStakeAddr conversion
--- This is checked by prop_ord_distributive_StakeAddress
+{-| This relies on the StakeAddress Ord instance being consistent with the
+Shelley.RewardAcnt Ord instance via the toShelleyStakeAddr conversion.
+This is checked by prop_ord_distributive_StakeAddress
+-}
 orderStakeAddrs :: [(C.StakeAddress, x, v)] -> [(C.StakeAddress, x, v)]
 orderStakeAddrs = List.sortBy (compare `on` (\(k, _, _) -> k))
 

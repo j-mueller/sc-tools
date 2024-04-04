@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Relaxed the `MonadError` instance of `MonadBlockchainCardanoNodeT` by removing the `MonadError e m` constraint; fixed the implementation of `catchError`
 - `Convex.BuildTx`: Ensure that at least 3 Ada is present when computing minimum UTxO value in `minAdaDeposit`.
 - Fixed a bug in coin selection where the wallet's mixed inputs were not considered for a `TxBodyContent` with zero inputs
-- Considering withdrawals and certificats in `mapTxScriptWtinesses`.
+- Considering withdrawals and certificates in `mapTxScriptWtinesses`.
 - Function `substituteExecutionUnits` updated to trigger `TxBodyErrorAutoBalance` when witnesses are not found.
 
 ### Added
