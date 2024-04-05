@@ -42,49 +42,52 @@ module Convex.CoinSelection(
   publicKeyCredential
   ) where
 
-import qualified Cardano.Api               as Cardano.Api
-import           Cardano.Api.Shelley       (BabbageEra, BuildTx, EraHistory,
-                                            PoolId, TxBodyContent, TxOut,
-                                            UTxO (..))
-import qualified Cardano.Api.Shelley       as C
-import           Cardano.Ledger.Crypto     (StandardCrypto)
-import qualified Cardano.Ledger.Keys       as Keys
-import           Cardano.Slotting.Time     (SystemStart)
-import           Control.Lens              (_1, _2, at, makeLensesFor, over,
-                                            preview, set, to, traversed, view,
-                                            (%~), (&), (.~), (<>~), (?~), (^.),
-                                            (^..), (|>))
-import           Control.Monad             (when)
-import           Control.Monad.Except      (MonadError (..))
-import           Control.Monad.Trans.Class (MonadTrans (..))
-import           Control.Tracer            (Tracer, natTracer, traceWith)
-import           Convex.BuildTx            (addCollateral, buildTxWith,
-                                            execBuildTx, setMinAdaDeposit,
-                                            spendPublicKeyOutput)
-import           Convex.Class              (MonadBlockchain (..))
-import qualified Convex.Lenses             as L
-import           Convex.Utils              (mapError)
-import           Convex.UTxOCompatibility  (UTxOCompatibility, compatibleWith,
-                                            txCompatibility)
-import           Convex.Utxos              (BalanceChanges (..), UtxoSet (..))
-import qualified Convex.Utxos              as Utxos
-import           Convex.Wallet             (Wallet)
-import qualified Convex.Wallet             as Wallet
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Bifunctor            (Bifunctor (..))
-import           Data.Default              (Default (..))
-import           Data.Function             (on)
-import qualified Data.List                 as List
-import           Data.Map                  (Map)
-import qualified Data.Map                  as Map
-import           Data.Maybe                (isNothing, listToMaybe, mapMaybe,
-                                            maybeToList)
-import           Data.Ord                  (Down (..))
-import           Data.Set                  (Set)
-import qualified Data.Set                  as Set
-import           Data.Text                 (Text)
-import qualified Data.Text                 as Text
-import           GHC.Generics              (Generic)
+import qualified Cardano.Api                   as Cardano.Api
+import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
+                                                PoolId, TxBodyContent, TxOut,
+                                                UTxO (..))
+import qualified Cardano.Api.Shelley           as C
+import           Cardano.Ledger.Crypto         (StandardCrypto)
+import qualified Cardano.Ledger.Keys           as Keys
+import qualified Cardano.Ledger.Shelley.TxCert as TxCert
+import           Cardano.Slotting.Time         (SystemStart)
+import           Control.Lens                  (_1, _2, _3, at, makeLensesFor,
+                                                over, preview, set, to,
+                                                traversed, view, (%~), (&),
+                                                (.~), (<>~), (?~), (^.), (^..),
+                                                (|>))
+import           Control.Monad                 (when)
+import           Control.Monad.Except          (MonadError (..))
+import           Control.Monad.Trans.Class     (MonadTrans (..))
+import           Control.Tracer                (Tracer, natTracer, traceWith)
+import           Convex.BuildTx                (addCollateral, buildTxWith,
+                                                execBuildTx, setMinAdaDeposit,
+                                                spendPublicKeyOutput)
+import           Convex.Class                  (MonadBlockchain (..))
+import qualified Convex.Lenses                 as L
+import           Convex.Utils                  (mapError)
+import           Convex.UTxOCompatibility      (UTxOCompatibility,
+                                                compatibleWith, txCompatibility)
+import           Convex.Utxos                  (BalanceChanges (..),
+                                                UtxoSet (..))
+import qualified Convex.Utxos                  as Utxos
+import           Convex.Wallet                 (Wallet)
+import qualified Convex.Wallet                 as Wallet
+import           Data.Aeson                    (FromJSON, ToJSON)
+import           Data.Bifunctor                (Bifunctor (..))
+import           Data.Default                  (Default (..))
+import           Data.Function                 (on)
+import qualified Data.List                     as List
+import           Data.Map                      (Map)
+import qualified Data.Map                      as Map
+import           Data.Maybe                    (isNothing, listToMaybe,
+                                                mapMaybe, maybeToList)
+import           Data.Ord                      (Down (..))
+import           Data.Set                      (Set)
+import qualified Data.Set                      as Set
+import           Data.Text                     (Text)
+import qualified Data.Text                     as Text
+import           GHC.Generics                  (Generic)
 
 type ERA = BabbageEra
 
@@ -190,8 +193,8 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
       (failures, exUnitsMap') ->
         handleExUnitsErrors C.ScriptValid failures exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
 
-  let txbodycontent1 = substituteExecutionUnits exUnitsMap' csiTxBody
-      txbodycontent1' = txbodycontent1 & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
+  txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody
+  let txbodycontent1' = txbodycontent1 & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
   -- append output instead of prepending
   txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
@@ -284,65 +287,171 @@ handleExUnitsErrors C.ScriptInvalid failuresMap exUnitsMap
             _                                 -> True
 
 substituteExecutionUnits :: Map C.ScriptWitnessIndex C.ExecutionUnits
-                         -> C.TxBodyContent C.BuildTx C.BabbageEra
-                         -> C.TxBodyContent C.BuildTx C.BabbageEra
+                         -> C.TxBodyContent BuildTx C.BabbageEra
+                         -> Either (C.TxBodyErrorAutoBalance x) (C.TxBodyContent BuildTx C.BabbageEra)
 substituteExecutionUnits exUnitsMap =
     mapTxScriptWitnesses f
   where
     f :: C.ScriptWitnessIndex
-      -> C.ScriptWitness witctx C.BabbageEra
-      -> C.ScriptWitness witctx C.BabbageEra
-    f _   wit@C.SimpleScriptWitness{} = wit
-    f idx wit@(C.PlutusScriptWitness langInEra version script datum redeemer _) =
+      -> C.ScriptWitness witctx era
+      -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx era)
+    f _   wit@C.SimpleScriptWitness{} = Right wit
+    f idx (C.PlutusScriptWitness langInEra version script datum redeemer _) =
       case Map.lookup idx exUnitsMap of
-        Nothing      -> wit
-        Just exunits ->
-          C.PlutusScriptWitness langInEra version script datum redeemer exunits
+        Nothing ->
+          Left $ C.TxBodyErrorScriptWitnessIndexMissingFromExecUnitsMap idx exUnitsMap
+        Just exunits -> Right $ C.PlutusScriptWitness langInEra version script datum redeemer exunits
 
--- | same behaviour as in Cardano.Api.TxBody. However, we do not consider withwdrawals,
--- certificates as not required for the time being.
-mapTxScriptWitnesses :: (forall witctx. C.ScriptWitnessIndex
-                                     -> C.ScriptWitness witctx C.BabbageEra
-                                     -> C.ScriptWitness witctx C.BabbageEra)
-                     -> C.TxBodyContent C.BuildTx C.BabbageEra
-                     -> C.TxBodyContent C.BuildTx C.BabbageEra
+-- | same behaviour as in Cardano.Api.TxBody.
+mapTxScriptWitnesses
+  :: forall x. (forall witctx. C.ScriptWitnessIndex
+                   -> C.ScriptWitness witctx C.BabbageEra
+                   -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx C.BabbageEra))
+  -> C.TxBodyContent BuildTx C.BabbageEra
+  -> Either (C.TxBodyErrorAutoBalance x) (TxBodyContent BuildTx C.BabbageEra)
 mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
                          C.txIns,
+                         C.txWithdrawals,
+                         C.txCertificates,
                          C.txMintValue
-                       } =
-    txbodycontent {
-      C.txIns          = mapScriptWitnessesTxIns txIns
-    , C.txMintValue    = mapScriptWitnessesMinting txMintValue
-    }
+                       } = do
+    mappedTxIns <- mapScriptWitnessesTxIns txIns
+    mappedWithdrawals <- mapScriptWitnessesWithdrawals txWithdrawals
+    mappedMintedVals <- mapScriptWitnessesMinting txMintValue
+    mappedTxCertificates <- mapScriptWitnessesCertificates txCertificates
+
+    Right $ txbodycontent
+      { C.txIns = mappedTxIns
+      , C.txMintValue = mappedMintedVals
+      , C.txCertificates = mappedTxCertificates
+      , C.txWithdrawals = mappedWithdrawals
+      }
   where
     mapScriptWitnessesTxIns
-      :: [(C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
-      -> [(C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
-    mapScriptWitnessesTxIns txins =
-        [ (txin, C.BuildTxWith wit')
-          -- keep txins order
-        | (ix, (txin, C.BuildTxWith wit)) <- zip [0..] $ List.sortBy (compare `on` fst) txins
-        , let wit' = case wit of
-                       C.KeyWitness{}              -> wit
-                       C.ScriptWitness ctx witness -> C.ScriptWitness ctx witness'
-                         where
-                           witness' = f (C.ScriptWitnessIndexTxIn ix) witness
-        ]
+      :: [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
+      -> Either (C.TxBodyErrorAutoBalance x) [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
+    mapScriptWitnessesTxIns txins  =
+      let mappedScriptWitnesses
+            :: [ ( C.TxIn
+                 , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))
+                 )
+               ]
+          mappedScriptWitnesses =
+            [ (txin, C.BuildTxWith <$> wit')
+              -- The tx ins are indexed in the map order by txid
+            | (ix, (txin, C.BuildTxWith wit)) <- zip [0..] (orderTxIns txins)
+            , let wit' = case wit of
+                           C.KeyWitness{}              -> Right wit
+                           C.ScriptWitness ctx witness -> C.ScriptWitness ctx <$> witness'
+                             where
+                               witness' = f (C.ScriptWitnessIndexTxIn ix) witness
+            ]
+      in traverse ( \(txIn, eWitness) ->
+                      case eWitness of
+                        Left e    -> Left e
+                        Right wit -> Right (txIn, wit)
+                  ) mappedScriptWitnesses
+
+    mapScriptWitnessesWithdrawals
+      :: C.TxWithdrawals BuildTx C.BabbageEra
+      -> Either (C.TxBodyErrorAutoBalance x) (C.TxWithdrawals BuildTx C.BabbageEra)
+    mapScriptWitnessesWithdrawals C.TxWithdrawalsNone = Right C.TxWithdrawalsNone
+    mapScriptWitnessesWithdrawals (C.TxWithdrawals supported withdrawals) =
+      let mappedWithdrawals
+            :: [( C.StakeAddress
+                , C.Lovelace
+                , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxStake C.BabbageEra))
+                )]
+          mappedWithdrawals =
+              [ (addr, withdrawal, C.BuildTxWith <$> mappedWitness)
+                -- The withdrawals are indexed in the map order by stake credential
+              | (ix, (addr, withdrawal, C.BuildTxWith wit)) <- zip [0..] (orderStakeAddrs withdrawals)
+              , let mappedWitness = adjustWitness (f (C.ScriptWitnessIndexWithdrawal ix)) wit
+              ]
+      in C.TxWithdrawals supported
+         <$> traverse ( \(sAddr, ll, eWitness) ->
+                          case eWitness of
+                            Left e    -> Left e
+                            Right wit -> Right (sAddr, ll, wit)
+                      ) mappedWithdrawals
+      where
+        adjustWitness
+          :: (C.ScriptWitness witctx C.BabbageEra -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx C.BabbageEra))
+          -> C.Witness witctx C.BabbageEra
+          -> Either (C.TxBodyErrorAutoBalance x) (C.Witness witctx C.BabbageEra)
+        adjustWitness _ (C.KeyWitness ctx) = Right $ C.KeyWitness ctx
+        adjustWitness g (C.ScriptWitness ctx witness') = C.ScriptWitness ctx <$> g witness'
+
+    mapScriptWitnessesCertificates
+      :: C.TxCertificates BuildTx C.BabbageEra
+      -> Either (C.TxBodyErrorAutoBalance x) (C.TxCertificates BuildTx C.BabbageEra)
+    mapScriptWitnessesCertificates C.TxCertificatesNone = Right C.TxCertificatesNone
+    mapScriptWitnessesCertificates (C.TxCertificates supported certs (C.BuildTxWith witnesses)) =
+      let mappedScriptWitnesses
+           :: [(C.StakeCredential, Either (C.TxBodyErrorAutoBalance x) (C.Witness C.WitCtxStake C.BabbageEra))]
+          mappedScriptWitnesses =
+              [ (stakecred, C.ScriptWitness ctx <$> witness')
+                -- The certs are indexed in list order
+              | (ix, cert) <- zip [0..] certs
+              , stakecred <- maybeToList (selectStakeCredential cert)
+              , C.ScriptWitness ctx witness <- maybeToList (Map.lookup stakecred witnesses)
+              , let witness' = f (C.ScriptWitnessIndexCertificate ix) witness
+              ]
+      in C.TxCertificates supported certs . C.BuildTxWith . Map.fromList <$>
+           traverse ( \(sCred, eScriptWitness) ->
+                        case eScriptWitness of
+                          Left e    -> Left e
+                          Right wit -> Right (sCred, wit)
+                    ) mappedScriptWitnesses
+
+    selectStakeCredential :: C.Certificate BabbageEra -> Maybe C.StakeCredential
+    selectStakeCredential = \case
+      C.ShelleyRelatedCertificate _era cert -> case cert of
+        TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert k) -> Just (C.fromShelleyStakeCredential k)
+        TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyUnRegCert k) -> Just (C.fromShelleyStakeCredential k)
+        TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert k _) -> Just (C.fromShelleyStakeCredential k)
+        TxCert.ShelleyTxCertPool{} -> Nothing
+        TxCert.ShelleyTxCertGenesisDeleg{} -> Nothing
+        TxCert.ShelleyTxCertMir{} -> Nothing
+      C.ConwayCertificate{} -> Nothing
 
     mapScriptWitnessesMinting
-      :: C.TxMintValue C.BuildTx C.BabbageEra
-      -> C.TxMintValue C.BuildTx C.BabbageEra
-    mapScriptWitnessesMinting  C.TxMintNone = C.TxMintNone
-    mapScriptWitnessesMinting (C.TxMintValue supported v
-                                           (C.BuildTxWith witnesses)) =
-      C.TxMintValue supported v $ C.BuildTxWith $ Map.fromList
-        [ (policyid, witness')
-          -- The minting policies are indexed in policy id order in the value
-        | let C.ValueNestedRep bundle = C.valueToNestedRep v
-        , (ix, C.ValueNestedBundle policyid _) <- zip [0..] bundle
-        , witness <- maybeToList (Map.lookup policyid witnesses)
-        , let witness' = f (C.ScriptWitnessIndexMint ix) witness
-        ]
+      :: C.TxMintValue BuildTx C.BabbageEra
+      -> Either (C.TxBodyErrorAutoBalance x) (C.TxMintValue BuildTx C.BabbageEra)
+    mapScriptWitnessesMinting C.TxMintNone = Right C.TxMintNone
+    mapScriptWitnessesMinting (C.TxMintValue supported value (C.BuildTxWith witnesses)) =
+      let mappedScriptWitnesses
+            :: [(C.PolicyId, Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness C.WitCtxMint C.BabbageEra))]
+          mappedScriptWitnesses =
+            [ (policyid, witness')
+              -- The minting policies are indexed in policy id order in the value
+            | let C.ValueNestedRep bundle = C.valueToNestedRep value
+            , (ix, C.ValueNestedBundle policyid _) <- zip [0..] bundle
+            , witness <- maybeToList (Map.lookup policyid witnesses)
+            , let witness' = f (C.ScriptWitnessIndexMint ix) witness
+            ]
+      in do final <- traverse ( \(pid, eScriptWitness) ->
+                                   case eScriptWitness of
+                                     Left e    -> Left e
+                                     Right wit -> Right (pid, wit)
+                              ) mappedScriptWitnesses
+            Right . C.TxMintValue supported value . C.BuildTxWith
+              $ Map.fromList final
+
+{-| This relies on the TxId Ord instance being consistent with the
+Ledger.TxId Ord instance via the toShelleyTxId conversion.
+This is checked by prop_ord_distributive_TxId
+-}
+orderTxIns :: [(C.TxIn, v)] -> [(C.TxIn, v)]
+orderTxIns = List.sortBy (compare `on` fst)
+
+{-| This relies on the StakeAddress Ord instance being consistent with the
+Shelley.RewardAcnt Ord instance via the toShelleyStakeAddr conversion.
+This is checked by prop_ord_distributive_StakeAddress
+-}
+orderStakeAddrs :: [(C.StakeAddress, x, v)] -> [(C.StakeAddress, x, v)]
+orderStakeAddrs = List.sortBy (compare `on` (\(k, _, _) -> k))
+
 
 {-| Get the 'BalanceChanges' for a tx body. Returns 'Nothing' if
 a UTXO couldnt be found
@@ -474,9 +583,13 @@ setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
 -}
 runsScripts :: TxBodyContent BuildTx ERA -> Bool
 runsScripts body =
-  let scriptIns = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
-      minting   = body ^. (L.txMintValue . L._TxMintValue . _2)
-  in not (null scriptIns && Map.null minting)
+  let scriptIns   = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
+      minting     = body ^. (L.txMintValue . L._TxMintValue . _2)
+      certificates = body ^.. (L.txCertificates . L._TxCertificates . _2 . traversed . L._ScriptWitness)
+      withdrawals  = body ^.. (L.txWithdrawals . L._TxWithdrawals . traversed . _3 . L._BuildTxWith . L._ScriptWitness)
+
+  in
+    not (null scriptIns && Map.null minting && null withdrawals && null certificates)
 
 {-| Add inputs to ensure that the balance is strictly positive. After calling @balancePositive@
 * The amount of Ada provided by the transaction's inputs minus (the amount of Ada produced by the transaction's outputs plus the change output) is greater than zero

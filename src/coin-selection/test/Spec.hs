@@ -9,8 +9,11 @@ import qualified Cardano.Api.Shelley            as C
 import           Cardano.Ledger.Alonzo.Rules    (AlonzoUtxoPredFailure (..))
 import           Cardano.Ledger.Babbage.Rules   (BabbageUtxoPredFailure (..),
                                                  BabbageUtxowPredFailure (..))
+import           Cardano.Ledger.Credential      (StakeCredential)
+import           Cardano.Ledger.Crypto          (StandardCrypto)
 import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
 import           Cardano.Ledger.Shelley.Rules   (ShelleyLedgerPredFailure (..))
+import qualified Cardano.Ledger.Shelley.TxCert  as TxCert
 import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
@@ -31,7 +34,7 @@ import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain (resolveDatumHash),
-                                                 getUtxo, setUtxo)
+                                                 getUtxo, setUtxo, singleUTxO)
 import           Convex.CoinSelection           (BalanceTxError, keyWitnesses,
                                                  publicKeyCredential)
 import qualified Convex.Lenses                  as L
@@ -48,6 +51,7 @@ import           Convex.MockChain.Utils         (mockchainFails,
                                                  runMockchainProp)
 import           Convex.NodeParams              (maxTxSize, protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
+import           Convex.Scripts                 (toHashableScriptData)
 import           Convex.Utils                   (failOnError)
 import qualified Convex.Utxos                   as Utxos
 import           Convex.Wallet                  (Wallet)
@@ -97,6 +101,10 @@ tests = testGroup "unit tests"
   , testGroup "mockchain"
     [ testCase "resolveDatumHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
     , testCase "large transactions" largeTransactionTest
+    ]
+  , testGroup "staking"
+    [ testCase "register a staking credential" (mockchainSucceeds $ failOnError registerStakingCredential)
+    , testCase "zero withdrawal" (mockchainSucceeds $ failOnError $ registerStakingCredential >> withdrawZero)
     ]
   ]
 
@@ -351,3 +359,21 @@ matchingIndex = do
 
   -- Spend the outputs in a single transaction
   void (balanceAndSubmit mempty Wallet.w1 $ execBuildTx' $ traverse_ Scripts.spendMatchingIndex inputs)
+
+stakingCredential :: StakeCredential StandardCrypto
+stakingCredential = C.toShelleyStakeCredential $ C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
+
+registerStakingCredential :: (MonadMockchain m, MonadError BalanceTxError m) => m C.TxIn
+registerStakingCredential = do
+  let txBody = execBuildTx' (BuildTx.addCertificate $ C.ShelleyRelatedCertificate C.ShelleyToBabbageEraBabbage $ TxCert.RegTxCert stakingCredential)
+  C.TxIn <$> (C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
+
+withdrawZero :: (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+withdrawZero = do
+  let addr   = C.StakeAddress (C.toShelleyNetwork Defaults.networkId) stakingCredential
+      wit    = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript Scripts.v2StakingScript) C.NoScriptDatumForStake (toHashableScriptData ()) (C.ExecutionUnits 0 0))
+      txBody = execBuildTx' (BuildTx.addWithdrawal addr 0 wit)
+  txI <- C.TxIn <$> (C.getTxId . C.getTxBody <$> balanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
+  singleUTxO txI >>= \case
+    Nothing -> fail "txI not found"
+    Just{} -> pure ()

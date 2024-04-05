@@ -6,6 +6,7 @@
 module Scripts(
   v2SpendingScriptSerialised,
   v2SpendingScript,
+  v2StakingScript,
 
   -- * Matching index scripts
   matchingIndexScript,
@@ -29,6 +30,9 @@ v2SpendingScript = C.PlutusScriptSerialised $ alwaysSucceedingNAryFunction 3
 
 v2SpendingScriptSerialised :: SerialisedScript
 v2SpendingScriptSerialised = alwaysSucceedingNAryFunction 3
+
+v2StakingScript :: C.PlutusScript C.PlutusScriptV2
+v2StakingScript = C.PlutusScriptSerialised $ alwaysSucceedingNAryFunction 2
 
 matchingIndexCompiled :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())
 matchingIndexCompiled =  $$(PlutusTx.compile [|| \d r c -> MatchingIndex.validator d r c ||])
