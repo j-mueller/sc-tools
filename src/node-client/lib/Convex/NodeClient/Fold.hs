@@ -127,7 +127,7 @@ foldClient initialState initialLedgerState env accumulate =
     initialLedgerState
     env
     (\_ _ !s -> pure ((), s))
-    (\c !s ls le -> fmap (fmap pure) . accumulate c s ls le)
+    (\c !s !ls le -> fmap (fmap pure) . accumulate c s ls le)
 
 {-| A variant of 'foldClient' with more detailed control over rollbacks.
 -}
@@ -173,28 +173,28 @@ foldClient' initialState initialLedgerState env applyRollback accumulate = Pipel
                   cu = if newClientTip == newServerTip
                         then caughtUpWithNode serverChainTip
                         else catchingUpWithNode (blockHeaderPoint bh) (Just currBlockNo) (Just $ chainTipToChainPoint serverChainTip)
-                  (currentLedgerState, currentLedgerEvents, (_, currentState)) =
+
+                  (currentLedgerState, currentState) =
                     case Seq.viewl history of
-                      (_, ledgerState, ledgerEvents, s) Seq.:< _ -> (ledgerState, ledgerEvents, s)
-                      Seq.EmptyL           -> error "foldClient: clientNextN: Impossible - empty history!"
+                      (_, ledgerState, _, (_, s)) Seq.:< _ -> (ledgerState, s)
+                      Seq.EmptyL -> error "foldClient: clientNextN: Impossible - empty history!"
                   
                   -- TODO: Do we need full validation here?
                   newLedgerStateE = applyBlock env currentLedgerState FullValidation bim
 
-              newState <- accumulate
-                            cu
-                            currentState
-                            currentLedgerState
-                            currentLedgerEvents
-                            newBlock
-
-              case newState of
-                Nothing -> do
-                  clientIdle_DoneN n
-                Just !s' -> do
-                  case newLedgerStateE of
-                    Left _  -> clientIdle_DoneN n
-                    Right (newLedgerState, newLedgerEvents) -> do
+              case newLedgerStateE of
+                Left _  -> clientIdle_DoneN n
+                Right (newLedgerState, newLedgerEvents) -> do
+                  newState <- accumulate
+                                cu
+                                currentState
+                                newLedgerState
+                                newLedgerEvents
+                                newBlock
+                  case newState of
+                    Nothing -> do
+                      clientIdle_DoneN n
+                    Just !s' -> do
                       let (newHistory, _) = pushHistoryState env history slotNo newLedgerState newLedgerEvents s'
                       return (clientIdle_RequestMoreN newClientTip newServerTip n newHistory)
 
@@ -262,4 +262,3 @@ rollbackStateHistory hist maxInc = Seq.spanl ((> maxInc) . (\(x,_,_,_) -> x)) hi
 
 initialStateHistory :: a -> LedgerState -> History a
 initialStateHistory a initialLedgerState = Seq.singleton (0, initialLedgerState, [], a)
-
