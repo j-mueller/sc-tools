@@ -1,6 +1,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE DataKinds         #-}
 {-| A node client that shows the balance of the wallet
 -}
 module Convex.Wallet.NodeClient.BalanceClient(
@@ -9,7 +10,7 @@ module Convex.Wallet.NodeClient.BalanceClient(
   balanceClient
   ) where
 
-import           Cardano.Api                (BlockInMode, CardanoMode, Env, LedgerState)
+import           Cardano.Api                (BlockInMode, CardanoMode, Env)
 import qualified Cardano.Api                as C
 import           Control.Concurrent.STM     (TVar, atomically, newTVarIO,
                                              writeTVar)
@@ -19,7 +20,8 @@ import           Control.Monad.Trans.Maybe  (runMaybeT)
 import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
                                              logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
-                                             catchingUpWithNode, foldClient)
+                                             catchingUpWithNode, foldClient,
+                                             LedgerStateArgs (..), LedgerStateUpdate, LedgerStateMode (..))
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
 import           Convex.Utils               (toShelleyPaymentCredential)
@@ -41,21 +43,21 @@ balanceClientEnv :: FilePath -> WalletState -> IO BalanceClientEnv
 balanceClientEnv bceFile initialState =
   BalanceClientEnv bceFile <$> newTVarIO initialState
 
-balanceClient :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> WalletState -> C.PaymentCredential -> LedgerState -> Env -> PipelinedLedgerStateClient
-balanceClient logEnv ns clientEnv walletState wallet ledgerState0 env =
+balanceClient :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> WalletState -> C.PaymentCredential -> Env -> PipelinedLedgerStateClient
+balanceClient logEnv ns clientEnv walletState wallet env =
   let cp = chainPoint walletState
       i  = catchingUpWithNode cp Nothing Nothing
   in resumingClient [cp] $ \_ ->
       foldClient
         (i, utxoSet walletState)
-        ledgerState0
+        NoLedgerStateArgs
         env
-        (\c s _ _ b -> applyBlock logEnv ns clientEnv wallet c s b)
+        (applyBlock logEnv ns clientEnv wallet)
 
 {-| Apply a new block
 -}
-applyBlock :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> C.PaymentCredential -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx ()) -> BlockInMode CardanoMode -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx ()))
-applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
+applyBlock :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> C.PaymentCredential -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx ()) -> LedgerStateUpdate 'NoLedgerState -> BlockInMode CardanoMode -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx ()))
+applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) _ block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
   let change = Utxos.extract_ (toShelleyPaymentCredential wallet) state block
       newUTxOs = apply state change
       C.BlockInMode (C.getBlockHeader -> header) _ = block

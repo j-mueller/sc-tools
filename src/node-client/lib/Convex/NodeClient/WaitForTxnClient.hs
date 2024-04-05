@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| A node client that waits for a transaction to appear on the chain
@@ -11,7 +12,7 @@ module Convex.NodeClient.WaitForTxnClient(
 ) where
 
 import           Cardano.Api                (BlockInMode, CardanoMode,
-                                             ChainPoint, Env, LedgerEvent,
+                                             ChainPoint, Env,
                                              LocalNodeConnectInfo, TxId, LedgerState)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
@@ -23,7 +24,7 @@ import           Control.Monad.Reader       (MonadTrans, ReaderT (..), ask,
                                              lift)
 import           Convex.Class               (MonadBlockchain (..))
 import           Convex.MonadLog            (MonadLog (..), logInfoS)
-import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient)
+import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient, LedgerStateArgs (..), LedgerStateUpdate, LedgerStateMode (..))
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient,
                                              protocols)
@@ -34,14 +35,13 @@ transaction.
 -}
 runWaitForTxn ::
     LocalNodeConnectInfo CardanoMode
-  -> LedgerState
   -> Env
   -> TxId
   -> IO (TMVar (BlockInMode CardanoMode))
-runWaitForTxn connectInfo initialLedgerState env txi = do
+runWaitForTxn connectInfo env txi = do
   tip' <- NodeQueries.queryTip connectInfo
   tmv <- atomically newEmptyTMVar
-  _ <- forkIO $ C.connectToLocalNode connectInfo (protocols $ waitForTxnClient tmv tip' txi initialLedgerState env)
+  _ <- forkIO $ C.connectToLocalNode connectInfo (protocols $ waitForTxnClient tmv tip' txi env)
   pure tmv
 
 {-| Scan the new blocks until the transaction appears
@@ -50,15 +50,14 @@ waitForTxnClient ::
      TMVar (BlockInMode CardanoMode)
   -> ChainPoint
   -> TxId
-  -> LedgerState
   -> Env
   -> PipelinedLedgerStateClient
-waitForTxnClient tmv cp txId initialLedgerState env =
+waitForTxnClient tmv cp txId env =
   resumingClient [cp] $ \_ ->
-    foldClient () initialLedgerState env (applyBlock tmv txId)
+    foldClient () NoLedgerStateArgs env (applyBlock tmv txId)
 
-applyBlock :: TMVar (BlockInMode CardanoMode) -> TxId -> CatchingUp -> () -> LedgerState -> [LedgerEvent] -> BlockInMode CardanoMode -> IO (Maybe ())
-applyBlock tmv txi _ () _ _ block = do
+applyBlock :: TMVar (BlockInMode CardanoMode) -> TxId -> CatchingUp -> () -> LedgerStateUpdate 'NoLedgerState -> BlockInMode CardanoMode -> IO (Maybe ())
+applyBlock tmv txi _ () _ block = do
   case block of
     C.BlockInMode blck C.BabbageEraInCardanoMode ->
       if checkTxIds txi blck
@@ -95,8 +94,8 @@ instance (MonadLog m) => MonadLog (MonadBlockchainWaitingT m) where
 instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlockchainWaitingT m) where
   sendTx tx = MonadBlockchainWaitingT $ do
     let txi = C.getTxId (C.getTxBody tx)
-    (info, ledgerState0, env) <- ask
-    tmv <- liftIO (runWaitForTxn info ledgerState0 env txi)
+    (info, _ledgerState0, env) <- ask
+    tmv <- liftIO (runWaitForTxn info env txi)
     k <- sendTx tx
     logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"
     _ <- liftIO (atomically $ takeTMVar tmv)
