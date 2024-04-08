@@ -93,6 +93,7 @@ import qualified Control.Lens               as L
 import           Control.Monad.Except       (MonadError (..))
 import qualified Control.Monad.State        as LazyState
 import           Control.Monad.State.Class  (MonadState (..))
+import           Control.Monad.Reader.Class (MonadReader (..))
 import qualified Control.Monad.State.Strict as StrictState
 import           Control.Monad.Trans.Class  (MonadTrans (..))
 import           Control.Monad.Trans.Except (ExceptT)
@@ -229,6 +230,10 @@ instance Monad m => MonadBuildTx (BuildTxT m) where
 instance MonadError e m => MonadError e (BuildTxT m) where
   throwError = lift . throwError
   catchError m action = BuildTxT (unBuildTxT $ catchError m action)
+
+instance MonadReader e m => MonadReader e (BuildTxT m) where
+  ask = lift ask
+  local f = BuildTxT . local f . unBuildTxT
 
 instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
   sendTx = lift . sendTx
