@@ -93,7 +93,7 @@ runWallet logEnv port Config{cardanoNodeConfigFile, cardanoNodeSocket, walletFil
   e <- liftIO (NC.balanceClientEnv walletFile initialState)
   logInfoS $ "Starting wallet server on port " <> show port
   _ <- liftIO $ forkIO (API.startServer (NC.bceState e) port)
-  let client _ env = do
+  let client _ _ env = do
         pure (NC.balanceClient logEnv "wallet" e initialState (operatorPaymentCredential op) env)
   result <- liftIO $ runExceptT (runNodeClient cardanoNodeConfigFile cardanoNodeSocket client)
   case result of

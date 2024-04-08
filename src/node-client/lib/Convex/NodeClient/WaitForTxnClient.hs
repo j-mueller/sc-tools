@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| A node client that waits for a transaction to appear on the chain
@@ -12,7 +13,7 @@ module Convex.NodeClient.WaitForTxnClient(
 
 import           Cardano.Api                (BlockInMode, CardanoMode,
                                              ChainPoint, Env,
-                                             LocalNodeConnectInfo, TxId)
+                                             LocalNodeConnectInfo, TxId, LedgerState)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
 import           Control.Concurrent.STM     (TMVar, atomically, newEmptyTMVar,
@@ -23,7 +24,7 @@ import           Control.Monad.Reader       (MonadTrans, ReaderT (..), ask,
                                              lift)
 import           Convex.Class               (MonadBlockchain (..))
 import           Convex.MonadLog            (MonadLog (..), logInfoS)
-import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient)
+import           Convex.NodeClient.Fold     (CatchingUp (..), foldClient, LedgerStateArgs (..), LedgerStateUpdate, LedgerStateMode (..))
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient,
                                              protocols)
@@ -32,7 +33,11 @@ import qualified Convex.NodeQueries         as NodeQueries
 {-| Start a 'waitForTxnClient' in a separate thread. Returns a TMVar that will contain the block that has the given
 transaction.
 -}
-runWaitForTxn :: LocalNodeConnectInfo CardanoMode -> Env -> TxId -> IO (TMVar (BlockInMode CardanoMode))
+runWaitForTxn ::
+    LocalNodeConnectInfo CardanoMode
+  -> Env
+  -> TxId
+  -> IO (TMVar (BlockInMode CardanoMode))
 runWaitForTxn connectInfo env txi = do
   tip' <- NodeQueries.queryTip connectInfo
   tmv <- atomically newEmptyTMVar
@@ -41,13 +46,18 @@ runWaitForTxn connectInfo env txi = do
 
 {-| Scan the new blocks until the transaction appears
 -}
-waitForTxnClient :: TMVar (BlockInMode CardanoMode) -> ChainPoint -> TxId -> Env -> PipelinedLedgerStateClient
+waitForTxnClient ::
+     TMVar (BlockInMode CardanoMode)
+  -> ChainPoint
+  -> TxId
+  -> Env
+  -> PipelinedLedgerStateClient
 waitForTxnClient tmv cp txId env =
   resumingClient [cp] $ \_ ->
-    foldClient () env (applyBlock tmv txId)
+    foldClient () NoLedgerStateArgs env (applyBlock tmv txId)
 
-applyBlock :: TMVar (BlockInMode CardanoMode) -> TxId -> CatchingUp -> () -> BlockInMode CardanoMode -> IO (Maybe ())
-applyBlock tmv txi _ () block = do
+applyBlock :: TMVar (BlockInMode CardanoMode) -> TxId -> CatchingUp -> () -> LedgerStateUpdate 'NoLedgerState -> BlockInMode CardanoMode -> IO (Maybe ())
+applyBlock tmv txi _ () _ block = do
   case block of
     C.BlockInMode blck C.BabbageEraInCardanoMode ->
       if checkTxIds txi blck
@@ -63,11 +73,11 @@ checkTxIds txi ((C.Block _ txns)) = any (checkTxId txi) txns
 checkTxId :: TxId -> C.Tx C.BabbageEra -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
-newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo CardanoMode, Env) m a }
+newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo CardanoMode, LedgerState, Env) m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail)
 
-runMonadBlockchainWaitingT :: LocalNodeConnectInfo CardanoMode -> Env -> MonadBlockchainWaitingT m a -> m a
-runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)
+runMonadBlockchainWaitingT :: LocalNodeConnectInfo CardanoMode -> LedgerState -> Env -> MonadBlockchainWaitingT m a -> m a
+runMonadBlockchainWaitingT connectInfo initialLedgerState env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, initialLedgerState, env)
 
 instance MonadError e m => MonadError e (MonadBlockchainWaitingT m) where
   throwError = lift . throwError
@@ -84,7 +94,7 @@ instance (MonadLog m) => MonadLog (MonadBlockchainWaitingT m) where
 instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlockchainWaitingT m) where
   sendTx tx = MonadBlockchainWaitingT $ do
     let txi = C.getTxId (C.getTxBody tx)
-    (info, env) <- ask
+    (info, _ledgerState0, env) <- ask
     tmv <- liftIO (runWaitForTxn info env txi)
     k <- sendTx tx
     logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"
