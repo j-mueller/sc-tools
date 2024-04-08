@@ -74,12 +74,15 @@ data CatchingUp =
   deriving stock (Eq, Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
+-- | Whether to keep track of the full ledger state on the client
 data LedgerStateMode = FullLedgerState | NoLedgerState
 
+-- | Whether we have the initial ledger state on the client
 data LedgerStateArgs mode where
   NoLedgerStateArgs :: LedgerStateArgs 'NoLedgerState
   LedgerStateArgs :: LedgerState -> ValidationMode -> LedgerStateArgs 'FullLedgerState
 
+-- | Whether we have the current ledger state for the client folding function
 data LedgerStateUpdate mode where
   NoLedgerStateUpdate :: LedgerStateUpdate 'NoLedgerState
   LedgerStateUpdate :: LedgerState -> [LedgerEvent] -> LedgerStateUpdate 'FullLedgerState
