@@ -54,6 +54,7 @@ library
     build-depends:
       cardano-api,
       cardano-crypto-class,
+      cardano-data,
       cardano-slotting -any,
       ouroboros-consensus -any,
       cardano-ledger-core -any,
