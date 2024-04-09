@@ -106,6 +106,8 @@ instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlo
 
   queryProtocolParameters = MonadBlockchainWaitingT queryProtocolParameters
 
+  queryStakeAddresses creds = MonadBlockchainWaitingT . queryStakeAddresses creds
+
   queryStakePools = MonadBlockchainWaitingT queryStakePools
 
   querySystemStart = MonadBlockchainWaitingT querySystemStart
