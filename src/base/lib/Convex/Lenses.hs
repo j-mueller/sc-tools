@@ -35,6 +35,7 @@ module Convex.Lenses(
   _TxMintValue,
   _TxInsReference,
   _Value,
+  _AssetId,
   _TxOut,
   _TxOutValue,
   _ShelleyAddressInBabbageEra,
@@ -322,12 +323,18 @@ _TxInsReference = iso from to where
     [] -> C.TxInsReferenceNone
     xs -> C.TxInsReference C.BabbageEraOnwardsBabbage xs
 
-
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to where
   -- the 'Value' constructor is not exposed so we have to take the long way around
   from = Map.fromList . C.valueToList
   to = C.valueFromList . Map.toList
+
+_AssetId :: Prism' C.AssetId (C.PolicyId, C.AssetName)
+_AssetId = prism' from to where
+  from (p, a) = C.AssetId p a
+  to = \case
+    C.AssetId p a -> Just (p, a)
+    _1            -> Nothing
 
 _TxOut :: Iso' (TxOut ctx era) (AddressInEra era, TxOutValue era, TxOutDatum ctx era, ReferenceScript era)
 _TxOut = iso from to where
