@@ -14,6 +14,9 @@ module Convex.Devnet.CardanoNode(
   RunningNode(..),
   DevnetConfig(..),
   CardanoNodeArgs(..),
+  StakePoolNodeParams(..),
+  RunningStakePoolNode(..),
+  defaultStakePoolNodeParams,
   defaultCardanoNodeArgs,
   withCardanoNode,
   getCardanoNodeVersion,
@@ -23,13 +26,21 @@ module Convex.Devnet.CardanoNode(
   withCardanoNodeDevnet,
   GenesisConfigChanges(..),
   allowLargeTransactions,
-  withCardanoNodeDevnetConfig
+  withCardanoNodeDevnetConfig,
+  withCardanoStakePoolNodeDevnetConfig
 ) where
 
 import           Cardano.Api                      (CardanoMode, Env,
                                                    LocalNodeConnectInfo,
-                                                   NetworkId)
+                                                   NetworkId, Lovelace,
+                                                   SigningKey)
 import qualified Cardano.Api                      as C
+import           Cardano.Api.Shelley              (VrfKey, KesKey, StakePoolKey,
+                                                   StakeKey, KESPeriod (..),
+                                                   StakeCredential (..),
+                                                   StakeAddressReference (..),
+                                                   StakePoolParameters (..),
+                                                   OperationalCertificateIssueCounter (..))
 import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
 import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
 import           Cardano.Ledger.Shelley.PParams   (PParams, _maxTxSize)
@@ -40,13 +51,14 @@ import           Cardano.Slotting.Time            (diffRelativeTime,
 import           Control.Concurrent               (threadDelay)
 import           Control.Concurrent.Async         (race)
 import           Control.Exception                (finally, throwIO)
-import           Control.Monad                    (unless, when, (>=>))
+import           Control.Monad                    (unless, when, void, (>=>))
 import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
 import qualified Convex.Devnet.NodeQueries        as Q
 import           Convex.Devnet.Utils              (checkProcessHasNotDied,
                                                    defaultNetworkId, failure,
                                                    readConfigFile, withLogFile)
+import           Convex.Wallet                    (Wallet, paymentCredential)
 import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
                                                    (.=))
 import qualified Data.Aeson                       as Aeson
@@ -481,3 +493,169 @@ computeGenesisHash :: FilePath -> IO String
 computeGenesisHash fp =
   -- drop the last character (newline)
   take 64 <$> readProcess "cardano-cli" ["genesis", "hash", "--genesis", fp] ""
+
+
+{-| TODO: comment
+-}
+data StakePoolNodeParams = StakePoolNodeParams
+  { spnCost   :: Lovelace
+  , spnMargin :: Rational
+  , spnPledge :: Lovelace
+  }
+
+defaultStakePoolNodeParams = StakePoolNodeParams 0 3 0
+
+{-| TODO: comment
+-}
+data RunningStakePoolNode = RunningStakePoolNode
+  { rspnNode :: RunningNode -- ^ Running ardano node
+  , rspnStakeKey :: SigningKey StakeKey
+  , rspnVrfKey :: SigningKey VrfKey
+  , rspnKesKey :: SigningKey KesKey
+  , rspnStakePoolKey :: SigningKey StakePoolKey
+  , rspnCounter :: OperationalCertificateIssueCounter
+  }
+
+{-| TODO: comment
+-}
+withCardanoStakePoolNodeDevnetConfig ::
+  Tracer IO NodeLog ->
+  -- | State directory in which credentials, db & logs are persisted.
+  FilePath ->
+  -- | Pool owner
+  Wallet ->
+  -- | Stake pool params
+  StakePoolNodeParams ->
+  -- | Changes to apply to the default genesis configurations
+  GenesisConfigChanges ->
+  RunningNode ->
+  (RunningStakePoolNode -> IO a) ->
+  IO a
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configChanges RunningNode{rnNodeSocket, rnNetworkId} action = do
+  createDirectoryIfMissing True stateDirectory
+  
+  stakeKey <- C.generateSigningKey C.AsStakeKey
+  vrfKey <- C.generateSigningKey C.AsVrfKey
+  kesKey <- C.generateSigningKey C.AsKesKey
+  stakePoolKey <- C.generateSigningKey C.AsStakePoolKey
+  
+  C.SlotNo slotNo <- fst <$> Q.queryTipSlotNo rnNetworkId rnNodeSocket
+
+  let
+    vrfHash =
+      C.verificationKeyHash . C.getVerificationKey $ vrfKey
+
+    stakeHash = 
+      C.verificationKeyHash . C.getVerificationKey $ stakeKey
+    stakeCred = StakeCredentialByKey stakeHash
+    stakeCert = C.makeStakeAddressRegistrationCertificate stakeCred
+    stakeAddress = C.makeStakeAddress rnNetworkId stakeCred
+    
+    paymentAddress =
+      C.makeShelleyAddress
+        rnNetworkId
+        (paymentCredential wallet)
+        (StakeAddressByValue stakeCred)
+
+    poolId = C.verificationKeyHash . C.getVerificationKey $ stakePoolKey
+
+    delegationCert =
+      C.makeStakeAddressDelegationCertificate stakeCred poolId
+
+    stakePoolParams = 
+     StakePoolParameters
+       poolId
+       vrfHash
+       (spnCost params)
+       (spnMargin params)
+       stakeAddress
+       (spnPledge params)
+       [stakeHash]
+       [] -- no relays
+       Nothing
+
+    poolCert = 
+      C.makeStakePoolRegistrationCertificate stakePoolParams
+
+  -- create the node certificate
+  let
+    opCertCounter =
+      OperationalCertificateIssueCounter 0 (C.getVerificationKey stakePoolKey)
+    -- slotsPerKESPeriod from config/genesis-shelley.json
+    slotsPerKESPeriod = 129600
+    -- Word64 to Word
+    kesPeriod = KESPeriod . fromIntegral . div slotNo $ slotsPerKESPeriod
+    opCert = C.issueOperationalCertificate
+      (C.getVerificationKey kesKey)
+      (Left stakePoolKey)
+      kesPeriod
+      opCertCounter
+  
+  (opCert', opCertCounter') <- case opCert of
+    Left _    -> failure "withCardanoStakePoolNodeDevnetConfig: Issue operational certificate failure"
+    Right res -> pure res
+
+  {-
+    TODO:
+    Submit the stakeCert
+      - stake cert
+      - signing: wallet key, stake key
+    
+    submitting tx:
+      - pool cert
+      - delegation cert
+      - pay the pledge amount to the stake address
+  
+      signing:
+        wallet key
+        stake key
+        stake pool key
+  -}
+  
+  let
+    vrfKeyPath = stateDirectory </> "vrf.skey"
+    kesKeyPath = stateDirectory </> "kes.skey"
+    opCertPath = stateDirectory </> "opcert.cert"
+    args =
+        defaultCardanoNodeArgs
+          { nodeVrfKeyFile = Just vrfKeyPath
+          , nodeKesKeyFile = Just kesKeyPath
+          , nodeOpCertFile = Just opCertPath
+          }
+
+  print vrfKeyPath
+
+  void $ C.writeFileTextEnvelopeWithOwnerPermissions vrfKeyPath Nothing vrfKey
+  void $ C.writeFileTextEnvelopeWithOwnerPermissions kesKeyPath Nothing kesKey
+  void $ C.writeFileTextEnvelopeWithOwnerPermissions opCertPath Nothing opCert'
+
+  copyDevnetFiles args
+  refreshSystemStart stateDirectory args
+  writeTopology [] args -- TODO: Do I need to know all nodes?
+
+  withCardanoNode tracer rnNetworkId stateDirectory args $ \rn -> do
+    traceWith tracer MsgNodeIsReady
+    action (RunningStakePoolNode rn stakeKey vrfKey kesKey stakePoolKey opCertCounter')
+ where
+
+  GenesisConfigChanges{cfAlonzo, cfShelley} = configChanges
+
+  copyDevnetFiles args = do
+    readConfigFile ("devnet" </> "cardano-node.json")
+      >>= BS.writeFile
+        (stateDirectory </> nodeConfigFile args)
+    readConfigFile ("devnet" </> "genesis-byron.json")
+      >>= BS.writeFile
+        (stateDirectory </> nodeByronGenesisFile args)
+    readConfigFile ("devnet" </> "genesis-shelley.json")
+      >>= copyAndChangeJSONFile
+        cfShelley
+        (stateDirectory </> nodeShelleyGenesisFile args)
+    readConfigFile ("devnet" </> "genesis-alonzo.json")
+      >>= copyAndChangeJSONFile
+        cfAlonzo
+        (stateDirectory </> nodeAlonzoGenesisFile args)
+
+  writeTopology peers args =
+    Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
+      mkTopology peers
