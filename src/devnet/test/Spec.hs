@@ -30,6 +30,7 @@ import           Data.List                  (isInfixOf)
 import qualified Data.Text                  as Text
 import           GHC.Generics               (Generic)
 import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
+import           System.FilePath            ((</>))
 import           Test.Tasty                 (defaultMain, testGroup)
 import           Test.Tasty.HUnit           (assertBool, assertEqual, testCase)
 
@@ -69,7 +70,7 @@ startLocalStakePoolNode = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp <> "/stakepool") wllt defaultStakePoolNodeParams mempty runningNode $ \RunningStakePoolNode{rspnNode} -> do
+          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt defaultStakePoolNodeParams mempty runningNode $ \RunningStakePoolNode{rspnNode} -> do
             runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
               Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
               Right{}  -> pure ()
