@@ -22,6 +22,7 @@ module Convex.Devnet.CardanoNode(
   getCardanoNodeVersion,
   waitForFullySynchronized,
   waitForBlock,
+  waitForNextBlock,
   waitForSocket,
   withCardanoNodeDevnet,
   GenesisConfigChanges(..),
@@ -40,7 +41,8 @@ import           Cardano.Api.Shelley              (VrfKey, KesKey, StakePoolKey,
                                                    StakeCredential (..),
                                                    StakeAddressReference (..),
                                                    StakePoolParameters (..),
-                                                   OperationalCertificateIssueCounter (..))
+                                                   OperationalCertificateIssueCounter (..),
+                                                   ShelleyWitnessSigningKey (..))
 import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
 import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
 import           Cardano.Ledger.Shelley.PParams   (PParams, _maxTxSize)
@@ -59,6 +61,8 @@ import           Convex.Devnet.Utils              (checkProcessHasNotDied,
                                                    defaultNetworkId, failure,
                                                    readConfigFile, withLogFile)
 import           Convex.Wallet                    (Wallet, paymentCredential)
+import           Convex.BuildTx                   (payToAddress, addCertificate,
+                                                   execBuildTx')
 import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
                                                    (.=))
 import qualified Data.Aeson                       as Aeson
@@ -67,12 +71,14 @@ import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Lazy             as BSL
 import           Data.Fixed                       (Centi)
 import           Data.Functor                     ((<&>))
+import           Data.Ratio                       ((%))
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import           Data.Time.Clock                  (UTCTime, addUTCTime,
                                                    getCurrentTime)
 import           Data.Time.Clock.POSIX            (posixSecondsToUTCTime,
                                                    utcTimeToPOSIXSeconds)
+import           Data.Word                        (Word64)
 import           GHC.Generics                     (Generic)
 import           Ouroboros.Consensus.Shelley.Eras (BabbageEra, StandardCrypto)
 import           System.Directory                 (createDirectoryIfMissing,
@@ -172,6 +178,7 @@ data NodeLog
   | MsgSocketIsReady FilePath
   | MsgSynchronizing {percentDone :: Centi}
   | MsgNodeIsReady
+  | MsgFoundBlock{ blockNo :: Word64 }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
@@ -293,6 +300,18 @@ waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
     Just blockNo | blockNo >= 1 -> pure blockNo
     _ -> do
       threadDelay 1_000_000 >> waitForBlock n
+
+waitForNextBlock :: RunningNode -> IO C.BlockNo
+waitForNextBlock node = do
+  blockNo <- waitForBlock node
+  waitForNextBlock' node blockNo
+
+waitForNextBlock' :: RunningNode -> C.BlockNo -> IO C.BlockNo
+waitForNextBlock' node blockNo = do
+  currentBlockNo <- waitForBlock node
+  if currentBlockNo > blockNo then
+    pure currentBlockNo else
+    waitForNextBlock' node blockNo
 
 {-| Modifications to apply to the default genesis configurations
 -}
@@ -503,7 +522,8 @@ data StakePoolNodeParams = StakePoolNodeParams
   , spnPledge :: Lovelace
   }
 
-defaultStakePoolNodeParams = StakePoolNodeParams 0 3 0
+defaultStakePoolNodeParams :: StakePoolNodeParams
+defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
 
 {-| TODO: comment
 -}
@@ -529,9 +549,11 @@ withCardanoStakePoolNodeDevnetConfig ::
   -- | Changes to apply to the default genesis configurations
   GenesisConfigChanges ->
   RunningNode ->
+  -- | Transaction balancing and submission function
+  (C.TxBodyContent C.BuildTx C.BabbageEra -> [ShelleyWitnessSigningKey] -> IO (C.Tx C.BabbageEra)) ->
   (RunningStakePoolNode -> IO a) ->
   IO a
-withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configChanges RunningNode{rnNodeSocket, rnNetworkId} action = do
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configChanges node@RunningNode{rnNodeSocket, rnNetworkId} balanceAndSubmit action = do
   createDirectoryIfMissing True stateDirectory
   
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -552,7 +574,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
     stakeAddress = C.makeStakeAddress rnNetworkId stakeCred
     
     paymentAddress =
-      C.makeShelleyAddress
+      C.makeShelleyAddressInEra
         rnNetworkId
         (paymentCredential wallet)
         (StakeAddressByValue stakeCred)
@@ -595,23 +617,28 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
     Left _    -> failure "withCardanoStakePoolNodeDevnetConfig: Issue operational certificate failure"
     Right res -> pure res
 
-  {-
-    TODO:
-    Submit the stakeCert
-      - stake cert
-      - signing: wallet key, stake key
-    
-    submitting tx:
-      - pool cert
-      - delegation cert
-      - pay the pledge amount to the stake address
-  
-      signing:
-        wallet key
-        stake key
-        stake pool key
-  -}
-  
+  let
+    stakeCertTx = execBuildTx' $ do
+      addCertificate stakeCert
+
+    poolCertTx = execBuildTx' $ do
+      let pledge = spnPledge params
+      when (pledge > 0) $
+        payToAddress paymentAddress (C.lovelaceToValue pledge)
+      addCertificate poolCert
+
+    delegCertTx = execBuildTx' $ do
+      addCertificate delegationCert
+
+  _ <- balanceAndSubmit stakeCertTx [WitnessStakeKey stakeKey]
+  _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
+
+  _ <- balanceAndSubmit poolCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
+  _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
+
+  _ <- balanceAndSubmit delegCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
+  _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
+
   let
     vrfKeyPath = stateDirectory </> "vrf.skey"
     kesKeyPath = stateDirectory </> "kes.skey"
@@ -622,8 +649,6 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
           , nodeKesKeyFile = Just kesKeyPath
           , nodeOpCertFile = Just opCertPath
           }
-
-  print vrfKeyPath
 
   void $ C.writeFileTextEnvelopeWithOwnerPermissions vrfKeyPath Nothing vrfKey
   void $ C.writeFileTextEnvelopeWithOwnerPermissions kesKeyPath Nothing kesKey
