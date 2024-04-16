@@ -22,7 +22,9 @@ module Convex.Devnet.CardanoNode(
   getCardanoNodeVersion,
   waitForFullySynchronized,
   waitForBlock,
-  waitForNextBlock,
+  waitForNextBlock',
+  waitForNextEpoch,
+  waitForNextEpoch',
   waitForSocket,
   withCardanoNodeDevnet,
   GenesisConfigChanges(..),
@@ -179,6 +181,7 @@ data NodeLog
   | MsgSynchronizing {percentDone :: Centi}
   | MsgNodeIsReady
   | MsgFoundBlock{ blockNo :: Word64 }
+  | MsgEpoch{ epochNo :: Word64 }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
@@ -311,7 +314,20 @@ waitForNextBlock' node blockNo = do
   currentBlockNo <- waitForBlock node
   if currentBlockNo > blockNo then
     pure currentBlockNo else
-    waitForNextBlock' node blockNo
+    threadDelay 1_000_000 >> waitForNextBlock' node blockNo
+
+waitForNextEpoch :: RunningNode -> IO C.EpochNo
+waitForNextEpoch n@RunningNode{rnNodeSocket, rnNetworkId} = do
+  currentEpochNo <- Q.queryEpoch rnNetworkId rnNodeSocket
+  waitForNextEpoch' n currentEpochNo
+
+waitForNextEpoch' :: RunningNode -> C.EpochNo -> IO C.EpochNo
+waitForNextEpoch' n@RunningNode{rnNodeSocket, rnNetworkId} epochNo = do
+  currentEpochNo <- Q.queryEpoch rnNetworkId rnNodeSocket
+  if currentEpochNo > epochNo then
+    pure currentEpochNo else
+    threadDelay 1_000_000 >> waitForNextEpoch' n epochNo
+
 
 {-| Modifications to apply to the default genesis configurations
 -}
