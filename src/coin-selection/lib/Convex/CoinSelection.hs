@@ -493,9 +493,12 @@ balanceTx ::
   -- | The unbalanced transaction body
   TxBodyContent BuildTx ERA ->
 
+  -- | Additional required signature count
+  TransactionSignatureCount ->
+
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
-balanceTx dbg returnUTxO0 walletUtxo txb = do
+balanceTx dbg returnUTxO0 walletUtxo txb count' = do
   (params, ledgerPPs) <- queryProtocolParameters
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
@@ -512,7 +515,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
     bodyWithInputs <- addOwnInput txb0 walletUtxo
     bodyWithCollat <- setCollateral bodyWithInputs walletUtxo
     balancePositive (natTracer lift dbg) pools ledgerPPs combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
-  count <- requiredSignatureCount finalBody
+  count <- (+count') <$> requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
@@ -531,18 +534,18 @@ checkCompatibilityLevel tr txB (UtxoSet w) = do
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
-balanceForWallet dbg wallet walletUtxo txb = do
+balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> TransactionSignatureCount -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet dbg wallet walletUtxo txb count = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = L.emptyTxOut walletAddress
-  balanceForWalletReturn dbg wallet walletUtxo txOut txb
+  balanceForWalletReturn dbg wallet walletUtxo txOut txb count
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
-balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
-  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
+balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> TransactionSignatureCount -> m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn dbg wallet walletUtxo returnOutput txb count = do
+  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb count
 
 {-| Sign a transaction with the wallet's key
 -}
