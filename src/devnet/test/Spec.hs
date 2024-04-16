@@ -23,7 +23,8 @@ import           Convex.Devnet.Wallet       (WalletLog)
 import qualified Convex.Devnet.Wallet       as W
 import           Convex.Devnet.WalletServer (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer as WS
-import           Convex.NodeQueries         (queryProtocolParameters)
+import           Convex.NodeQueries         (queryProtocolParameters,
+                                             queryStakePools)
 import qualified Convex.Utxos               as Utxos
 import           Data.Aeson                 (FromJSON, ToJSON)
 import           Data.List                  (isInfixOf)
@@ -42,6 +43,7 @@ main = do
     , testCase "start local node" startLocalNode
     , testCase "make a payment" makePayment
     , testCase "start local stake pool node" startLocalStakePoolNode
+    , testCase "stake pool registration" registeredStakePoolNode
     , testCase "run the wallet server" runWalletServer
     , testCase "change max tx size" changeMaxTxSize
     ]
@@ -70,10 +72,30 @@ startLocalStakePoolNode = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt defaultStakePoolNodeParams mempty runningNode $ \RunningStakePoolNode{rspnNode} -> do
+          let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
+          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode} -> do
             runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
               Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
               Right{}  -> pure ()
+
+registeredStakePoolNode :: IO ()
+registeredStakePoolNode = do
+  showLogsOnFailure $ \tr -> do
+    failAfter 10 $
+      withTempDir "cardano-cluster" $ \tmp -> do
+        withCardanoNodeDevnet (contramap TLNode tr)  tmp $ \runningNode@RunningNode{rnConnectInfo} -> do
+          let lovelacePerUtxo = 100_000_000
+              numUtxos        = 10
+          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
+              mode = fst rnConnectInfo
+          initialStakePools <- queryStakePools mode
+          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \_ -> do
+            currentStakePools <- queryStakePools mode
+            let
+              initial = length initialStakePools
+              current = length currentStakePools
+            assertEqual "Blockchain should have one new registered stake pool" 1 (current - initial)
 
 makePayment :: IO ()
 makePayment = do
