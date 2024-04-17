@@ -37,7 +37,6 @@ import qualified Data.Set                   as Set
 import qualified Data.Map                   as Map
 import           GHC.Generics               (Generic)
 import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
-import           System.FilePath            ((</>))
 import           Test.Tasty                 (defaultMain, testGroup)
 import           Test.Tasty.HUnit           (assertBool, assertEqual, testCase)
 
@@ -80,10 +79,11 @@ startLocalStakePoolNode = do
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
-          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode} -> do
-            runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
-              Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
-              Right{}  -> pure ()
+          withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode} -> do
+              runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
+                Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
+                Right{}  -> pure ()
 
 registeredStakePoolNode :: IO ()
 registeredStakePoolNode = do
@@ -97,12 +97,13 @@ registeredStakePoolNode = do
           let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
               mode = fst rnConnectInfo
           initialStakePools <- queryStakePools mode
-          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \_ -> do
-            currentStakePools <- queryStakePools mode
-            let
-              initial = length initialStakePools
-              current = length currentStakePools
-            assertEqual "Blockchain should have one new registered stake pool" 1 (current - initial)
+          withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \_ -> do
+              currentStakePools <- queryStakePools mode
+              let
+                initial = length initialStakePools
+                current = length currentStakePools
+              assertEqual "Blockchain should have one new registered stake pool" 1 (current - initial)
 
 stakeReward :: IO ()
 stakeReward = do
@@ -116,18 +117,19 @@ stakeReward = do
           let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
               mode = fst rnConnectInfo
               stakepoolParams = StakePoolNodeParams 400 (1 % 100) 100_000_000
-          withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) (tmp </> "stakepool") wllt stakepoolParams confChange runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
-            let nid = rnNetworkId rspnNode
-                stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
-                stakeCred = C.StakeCredentialByKey stakeHash
-            oldRewards <- sum . Map.elems . fst <$> queryStakeAddresses mode (Set.singleton stakeCred) nid
-            _ <- waitForNextEpoch runningNode
-            newRewards <- sum . Map.elems . fst <$> queryStakeAddresses mode (Set.singleton stakeCred) nid
+          withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams confChange runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
+              let nid = rnNetworkId rspnNode
+                  stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
+                  stakeCred = C.StakeCredentialByKey stakeHash
+              oldRewards <- sum . Map.elems . fst <$> queryStakeAddresses mode (Set.singleton stakeCred) nid
+              _ <- waitForNextEpoch runningNode
+              newRewards <- sum . Map.elems . fst <$> queryStakeAddresses mode (Set.singleton stakeCred) nid
 
-            assertBool "Expect staking rewards" $ oldRewards < newRewards
+              assertBool "Expect staking rewards" $ oldRewards < newRewards
   where
     confChange =
-      GenesisConfigChanges (\g -> g {C.sgEpochLength = 1}) id--, C.sgSlotLength = 100}) id
+      GenesisConfigChanges (\g -> g {C.sgEpochLength = 1}) id
 
 makePayment :: IO ()
 makePayment = do
