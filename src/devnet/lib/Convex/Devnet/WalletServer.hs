@@ -14,39 +14,39 @@ module Convex.Devnet.WalletServer(
   sendFundsToOperator
 ) where
 
-import           Cardano.Api                 (BabbageEra, CtxTx, Lovelace, Tx)
-import qualified Cardano.Api                 as C
-import           Control.Concurrent          (threadDelay)
-import           Control.Tracer              (Tracer, contramap, traceWith)
-import           Convex.Devnet.CardanoNode   (RunningNode (..))
-import qualified Convex.Devnet.NodeQueries   as NodeQueries
-import           Convex.Devnet.Utils         (failure, withLogFile)
-import qualified Convex.Devnet.Wallet        as Wallet
-import           Convex.Utxos                (UtxoSet)
-import qualified Convex.Wallet.API           as API
-import           Convex.Wallet.Cli.Command   (CliCommand (..))
-import           Convex.Wallet.Cli.Config    (Config (..))
-import           Convex.Wallet.Operator      (Operator,
-                                              OperatorConfigSigning (..),
-                                              OperatorConfigVerification (..),
-                                              Signing, loadOperatorFiles,
-                                              operatorAddress)
-import           Data.Aeson                  (FromJSON, ToJSON)
-import           Data.Text                   (Text)
-import           GHC.Generics                (Generic)
-import           GHC.IO.Handle.Types         (Handle)
-import           Network.HTTP.Client         (Manager, defaultManagerSettings,
-                                              newManager)
-import           Servant.Client              (ClientEnv, ClientError (..),
-                                              mkClientEnv)
-import           Servant.Client.Core.BaseUrl (BaseUrl (..), Scheme (..))
-import           System.FilePath             ((</>))
-import           System.IO                   (BufferMode (NoBuffering),
-                                              hSetBuffering)
-import           System.Process              (CreateProcess (..), ProcessHandle,
-                                              StdStream (UseHandle), proc,
-                                              readCreateProcess,
-                                              withCreateProcess)
+import           Cardano.Api                     (BabbageEra, CtxTx, Lovelace, Tx)
+import qualified Cardano.Api                     as C
+import           Control.Concurrent              (threadDelay)
+import           Control.Tracer                  (Tracer, contramap, traceWith)
+import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
+import qualified Convex.Devnet.NodeQueries       as NodeQueries
+import           Convex.Devnet.Utils             (failure, withLogFile)
+import qualified Convex.Devnet.Wallet            as Wallet
+import           Convex.Utxos                    (UtxoSet)
+import qualified Convex.Wallet.API               as API
+import           Convex.Wallet.Cli.Command       (CliCommand (..))
+import           Convex.Wallet.Cli.Config        (Config (..))
+import           Convex.Wallet.Operator          (Operator,
+                                                  OperatorConfigSigning (..),
+                                                  OperatorConfigVerification (..),
+                                                  Signing, loadOperatorFiles,
+                                                  operatorAddress)
+import           Data.Aeson                      (FromJSON, ToJSON)
+import           Data.Text                       (Text)
+import           GHC.Generics                    (Generic)
+import           GHC.IO.Handle.Types             (Handle)
+import           Network.HTTP.Client             (Manager, defaultManagerSettings,
+                                                  newManager)
+import           Servant.Client                  (ClientEnv, ClientError (..),
+                                                  mkClientEnv)
+import           Servant.Client.Core.BaseUrl     (BaseUrl (..), Scheme (..))
+import           System.FilePath                 ((</>))
+import           System.IO                       (BufferMode (NoBuffering),
+                                                  hSetBuffering)
+import           System.Process                  (CreateProcess (..), ProcessHandle,
+                                                  StdStream (UseHandle), proc,
+                                                  readCreateProcess,
+                                                  withCreateProcess)
 
 data WalletLog =
   WMsgText{ wmsgText :: Text}

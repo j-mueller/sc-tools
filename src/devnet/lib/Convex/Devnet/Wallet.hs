@@ -23,33 +23,33 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
-                                            Lovelace, Tx, TxBodyContent)
-import qualified Cardano.Api               as C
-import           Control.Monad             (replicateM)
-import           Control.Monad.IO.Class    (MonadIO (..))
-import           Control.Monad.Reader      (ReaderT (..), ask, lift)
-import           Control.Tracer            (Tracer, traceWith)
-import qualified Convex.BuildTx            as BuildTx
-import           Convex.Class              (MonadBlockchain (networkId),
-                                            runMonadBlockchainCardanoNodeT,
-                                            sendTx)
-import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.Devnet.CardanoNode (RunningNode (..))
-import qualified Convex.Devnet.NodeQueries as NodeQueries
-import           Convex.Devnet.Utils       (keysFor)
-import           Convex.Lenses             (emptyTxOut)
-import           Convex.MonadLog           (MonadLog (..))
-import           Convex.Utils              (failOnError)
-import           Convex.Utxos              (UtxoSet)
-import qualified Convex.Utxos              as Utxos
-import           Convex.Wallet             (Wallet (..), address)
-import qualified Convex.Wallet             as Wallet
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Text                 (Text)
-import           GHC.Generics              (Generic)
-import           Prettyprinter             (defaultLayoutOptions, layoutPretty)
-import qualified Prettyprinter.Render.Text as Render
+import           Cardano.Api                     (AddressInEra, BabbageEra, BuildTx,
+                                                  Lovelace, Tx, TxBodyContent)
+import qualified Cardano.Api                     as C
+import           Control.Monad                   (replicateM)
+import           Control.Monad.IO.Class          (MonadIO (..))
+import           Control.Monad.Reader            (ReaderT (..), ask, lift)
+import           Control.Tracer                  (Tracer, traceWith)
+import qualified Convex.BuildTx                  as BuildTx
+import           Convex.Class                    (MonadBlockchain (networkId),
+                                                  runMonadBlockchainCardanoNodeT,
+                                                  sendTx)
+import qualified Convex.CoinSelection            as CoinSelection
+import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
+import qualified Convex.Devnet.NodeQueries       as NodeQueries
+import           Convex.Devnet.Utils             (keysFor)
+import           Convex.Lenses                   (emptyTxOut)
+import           Convex.MonadLog                 (MonadLog (..))
+import           Convex.Utils                    (failOnError)
+import           Convex.Utxos                    (UtxoSet)
+import qualified Convex.Utxos                    as Utxos
+import           Convex.Wallet                   (Wallet (..), address)
+import qualified Convex.Wallet                   as Wallet
+import           Data.Aeson                      (FromJSON, ToJSON)
+import           Data.Text                       (Text)
+import           GHC.Generics                    (Generic)
+import           Prettyprinter                   (defaultLayoutOptions, layoutPretty)
+import qualified Prettyprinter.Render.Text       as Render
 
 faucet :: IO Wallet
 faucet = Wallet . snd <$> keysFor "faucet"

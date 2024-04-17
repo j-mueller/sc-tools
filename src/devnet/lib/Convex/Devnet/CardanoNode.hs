@@ -33,9 +33,7 @@ module Convex.Devnet.CardanoNode(
   withCardanoStakePoolNodeDevnetConfig
 ) where
 
-import           Cardano.Api                      (CardanoMode, Env,
-                                                   LocalNodeConnectInfo,
-                                                   NetworkId, Lovelace,
+import           Cardano.Api                      (NetworkId, Lovelace,
                                                    SigningKey)
 import qualified Cardano.Api                      as C
 import           Cardano.Api.Shelley              (VrfKey, KesKey, StakePoolKey,
@@ -58,6 +56,7 @@ import           Control.Exception                (finally, throwIO)
 import           Control.Monad                    (unless, when, void, (>=>))
 import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
+import           Convex.Devnet.CardanoNode.Types  (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries        as Q
 import           Convex.Devnet.Utils              (checkProcessHasNotDied,
                                                    defaultNetworkId, failure,
@@ -100,13 +99,6 @@ type Port = Int
 
 newtype NodeId = NodeId Int
   deriving newtype (Eq, Show, Num, ToJSON, FromJSON)
-
-data RunningNode = RunningNode
-  { rnNodeSocket     :: FilePath -- ^ Cardano node socket
-  , rnNetworkId      :: NetworkId -- ^ Network ID used by the cardano node
-  , rnNodeConfigFile :: FilePath -- ^ Cardano node config file (JSON)
-  , rnConnectInfo    :: (LocalNodeConnectInfo CardanoMode, Env) -- ^ Connection info for node queries
-  }
 
 -- | Configuration parameters for a single node devnet
 data DevnetConfig = DevnetConfig
