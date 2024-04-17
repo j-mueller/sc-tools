@@ -22,6 +22,7 @@ module Convex.Devnet.CardanoNode(
   getCardanoNodeVersion,
   waitForFullySynchronized,
   waitForBlock,
+  waitForNextBlock,
   waitForNextBlock',
   waitForNextEpoch,
   waitForNextEpoch',
