@@ -649,19 +649,19 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
   _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
 
   let
-    vrfKeyPath = stateDirectory </> "vrf.skey"
-    kesKeyPath = stateDirectory </> "kes.skey"
-    opCertPath = stateDirectory </> "opcert.cert"
+    vrfKeyFile = "vrf.skey"
+    kesKeyFile = "kes.skey"
+    opCertFile = "opcert.cert"
     args =
         defaultCardanoNodeArgs
-          { nodeVrfKeyFile = Just vrfKeyPath
-          , nodeKesKeyFile = Just kesKeyPath
-          , nodeOpCertFile = Just opCertPath
+          { nodeVrfKeyFile = Just vrfKeyFile
+          , nodeKesKeyFile = Just kesKeyFile
+          , nodeOpCertFile = Just opCertFile
           }
 
-  void $ C.writeFileTextEnvelopeWithOwnerPermissions vrfKeyPath Nothing vrfKey
-  void $ C.writeFileTextEnvelopeWithOwnerPermissions kesKeyPath Nothing kesKey
-  void $ C.writeFileTextEnvelopeWithOwnerPermissions opCertPath Nothing opCert'
+  void $ C.writeFileTextEnvelopeWithOwnerPermissions (stateDirectory </> vrfKeyFile) Nothing vrfKey
+  void $ C.writeFileTextEnvelopeWithOwnerPermissions (stateDirectory </> kesKeyFile) Nothing kesKey
+  void $ C.writeFileTextEnvelopeWithOwnerPermissions (stateDirectory </> opCertFile) Nothing opCert'
 
   copyDevnetFiles args
   refreshSystemStart stateDirectory args
