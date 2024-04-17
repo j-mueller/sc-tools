@@ -110,5 +110,4 @@ test-suite convex-devnet-test
     , mtl
     , text
     , aeson
-    , filepath
     , containers

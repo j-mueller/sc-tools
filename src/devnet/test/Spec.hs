@@ -78,9 +78,8 @@ startLocalStakePoolNode = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode $ \RunningStakePoolNode{rspnNode} -> do
               runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
                 Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
                 Right{}  -> pure ()
@@ -94,11 +93,10 @@ registeredStakePoolNode = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
-              mode = fst rnConnectInfo
+          let mode = fst rnConnectInfo
           initialStakePools <- queryStakePools mode
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode balanceAndSubmit $ \_ -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode $ \_ -> do
               currentStakePools <- queryStakePools mode
               let
                 initial = length initialStakePools
@@ -114,11 +112,10 @@ stakeReward = do
           let lovelacePerUtxo = 1_000_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          let balanceAndSubmit = W.balanceAndSubmit mempty runningNode wllt
-              mode = fst rnConnectInfo
+          let mode = fst rnConnectInfo
               stakepoolParams = StakePoolNodeParams 400 (1 % 100) 100_000_000
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams confChange runningNode balanceAndSubmit $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams confChange runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
               let nid = rnNetworkId rspnNode
                   stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
                   stakeCred = C.StakeCredentialByKey stakeHash

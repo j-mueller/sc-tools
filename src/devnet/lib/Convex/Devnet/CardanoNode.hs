@@ -59,6 +59,7 @@ import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
 import           Convex.Devnet.CardanoNode.Types  (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries        as Q
+import qualified Convex.Devnet.Wallet             as W
 import           Convex.Devnet.Utils              (checkProcessHasNotDied,
                                                    defaultNetworkId, failure,
                                                    readConfigFile, withLogFile)
@@ -558,11 +559,9 @@ withCardanoStakePoolNodeDevnetConfig ::
   -- | Changes to apply to the default genesis configurations
   GenesisConfigChanges ->
   RunningNode ->
-  -- | Transaction balancing and submission function
-  (C.TxBodyContent C.BuildTx C.BabbageEra -> [ShelleyWitnessSigningKey] -> IO (C.Tx C.BabbageEra)) ->
   (RunningStakePoolNode -> IO a) ->
   IO a
-withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configChanges node@RunningNode{rnNodeSocket, rnNetworkId} balanceAndSubmit action = do
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configChanges node@RunningNode{rnNodeSocket, rnNetworkId} action = do
   createDirectoryIfMissing True stateDirectory
   
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -639,13 +638,13 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
     delegCertTx = execBuildTx' $ do
       addCertificate delegationCert
 
-  _ <- balanceAndSubmit stakeCertTx [WitnessStakeKey stakeKey]
+  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx [WitnessStakeKey stakeKey]
   _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
 
-  _ <- balanceAndSubmit poolCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
+  _ <- W.balanceAndSubmit mempty node wallet poolCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
 
-  _ <- balanceAndSubmit delegCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
+  _ <- W.balanceAndSubmit mempty node wallet delegCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
 
   let
