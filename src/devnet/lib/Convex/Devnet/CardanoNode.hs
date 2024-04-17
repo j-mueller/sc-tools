@@ -34,11 +34,9 @@ module Convex.Devnet.CardanoNode(
   withCardanoStakePoolNodeDevnetConfig
 ) where
 
-import           Cardano.Api                      (NetworkId, Lovelace,
-                                                   SigningKey)
+import           Cardano.Api                      (NetworkId, Lovelace)
 import qualified Cardano.Api                      as C
-import           Cardano.Api.Shelley              (VrfKey, KesKey, StakePoolKey,
-                                                   StakeKey, KESPeriod (..),
+import           Cardano.Api.Shelley              (KESPeriod (..),
                                                    StakeCredential (..),
                                                    StakeAddressReference (..),
                                                    StakePoolParameters (..),
@@ -57,7 +55,8 @@ import           Control.Exception                (finally, throwIO)
 import           Control.Monad                    (unless, when, void, (>=>))
 import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
-import           Convex.Devnet.CardanoNode.Types  (RunningNode (..))
+import           Convex.Devnet.CardanoNode.Types  (RunningNode (..),
+                                                   RunningStakePoolNode (..))
 import qualified Convex.Devnet.NodeQueries        as Q
 import qualified Convex.Devnet.Wallet             as W
 import           Convex.Devnet.Utils              (checkProcessHasNotDied,
@@ -534,17 +533,6 @@ data StakePoolNodeParams = StakePoolNodeParams
 
 defaultStakePoolNodeParams :: StakePoolNodeParams
 defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
-
-{-| TODO: comment
--}
-data RunningStakePoolNode = RunningStakePoolNode
-  { rspnNode :: RunningNode -- ^ Running ardano node
-  , rspnStakeKey :: SigningKey StakeKey
-  , rspnVrfKey :: SigningKey VrfKey
-  , rspnKesKey :: SigningKey KesKey
-  , rspnStakePoolKey :: SigningKey StakePoolKey
-  , rspnCounter :: OperationalCertificateIssueCounter
-  }
 
 {-| TODO: comment
 -}
