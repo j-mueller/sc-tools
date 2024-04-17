@@ -64,8 +64,8 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
-import           Data.Aeson                                        (FromJSON,
-                                                                    ToJSON)
+import           Data.Aeson                                        (ToJSON)
+import           Data.Bifunctor                                    (Bifunctor (..))
 import           Data.Map                                          (Map)
 import qualified Data.Map                                          as Map
 import           Data.Set                                          (Set)
@@ -87,7 +87,7 @@ class Monad m => MonadBlockchain m where
   sendTx                  :: Tx BabbageEra -> m (Either SendTxFailed TxId) -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
   queryProtocolParameters :: m (LedgerProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
-  queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Lovelace, Map C.StakeAddress PoolId) -- ^ Get stake rewards
+  queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m EraHistory
@@ -316,7 +316,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
     LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
 
   queryStakeAddresses creds nid =
-    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryStakeAddresses creds nid)))
+    first (fmap C.lovelaceToQuantity) <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryStakeAddresses creds nid)))
 
   queryStakePools =
     runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))

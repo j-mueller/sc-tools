@@ -20,7 +20,6 @@ import           Cardano.Api.Shelley                  (AnyPlutusScriptVersion (.
                                                        EraHistory (EraHistory),
                                                        ExecutionUnitPrices (..),
                                                        ExecutionUnits (..),
-                                                       Lovelace (..),
                                                        NetworkId (..),
                                                        NetworkMagic (..),
                                                        PlutusScriptVersion (..),
@@ -130,10 +129,10 @@ protocolParameters =
       , protocolParamMaxTxSize = 16_384
       , protocolParamTxFeeFixed = 155_381
       , protocolParamTxFeePerByte = 44
-      , protocolParamMinUTxOValue = Just (Lovelace 1_500_000)
-      , protocolParamStakeAddressDeposit = Lovelace 2_000_000
-      , protocolParamStakePoolDeposit = Lovelace 500_000_000
-      , protocolParamMinPoolCost = Lovelace 340_000_000
+      , protocolParamMinUTxOValue = Just (Coin 1_500_000)
+      , protocolParamStakeAddressDeposit = Coin 2_000_000
+      , protocolParamStakePoolDeposit = Coin 500_000_000
+      , protocolParamMinPoolCost = Coin 340_000_000
       , protocolParamPoolRetireMaxEpoch = EpochInterval 18
       , protocolParamStakePoolTargetNum = 150
       , protocolParamPoolPledgeInfluence = 3 % 10
@@ -150,7 +149,7 @@ protocolParameters =
       , protocolParamMaxCollateralInputs = Just 3
       , protocolParamUTxOCostPerByte =
           let (CoinPerByte (Coin coinsPerUTxOByte)) = coinsPerUTxOWordToCoinsPerUTxOByte $ CoinPerWord $ Coin 34_482
-          in Just $ Lovelace coinsPerUTxOByte
+          in Just $ Coin coinsPerUTxOByte
       }
 
 ledgerProtocolParameters :: PParams StandardBabbage

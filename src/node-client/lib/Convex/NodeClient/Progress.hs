@@ -49,7 +49,7 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
     clientNextN :: Nat n -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n =
       ClientStNext {
-          recvMsgRollForward = \(BlockInMode _era block@(Block (BlockHeader _ _ currBlockNo@(BlockNo blockNo)) _)) serverChainTip -> do
+          recvMsgRollForward = \(BlockInMode _era block@(CAPI.Block (BlockHeader _ _ currBlockNo@(BlockNo blockNo)) _)) serverChainTip -> do
             let newClientTip = At currBlockNo
                 newServerTip = fromChainTip serverChainTip
             when (blockNo `mod` 10_000 == 0) $ do
@@ -88,7 +88,7 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
         }
 
     printBlock :: Block era -> IO ()
-    printBlock (Block (BlockHeader _ _ currBlockNo) transactions)
+    printBlock (CAPI.Block (BlockHeader _ _ currBlockNo) transactions)
       = putStrLn $ show currBlockNo ++ " transactions: " ++ show (length transactions)
 
     printTip :: ChainTip -> IO ()

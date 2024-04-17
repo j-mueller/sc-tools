@@ -44,7 +44,6 @@ module Convex.Utils(
 ) where
 
 import           Cardano.Api                              (BabbageEra,
-                                                           Block (..),
                                                            BlockInMode (..),
                                                            NetworkId,
                                                            PaymentCredential (..),
@@ -142,7 +141,7 @@ extractTx txIds =
         when (txi `Set.member` txIds) $
           void $ liftIO $ C.writeFileTextEnvelope (C.File $ show txi <> ".json") Nothing tx
   in \case
-    BlockInMode C.BabbageEra (Block _ txns) ->
+    BlockInMode C.BabbageEra (C.Block _ txns) ->
       traverse_ extractTx' txns
     _                                                    -> pure ()
 

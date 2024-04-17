@@ -54,7 +54,7 @@ library
       either-result
       
     build-depends:
-      cardano-api >= 8.38.0.0,
+      cardano-api == 8.45.0.0,
       cardano-ledger-core,
       cardano-crypto-wrapper,
 

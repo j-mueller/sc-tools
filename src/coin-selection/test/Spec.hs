@@ -64,6 +64,7 @@ import           Convex.Wallet.Operator         (oPaymentKey,
                                                  signTxOperator,
                                                  verificationKey)
 import           Data.Foldable                  (traverse_)
+import           Data.List.NonEmpty             (NonEmpty (..))
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
 import qualified PlutusLedgerApi.V2             as PV2
@@ -285,7 +286,7 @@ balanceMultiAddress :: Property
 balanceMultiAddress = do
   let gen = (,) <$> Gen.operator <*> fmap (take 20) (Gen.listOf Gen.operator)
   QC.forAll gen $ \(op, operators) ->
-    QC.forAll (Gen.chooseInteger (5_000_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Lovelace -> nAmount) ->
+    QC.forAll (Gen.chooseInteger (5_000_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Quantity -> nAmount) ->
       QC.forAll (Gen.sublistOf (op:operators)) $ \requiredSignatures ->
         classify (null operators) "1 operator"
           $ classify (length operators > 0 && length operators <= 9) "2-9 operators"
@@ -295,13 +296,13 @@ balanceMultiAddress = do
           $ classify (length requiredSignatures > 9) "10+ required signatures"
           $ runMockchainProp $ lift $ failOnError $ do
               -- send Ada to each operator
-              traverse_ (payToOperator' mempty (C.lovelaceToValue $ 2_500_000 + nAmount) Wallet.w2) (op:operators)
+              traverse_ (payToOperator' mempty (C.lovelaceToValue $ 2_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
 
               -- send the entire amount back to Wallet.w2
               walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
               protParams <- queryProtocolParameters
               let tx = execBuildTx' $ do
-                        payToAddress walletAddr $ C.lovelaceToValue nAmount
+                        payToAddress walletAddr $ C.lovelaceToValue $ C.quantityToLovelace nAmount
                         traverse_ addRequiredSignature (fmap (C.verificationKeyHash . verificationKey . oPaymentKey) requiredSignatures)
                         setMinAdaDepositAll protParams
 
@@ -348,7 +349,7 @@ largeTransactionTest = do
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
     Right (Left{}, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxError [UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20304 16384)))]) -> pure ()
+      ApplyTxFailure (ApplyTxFailure (ApplyTxError (UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20304 16384))):|[]))) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
     Right _ -> fail $ "Unexpected success. Expected 1 failed transaction."
     Left err -> fail $ "Unexpected failure: " <> show err

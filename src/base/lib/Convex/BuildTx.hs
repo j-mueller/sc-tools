@@ -477,8 +477,8 @@ minAdaDeposit (C.LedgerProtocolParameters params) txOut =
             -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
             & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minAdaValue) (Just . max minAdaValue))
   in fromMaybe (C.Quantity 0) $ do
-        let C.Lovelace l = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txo params
-        pure (C.Quantity l)
+        let l = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txo params
+        pure (C.lovelaceToQuantity l)
 
 {-| Apply 'setMinAdaDeposit' to all outputs
 -}
@@ -503,9 +503,9 @@ addOutput txOut = addBtx (over (L.txOuts . L.reversed) ((:) txOut))
 
 {-| Add a stake rewards withdrawal to the transaction
 -}
-addWithdrawal :: MonadBuildTx m => C.StakeAddress -> C.Lovelace -> C.Witness C.WitCtxStake C.BabbageEra -> m ()
+addWithdrawal :: MonadBuildTx m => C.StakeAddress -> C.Quantity -> C.Witness C.WitCtxStake C.BabbageEra -> m ()
 addWithdrawal address amount witness =
-  let withdrawal = (address, amount, C.BuildTxWith witness)
+  let withdrawal = (address, C.quantityToLovelace amount, C.BuildTxWith witness)
   in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
 
 {-| Add a certificate (stake delegation, stake pool registration, etc)

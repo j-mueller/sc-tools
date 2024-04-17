@@ -47,6 +47,7 @@ import qualified Data.Set                  as Set
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
 
+
 newtype Wallet = Wallet { getWallet :: SigningKey PaymentKey }
 
 instance ToJSON Wallet where
@@ -126,16 +127,16 @@ parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAdaInputsCovering :: UtxoSet ctx a -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
+selectAdaInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
 selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSet) target
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAnyInputsCovering :: UtxoSet ctx a -> C.Lovelace -> Maybe (C.Lovelace, [C.TxIn])
-selectAnyInputsCovering UtxoSet{_utxos} (C.Lovelace target) =
-  let append (C.Lovelace total_, txIns) (txIn, C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) -> C.Lovelace coin_) = (C.Lovelace (total_ + coin_), txIn : txIns) in
-  find (\(C.Lovelace c, _) -> c >= target)
-  $ scanl append (C.Lovelace 0, [])
+selectAnyInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
+selectAnyInputsCovering UtxoSet{_utxos} (C.Quantity target) =
+  let append (C.Quantity total_, txIns) (txIn, C.lovelaceToQuantity . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) -> C.Quantity coin_) = (C.Quantity (total_ + coin_), txIn : txIns) in
+  find (\(C.Quantity c, _) -> c >= target)
+  $ scanl append (C.Quantity 0, [])
   $ fmap (second fst)
   $ Map.toAscList _utxos
 
