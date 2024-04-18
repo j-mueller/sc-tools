@@ -62,6 +62,7 @@ import           Convex.Utils                                      (posixTimeToS
                                                                     slotToUtcTime)
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
+import           Data.Map                                          (Map)
 import qualified Data.Map                                          as Map
 import           Data.Set                                          (Set)
 import qualified Data.Set                                          as Set
@@ -79,6 +80,7 @@ class Monad m => MonadBlockchain m where
   sendTx                  :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
   queryProtocolParameters :: m (LedgerProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
+  queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Lovelace, Map C.StakeAddress PoolId) -- ^ Get stake rewards
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
   queryEraHistory         :: m EraHistory
@@ -93,6 +95,7 @@ instance MonadBlockchain m => MonadBlockchain (ResultT m) where
   sendTx = lift . sendTx
   utxoByTxIn = lift . utxoByTxIn
   queryProtocolParameters = lift queryProtocolParameters
+  queryStakeAddresses creds = lift . queryStakeAddresses creds
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
@@ -103,6 +106,7 @@ instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
   sendTx = lift . sendTx
   utxoByTxIn = lift . utxoByTxIn
   queryProtocolParameters = lift queryProtocolParameters
+  queryStakeAddresses creds = lift . queryStakeAddresses creds
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
@@ -113,6 +117,7 @@ instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
   sendTx = lift . sendTx
   utxoByTxIn = lift . utxoByTxIn
   queryProtocolParameters = lift queryProtocolParameters
+  queryStakeAddresses creds = lift . queryStakeAddresses creds
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
@@ -123,6 +128,7 @@ instance MonadBlockchain m => MonadBlockchain (StrictState.StateT e m) where
   sendTx = lift . sendTx
   utxoByTxIn = lift . utxoByTxIn
   queryProtocolParameters = lift queryProtocolParameters
+  queryStakeAddresses creds = lift . queryStakeAddresses creds
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
@@ -133,6 +139,7 @@ instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   sendTx = lift . sendTx
   utxoByTxIn = lift . utxoByTxIn
   queryProtocolParameters = lift queryProtocolParameters
+  queryStakeAddresses creds = lift . queryStakeAddresses creds
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
@@ -283,6 +290,9 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
 
   queryProtocolParameters = do
     LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
+
+  queryStakeAddresses creds nid =
+    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryStakeAddresses creds nid)))
 
   queryStakePools =
     runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))

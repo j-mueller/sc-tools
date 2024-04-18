@@ -8,7 +8,9 @@ module Convex.NodeQueries(
   querySystemStart,
   queryLocalState,
   queryTip,
-  queryProtocolParameters
+  queryProtocolParameters,
+  queryStakePools,
+  queryStakeAddresses
 ) where
 
 import           Cardano.Api                                        (ChainPoint,
@@ -21,8 +23,11 @@ import           Cardano.Api                                        (ChainPoint,
                                                                      NetworkId (Mainnet, Testnet),
                                                                      NetworkMagic (..),
                                                                      SystemStart,
+                                                                     Lovelace,
                                                                      envSecurityParam)
 import qualified Cardano.Api                                        as CAPI
+import           Cardano.Api.Shelley                                (PoolId, StakeAddress,
+                                                                     StakeCredential)
 import qualified Cardano.Chain.Genesis
 import           Cardano.Crypto                                     (RequiresNetworkMagic (..),
                                                                      getProtocolMagic)
@@ -32,6 +37,8 @@ import           Control.Monad.Except                               (MonadError,
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Control.Monad.Trans.Except                         (runExceptT)
 import           Data.SOP.Strict                                    (NP ((:*)))
+import           Data.Set                                           (Set)
+import           Data.Map                                           (Map)
 import qualified Ouroboros.Consensus.Cardano.CanHardFork            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras as HFC
@@ -90,6 +97,26 @@ queryEraHistory = queryLocalState CAPI.QueryEraHistory
 -- | Get the tip from the local cardano node
 queryTip :: LocalNodeConnectInfo -> IO ChainPoint
 queryTip = queryLocalState CAPI.QueryChainPoint
+
+queryStakePools :: LocalNodeConnectInfo -> IO (Set PoolId)
+queryStakePools connectInfo = do
+  result <- queryLocalState
+              (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryStakePools))
+              connectInfo
+  case result of
+    Left err -> do
+      fail ("queryStakePools: failed with: " <> show err)
+    Right k -> pure k
+
+queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> NetworkId -> IO (Map StakeAddress Lovelace, Map StakeAddress PoolId)
+queryStakeAddresses info creds nid = do
+  result <- queryLocalState
+              (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage (CAPI.QueryStakeAddresses creds nid)))
+              info
+  case result of
+    Left err -> do
+      fail ("queryStakeAddresses: failed with: " <> show err)
+    Right k -> pure k
 
 -- | Run a local state query on the local cardano node, using the volatile tip
 queryLocalState :: CAPI.QueryInMode b -> LocalNodeConnectInfo -> IO b
