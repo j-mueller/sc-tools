@@ -4,8 +4,10 @@
 -- | Scripts used for testing
 module Scripts(
   v2SpendingScript,
-  matchingIndexScript,
-  spendMatchingIndex
+  matchingIndexValidatorScript,
+  matchingIndexMPScript,
+  spendMatchingIndex,
+  mintMatchingIndex
 ) where
 
 import           Cardano.Api           (TxIn)
@@ -27,27 +29,48 @@ unappliedRewardFeeValidator = $$(PlutusTx.compile [|| \_ _ _ -> () ||])
 v2SpendingScript :: C.PlutusScript C.PlutusScriptV2
 v2SpendingScript = compiledCodeToScript unappliedRewardFeeValidator
 
-matchingIndexCompiled :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())
-matchingIndexCompiled =  $$(PlutusTx.compile [|| \d r c -> MatchingIndex.validator d r c ||])
+matchingIndexValidatorCompiled :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())
+matchingIndexValidatorCompiled =  $$(PlutusTx.compile [|| \d r c -> MatchingIndex.validator d r c ||])
+
+matchingIndexMPCompiled :: CompiledCode (BuiltinData -> BuiltinData -> ())
+matchingIndexMPCompiled = $$(PlutusTx.compile [|| \r c -> MatchingIndex.mintingPolicy r c ||])
 
 {-| Script that passes if the input's index (in the list of transaction inputs)
   matches the number passed as the redeemer
 -}
-matchingIndexScript :: C.PlutusScript C.PlutusScriptV2
-matchingIndexScript = compiledCodeToScript matchingIndexCompiled
+matchingIndexValidatorScript :: C.PlutusScript C.PlutusScriptV2
+matchingIndexValidatorScript = compiledCodeToScript matchingIndexValidatorCompiled
 
-{-| Spend an output locked by 'matchingIndexScript', setting
+matchingIndexMPScript :: C.PlutusScript C.PlutusScriptV2
+matchingIndexMPScript = compiledCodeToScript matchingIndexMPCompiled
+
+{-| Spend an output locked by 'matchingIndexValidatorScript', setting
 the redeemer to the index of the input in the final transaction
 -}
 spendMatchingIndex :: MonadBuildTx m => TxIn -> m ()
 spendMatchingIndex txi =
-  let witness lkp =
+  let witness txBody =
         C.ScriptWitness C.ScriptWitnessForSpending
         $ C.PlutusScriptWitness
             C.PlutusScriptV2InBabbage
             C.PlutusScriptV2
-            (C.PScript matchingIndexScript)
+            (C.PScript matchingIndexValidatorScript)
             (C.ScriptDatumForTxIn $ toScriptData ())
-            (toScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi lkp)
+            (toScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi txBody)
             (C.ExecutionUnits 0 0)
-  in BuildTx.setScriptsValid >> BuildTx.addInput txi witness
+  in BuildTx.setScriptsValid >> BuildTx.addInputWithTxBody txi witness
+
+{-| Mint a token from the 'matchingIndexMPScript', setting
+the redeemer to the index of its currency symbol in the final transaction mint
+-}
+mintMatchingIndex :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> m ()
+mintMatchingIndex policy assetName quantity =
+  let witness txBody =
+        C.PlutusScriptWitness
+          C.PlutusScriptV2InBabbage
+          C.PlutusScriptV2
+          (C.PScript matchingIndexMPScript)
+          (C.NoScriptDatumForMint)
+          (toScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndexMinted policy txBody)
+          (C.ExecutionUnits 0 0)
+  in BuildTx.setScriptsValid >> BuildTx.addMintWithTxBody policy assetName quantity witness

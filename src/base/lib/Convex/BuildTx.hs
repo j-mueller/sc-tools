@@ -11,11 +11,14 @@ module Convex.BuildTx(
   -- * Tx Builder
   TxBuilder(..),
   -- ** Looking at transaction inputs
-  TransactionInputs(..),
   lookupIndexSpending,
   lookupIndexReference,
+  lookupIndexMinted,
+  lookupIndexWithdrawl,
   findIndexSpending,
   findIndexReference,
+  findIndexMinted,
+  findIndexWithdrawl,
   buildTx,
   buildTxWith,
   -- * Effect
@@ -30,7 +33,9 @@ module Convex.BuildTx(
   evalBuildTxT,
 
   -- * Building transactions
-  addInput,
+  addInputWithTxBody,
+  addMintWithTxBody,
+  addWithdrawalWithTxBody,
   addReference,
   addCollateral,
   addAuxScript,
@@ -83,8 +88,8 @@ module Convex.BuildTx(
 import           Cardano.Api.Shelley        (Hash, NetworkId, PaymentKey,
                                              PlutusScript, PlutusScriptV1,
                                              PlutusScriptV2, ScriptData,
-                                             ScriptHash, TxBodyContent (..),
-                                             WitCtxTxIn, Witness)
+                                             ScriptHash, WitCtxTxIn,
+                                             Witness)
 import qualified Cardano.Api.Shelley        as C
 import qualified Cardano.Ledger.Core        as CLedger
 import           Control.Lens               (_1, _2, at, mapped, over, set,
@@ -109,71 +114,78 @@ import           Convex.MonadLog            (MonadLog (..), MonadLogIgnoreT,
 import           Convex.Scripts             (toScriptData)
 import           Data.Functor.Identity      (Identity (..))
 import           Data.List                  (nub)
-import           Data.Map                   (Map)
 import qualified Data.Map                   as Map
-import           Data.Maybe                 (fromMaybe)
-import           Data.Set                   (Set)
+import           Data.Maybe                 (fromMaybe, fromJust)
 import qualified Data.Set                   as Set
 import qualified Plutus.V1.Ledger.Api       as Plutus
 
-{-| A map of all inputs of the final transaction produced by a @TxBuilder@
--}
--- TOOO: This is essentially a subset of @TxBodyContent BuildTx@. Maybe we should
---       just make the entire @TxBodyContent BuildTx@ available to 'addInput'?
-data TransactionInputs = TransactionInputs
-  { txiSpendingInputs  :: Map C.TxIn (Witness WitCtxTxIn C.BabbageEra) -- ^ Inputs spent by the final transaction
-  , txiReferenceInputs :: Set C.TxIn -- ^ Reference inputs used by the final transaction
-  }
-
-mkTxInputs :: C.TxBodyContent C.BuildTx C.BabbageEra -> TransactionInputs
-mkTxInputs TxBodyContent{txIns, txInsReference} =
-  TransactionInputs
-    { txiSpendingInputs  = Map.fromList (fmap (view L._BuildTxWith) <$> txIns)
-    , txiReferenceInputs = Set.fromList (view L._TxInsReference txInsReference)
-    }
+type TxBody = C.TxBodyContent C.BuildTx C.BabbageEra
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs
 -}
-lookupIndexSpending :: C.TxIn -> TransactionInputs -> Maybe Int
-lookupIndexSpending txi = Map.lookupIndex txi . txiSpendingInputs
+lookupIndexSpending :: C.TxIn -> TxBody -> Maybe Int
+lookupIndexSpending txi = Map.lookupIndex txi . Map.fromList . (fmap (view L._BuildTxWith) <$>) . view L.txIns
+
+{-| Look up the index of the @TxIn@ in the list of spending inputs. Throws an error if the @TxIn@ is not present.
+-}
+findIndexSpending :: C.TxIn -> TxBody -> Int
+findIndexSpending txi = fromJust . lookupIndexSpending txi
 
 {-| Look up the index of the @TxIn@ in the list of reference inputs
 -}
-lookupIndexReference :: C.TxIn -> TransactionInputs -> Maybe Int
-lookupIndexReference txi = Set.lookupIndex txi . txiReferenceInputs
+lookupIndexReference :: C.TxIn -> TxBody -> Maybe Int
+lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReference)
 
-{-| Look up the index of the @TxIn@ in the list of spending inputs
+{-| Look up the index of the @TxIn@ in the list of reference inputs. Throws an error if the @TxIn@ is not present.
 -}
-findIndexSpending :: C.TxIn -> TransactionInputs -> Int
-findIndexSpending txi = Map.findIndex txi . txiSpendingInputs
+findIndexReference :: C.TxIn -> TxBody -> Int
+findIndexReference txi = fromJust . lookupIndexReference txi
 
-{-| Look up the index of the @TxIn@ in the list of reference inputs
+{-| Look up the index of the @PolicyId@ in the transaction mint.
+Note: cardano-api represents a value as a @Map AssetId Quantity@, this is different than the on-chain representation
+which is @Map CurrencySymbol (Map TokenName Quantity).
+Here, we want to get the index into the on-chain map, but instead index into the cardano-api @Map CurrencySymbol Witness@.
+These two indexes should be the same by construction, but it is possible to violate this invariant when building a tx.
 -}
-findIndexReference :: C.TxIn -> TransactionInputs -> Int
-findIndexReference txi = Set.findIndex txi . txiReferenceInputs
+lookupIndexMinted :: C.PolicyId -> TxBody -> Maybe Int
+lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxMintValue .  _2)
 
-{-| A function that modifies the @TxBodyContent@, after seeing the inputs of
+{-| Look up the index of the @PolicyId@ in the transaction mint. Throws an error if the @PolicyId@ is not present.
+-}
+findIndexMinted :: C.PolicyId -> TxBody -> Int
+findIndexMinted policy = fromJust . lookupIndexMinted policy
+
+{-| Look up the index of the @StakeAddress@ in the list of withdrawls.
+-}
+lookupIndexWithdrawl :: C.StakeAddress -> TxBody -> Maybe Int
+lookupIndexWithdrawl stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (L.txWithdrawals . L._TxWithdrawals)
+
+{-| Look up the index of the @StakeAddress@ in the list of withdrawls. Throws an error if the @StakeAddress@ is not present.
+-}
+findIndexWithdrawl :: C.StakeAddress -> TxBody -> Int
+findIndexWithdrawl stakeAddress = fromJust . lookupIndexWithdrawl stakeAddress
+
+
+{-|
+A function that modifies the final @TxBodyContent@, after seeing the @TxBodyContent@ of
 the entire finished transaction (lazily).
 
-Note that the result of @unTxBuilder inputs@ must not depend on the entirety of
-@inputs@. For example, using this to construct a redeemer that contains the whole
-@TransactionInputs@ map is going to loop forever. However, it is fine to look
-at all the keys of the map, and at individual values of the map.
+Note that the result of @unTxBuilder txBody@ must not completely force the @txBody@,
+or refer to itself circularly. For example, using this to construct a redeemer that contains the whole
+@TransactionInputs@ map is going to loop forever.
 -}
-newtype TxBuilder = TxBuilder{ unTxBuilder :: TransactionInputs -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra }
+newtype TxBuilder = TxBuilder{ unTxBuilder :: TxBody -> TxBody -> TxBody }
 
 {-| Construct the final @TxBodyContent@
 -}
-buildTx :: TxBuilder -> C.TxBodyContent C.BuildTx C.BabbageEra
+buildTx :: TxBuilder -> TxBody
 buildTx txb = buildTxWith txb L.emptyTx
 
 {-| Construct the final @TxBodyContent@ from the provided @TxBodyContent@
 -}
-buildTxWith :: TxBuilder -> C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra
+buildTxWith :: TxBuilder -> TxBody -> TxBody
 buildTxWith TxBuilder{unTxBuilder} initial =
-  let mp :: TransactionInputs
-      mp = mkTxInputs result
-      result = unTxBuilder mp initial
+  let result = unTxBuilder result initial
   in result
 
 instance Semigroup TxBuilder where
@@ -213,7 +225,7 @@ instance MonadBuildTx m => MonadBuildTx (MonadLogIgnoreT m) where
 instance MonadBuildTx m => MonadBuildTx (MonadLogKatipT m) where
   addTxBuilder = lift . addTxBuilder
 
-addBtx :: MonadBuildTx m => (C.TxBodyContent C.BuildTx C.BabbageEra -> C.TxBodyContent C.BuildTx C.BabbageEra) -> m ()
+addBtx :: MonadBuildTx m => (TxBody -> TxBody) -> m ()
 addBtx = addTxBuilder . TxBuilder . const
 
 {-| Monad transformer for the @MonadBuildTx@ effect
@@ -282,16 +294,26 @@ execBuildTx = runIdentity . execBuildTxT
 
 {-| Run the @BuildTx@ action and produce a transaction body
 -}
-execBuildTx' :: BuildTxT Identity a -> C.TxBodyContent C.BuildTx C.BabbageEra
+execBuildTx' :: BuildTxT Identity a -> TxBody
 execBuildTx' = buildTx . runIdentity . execBuildTxT
 
-{-| Spend an UTxO using the given witness. To avoid an infinite loop when
+{-| These functions allow to build the witness for an input/asset/withdrawl
+by accessing the final @TxBodyContent@. To avoid an infinite loop when
 constructing the witness, make sure that the witness does not depend on
-itself. For example, @addInput txi (\mp -> Map.lookup txi mp)@ is going
-to loop.
+itself. For example: @addInputWithTxBody txi (\body -> find (\in -> in == txi) (txInputs body))@
+is going to loop.
 -}
-addInput :: MonadBuildTx m => C.TxIn -> (TransactionInputs -> Witness WitCtxTxIn C.BabbageEra) -> m ()
-addInput txIn f = addTxBuilder (TxBuilder $ \lkp -> (over L.txIns ((txIn, C.BuildTxWith $ f lkp) :)))
+addInputWithTxBody :: MonadBuildTx m => C.TxIn -> (TxBody -> Witness WitCtxTxIn C.BabbageEra) -> m ()
+addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> (over L.txIns ((txIn, C.BuildTxWith $ f body) :)))
+
+addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
+addMintWithTxBody policy assetName quantity f =
+  let v = assetValue (C.unPolicyId policy) assetName quantity
+  in addTxBuilder (TxBuilder $ \body -> (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f body)))))
+
+addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Lovelace -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addWithdrawalWithTxBody address amount f =
+  addTxBuilder (TxBuilder $ \body -> (over (L.txWithdrawals . L._TxWithdrawals) ((address, amount, C.BuildTxWith $ f body) :)))
 
 {-| Spend an output locked by a public key
 -}
@@ -324,7 +346,7 @@ spendPlutusV2RefBase :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeem
 spendPlutusV2RefBase txIn refTxIn sh dat red =
   let wit lkp = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) dat (toScriptData $ red $ findIndexSpending txIn lkp) (C.ExecutionUnits 0 0)
       wit' = C.BuildTxWith . C.ScriptWitness C.ScriptWitnessForSpending . wit
-  in setScriptsValid >> addTxBuilder (TxBuilder $ \lkp -> over L.txIns ((txIn, wit' lkp) :))
+  in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit' body) :))
 
 {-| Spend an output locked by a Plutus V2 validator using the redeemer
 -}
