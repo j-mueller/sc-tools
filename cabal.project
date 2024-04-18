@@ -17,6 +17,8 @@ index-state:
   , hackage.haskell.org 2024-03-01T12:44:28Z
   , cardano-haskell-packages 2024-02-29T15:45:10Z
 
+with-compiler: ghc-9.6.4
+
 -- NOTE (j-mueller, 2024-02-19): Change back to Plutonomicon/plutarch-plutus:master
 -- when plutus-1.21.0.0 is supported. Currently upstream is on 1.20.0.0
 source-repository-package
