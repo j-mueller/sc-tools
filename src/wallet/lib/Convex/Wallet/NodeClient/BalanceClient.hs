@@ -1,7 +1,7 @@
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
-{-# LANGUAGE DataKinds         #-}
 {-| A node client that shows the balance of the wallet
 -}
 module Convex.Wallet.NodeClient.BalanceClient(
@@ -19,9 +19,11 @@ import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Trans.Maybe  (runMaybeT)
 import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
                                              logInfoS)
-import           Convex.NodeClient.Fold     (CatchingUp (..), catchingUp,
-                                             catchingUpWithNode, foldClient,
-                                             LedgerStateArgs (..), LedgerStateUpdate, LedgerStateMode (..))
+import           Convex.NodeClient.Fold     (CatchingUp (..),
+                                             LedgerStateArgs (..),
+                                             LedgerStateMode (..),
+                                             LedgerStateUpdate, catchingUp,
+                                             catchingUpWithNode, foldClient)
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient)
 import           Convex.Utils               (toShelleyPaymentCredential)

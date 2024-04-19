@@ -35,13 +35,13 @@ import           Cardano.Api                                           (Block (.
                                                                         ChainPoint (..),
                                                                         ChainTip (..),
                                                                         Env,
-                                                                        SlotNo,
                                                                         LedgerEvent,
                                                                         LedgerState (..),
+                                                                        SlotNo,
                                                                         ValidationMode (..),
+                                                                        applyBlock,
                                                                         chainTipToChainPoint,
-                                                                        envSecurityParam,
-                                                                        applyBlock)
+                                                                        envSecurityParam)
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONBlockNo (..),
                                                                         JSONChainPoint (..),
@@ -54,9 +54,9 @@ import           Convex.NodeClient.Types                               (ClientBl
                                                                         fromChainTip)
 import           Data.Aeson                                            (FromJSON,
                                                                         ToJSON)
+import           Data.Functor                                          ((<&>))
 import           Data.Sequence                                         (Seq)
 import qualified Data.Sequence                                         as Seq
-import           Data.Functor                                          ((<&>))
 import           GHC.Generics                                          (Generic)
 import           Network.TypedProtocol.Pipelined                       (Nat (..))
 import           Ouroboros.Consensus.Block.Abstract                    (WithOrigin (..))

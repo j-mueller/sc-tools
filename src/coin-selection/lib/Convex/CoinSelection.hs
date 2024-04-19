@@ -352,7 +352,7 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
             ]
       in traverse ( \(txIn, eWitness) ->
                       case eWitness of
-                        Left e -> Left e
+                        Left e    -> Left e
                         Right wit -> Right (txIn, wit)
                   ) mappedScriptWitnesses
 
@@ -375,7 +375,7 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
       in C.TxWithdrawals supported
          <$> traverse ( \(sAddr, ll, eWitness) ->
                           case eWitness of
-                            Left e -> Left e
+                            Left e    -> Left e
                             Right wit -> Right (sAddr, ll, wit)
                       ) mappedWithdrawals
       where
@@ -404,7 +404,7 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
       in C.TxCertificates supported certs . C.BuildTxWith . Map.fromList <$>
            traverse ( \(sCred, eScriptWitness) ->
                         case eScriptWitness of
-                          Left e -> Left e
+                          Left e    -> Left e
                           Right wit -> Right (sCred, wit)
                     ) mappedScriptWitnesses
 
@@ -432,7 +432,7 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
             ]
       in do final <- traverse ( \(pid, eScriptWitness) ->
                                    case eScriptWitness of
-                                     Left e -> Left e
+                                     Left e    -> Left e
                                      Right wit -> Right (pid, wit)
                               ) mappedScriptWitnesses
             Right . C.TxMintValue supported value . C.BuildTxWith

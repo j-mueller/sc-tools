@@ -88,17 +88,16 @@ module Convex.BuildTx(
 import           Cardano.Api.Shelley        (Hash, NetworkId, PaymentKey,
                                              PlutusScript, PlutusScriptV1,
                                              PlutusScriptV2, ScriptData,
-                                             ScriptHash, WitCtxTxIn,
-                                             Witness)
+                                             ScriptHash, WitCtxTxIn, Witness)
 import qualified Cardano.Api.Shelley        as C
 import qualified Cardano.Ledger.Core        as CLedger
 import           Control.Lens               (_1, _2, at, mapped, over, set,
                                              view, (&))
 import qualified Control.Lens               as L
 import           Control.Monad.Except       (MonadError (..))
+import           Control.Monad.Reader.Class (MonadReader (..))
 import qualified Control.Monad.State        as LazyState
 import           Control.Monad.State.Class  (MonadState (..))
-import           Control.Monad.Reader.Class (MonadReader (..))
 import qualified Control.Monad.State.Strict as StrictState
 import           Control.Monad.Trans.Class  (MonadTrans (..))
 import           Control.Monad.Trans.Except (ExceptT)
@@ -115,7 +114,7 @@ import           Convex.Scripts             (toScriptData)
 import           Data.Functor.Identity      (Identity (..))
 import           Data.List                  (nub)
 import qualified Data.Map                   as Map
-import           Data.Maybe                 (fromMaybe, fromJust)
+import           Data.Maybe                 (fromJust, fromMaybe)
 import qualified Data.Set                   as Set
 import qualified Plutus.V1.Ledger.Api       as Plutus
 
