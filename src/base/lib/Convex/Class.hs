@@ -3,12 +3,15 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Typeclass for blockchain operations
 -}
 module Convex.Class(
   MonadBlockchain(..),
+  trySendTx,
+  SendTxFailed(..),
   singleUTxO,
   MonadMockchain(..),
   MonadBlockchainError(..),
@@ -57,6 +60,7 @@ import           Convex.Constants                                  (ERA)
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     MonadLogIgnoreT (..),
                                                                     logInfoS,
+                                                                    logWarn,
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
@@ -73,11 +77,14 @@ import           Ouroboros.Consensus.HardFork.History              (interpretQue
 import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type   as T
 import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
 import qualified PlutusLedgerApi.V1                                as PV1
+import           Prettyprinter                                     (Pretty (..),
+                                                                    (<+>))
 
 {-| Send transactions and resolve tx inputs.
 -}
 class Monad m => MonadBlockchain m where
-  sendTx                  :: Tx BabbageEra -> m TxId -- ^ Submit a transaction to the network
+  -- see note Note [sendTx Failure]
+  sendTx                  :: Tx BabbageEra -> m (Either SendTxFailed TxId) -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
   queryProtocolParameters :: m (LedgerProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
   queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Lovelace, Map C.StakeAddress PoolId) -- ^ Get stake rewards
@@ -88,6 +95,12 @@ class Monad m => MonadBlockchain m where
                           -- ^ returns the current slot number, slot length and begin utc time for slot.
                           -- Slot 0 is returned when at genesis.
   networkId               :: m NetworkId -- ^ Get the network id
+
+{-| Try sending the transaction to the node, failing with 'error' if 'sendTx'
+  was not successful.
+-}
+trySendTx :: MonadBlockchain m => Tx BabbageEra -> m TxId
+trySendTx = fmap (either (error . show) id) . sendTx
 
 deriving newtype instance MonadBlockchain m => MonadBlockchain (MonadLogIgnoreT m)
 
@@ -231,12 +244,24 @@ nextSlot = modifySlot (\s -> (succ s, ()))
 data MonadBlockchainError e =
   MonadBlockchainError e
   | FailWith String
-  deriving stock (Eq, Functor, Generic)
-  deriving anyclass (ToJSON, FromJSON)
+  deriving stock (Functor, Generic, Show)
+  deriving anyclass (ToJSON)
 
-instance Show e => Show (MonadBlockchainError e) where
-  show (MonadBlockchainError e) = show e
-  show (FailWith str)           = str
+{- Note [sendTx Failure]
+
+It would be nice to return a more accurate error type than 'SendTxFailed',
+but our two implementations of 'MonadBlockchain' (mockchain and cardano-node backend)
+have different errors and it does not seem possible to find a common type.
+
+-}
+
+-- | Error message obtained when a transaction was not accepted by the node.
+--
+newtype SendTxFailed = SendTxFailed { unSendTxFailed :: String }
+  deriving stock (Eq, Ord, Show)
+
+instance Pretty SendTxFailed where
+  pretty (SendTxFailed msg) = "sendTx: Submission failed:" <+> pretty msg
 
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
@@ -275,15 +300,14 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
     let txId = C.getTxId (C.getTxBody tx)
     info <- ask
     result <- liftIO (C.submitTxToNodeLocal info (C.TxInMode C.ShelleyBasedEraBabbage tx))
-    -- TODO: Error should be reflected in return type of 'sendTx'
     case result of
       SubmitSuccess -> do
         logInfoS ("sendTx: Submitted " <> show txId)
-        pure txId
+        pure (Right txId)
       SubmitFail reason -> do
-        let msg = "sendTx: Submission failed: " <> show reason
-        logWarnS msg
-        throwError $ FailWith msg
+        let msg = SendTxFailed (show reason)
+        logWarn msg
+        pure (Left msg)
 
   utxoByTxIn txIns =
     runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))

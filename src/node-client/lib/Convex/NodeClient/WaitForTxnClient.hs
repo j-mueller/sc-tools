@@ -1,6 +1,6 @@
+{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| A node client that waits for a transaction to appear on the chain
@@ -12,8 +12,8 @@ module Convex.NodeClient.WaitForTxnClient(
 ) where
 
 import           Cardano.Api                (BlockInMode, ChainPoint, Env,
-                                             LocalNodeConnectInfo, TxId,
-                                             LedgerState)
+                                             LedgerState, LocalNodeConnectInfo,
+                                             TxId)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
 import           Control.Concurrent.STM     (TMVar, atomically, newEmptyTMVar,
@@ -26,9 +26,8 @@ import           Convex.Class               (MonadBlockchain (..))
 import           Convex.MonadLog            (MonadLog (..), logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..),
                                              LedgerStateArgs (..),
-                                             LedgerStateUpdate,
                                              LedgerStateMode (..),
-                                             foldClient)
+                                             LedgerStateUpdate, foldClient)
 import           Convex.NodeClient.Resuming (resumingClient)
 import           Convex.NodeClient.Types    (PipelinedLedgerStateClient,
                                              protocols)
