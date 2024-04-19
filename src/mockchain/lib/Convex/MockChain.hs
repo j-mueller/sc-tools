@@ -64,7 +64,8 @@ module Convex.MockChain(
   ) where
 
 import           Cardano.Api.Shelley                   (AddressInEra,
-                                                        BabbageEra, Hash,
+                                                        BabbageEra,
+                                                        Hash (StakePoolKeyHash),
                                                         ScriptData,
                                                         ShelleyLedgerEra,
                                                         SlotNo, Tx,
@@ -93,13 +94,16 @@ import           Cardano.Ledger.Shelley.API            (AccountState (..),
                                                         ApplyTxError, Coin (..),
                                                         LedgerEnv (..),
                                                         MempoolEnv,
+                                                        CertState (..),
                                                         MempoolState, UTxO (..),
                                                         UtxoEnv (..), Validated,
                                                         initialFundsPseudoTxIn)
 import qualified Cardano.Ledger.Shelley.API
 import           Cardano.Ledger.Shelley.LedgerState    (LedgerState (..),
                                                         UTxOState (..),
+                                                        rewards,
                                                         smartUTxOState)
+import           Cardano.Ledger.UMap                   ((⋪), rewardMap, sPoolMap)
 import qualified Cardano.Ledger.Val                    as Val
 import           Control.Lens                          (_1, _3, over, set, to,
                                                         view, (%=), (&), (.~),
@@ -136,6 +140,7 @@ import           Data.Foldable                         (for_, traverse_)
 import           Data.Functor.Identity                 (Identity (..))
 import           Data.Map                              (Map)
 import qualified Data.Map                              as Map
+import qualified Data.Set                              as Set
 import           Ouroboros.Consensus.Shelley.Eras      (EraCrypto)
 import qualified PlutusCore                            as PLC
 import           PlutusLedgerApi.Common                (mkTermToEvaluate)
@@ -350,6 +355,25 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     let mp' = Map.restrictKeys mp txIns
     pure (Cardano.Api.UTxO mp')
   queryProtocolParameters = MockchainT (asks npProtocolParameters)
+  queryStakeAddresses creds nid = MockchainT $ do
+    dState <- gets (certDState . lsCertState . view poolState)
+    let
+      -- (Map (Credential 'Staking StandardCrypto) (UMElem StandardCrypto))
+      rewards' = toLedgerStakeCredentials creds ⋪ rewards dState
+      rewardsMap =
+        Map.fromList
+          $ bimap
+              fromLedgerStakeAddress
+              Cardano.Api.fromShelleyLovelace <$> Map.toList (rewardMap rewards')
+      poolMap =
+        Map.fromList
+          $ bimap
+              fromLedgerStakeAddress
+              StakePoolKeyHash <$> Map.toList (sPoolMap rewards')
+    pure (rewardsMap, poolMap)
+    where
+      toLedgerStakeCredentials creds' = Set.fromList $ Cardano.Api.toShelleyStakeCredential <$> Set.toList creds'
+      fromLedgerStakeAddress = Cardano.Api.makeStakeAddress nid . Cardano.Api.fromShelleyStakeCredential
   queryStakePools = MockchainT (asks npStakePools)
   networkId = MockchainT (asks npNetworkId)
   querySystemStart = MockchainT (asks npSystemStart)

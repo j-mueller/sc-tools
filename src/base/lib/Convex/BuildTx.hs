@@ -237,6 +237,7 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
   sendTx = lift . sendTx
   utxoByTxIn = lift . utxoByTxIn
   queryProtocolParameters = lift queryProtocolParameters
+  queryStakeAddresses creds = lift . queryStakeAddresses creds
   queryStakePools = lift queryStakePools
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
