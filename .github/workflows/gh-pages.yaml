@@ -37,7 +37,7 @@ jobs:
       - name: Build haddocks
         run: |
           cabal update
-          ./scripts/haddocks.sh
+          cabal haddock-project --local --output=haddocks
 
       - name: Upload GH pages artifact
         uses: actions/upload-pages-artifact@v2.0.0
