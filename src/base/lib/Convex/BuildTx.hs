@@ -62,7 +62,10 @@ module Convex.BuildTx(
 
   -- ** Staking
   addWithdrawal,
+  addWithdrawZeroPlutusV2InTransaction,
+  addWithdrawZeroPlutusV2Reference,
   addCertificate,
+  addStakeCredentialCertificate,
   addStakeWitness,
 
   -- ** Minting and burning tokens
@@ -79,40 +82,42 @@ module Convex.BuildTx(
   setMinAdaDepositAll
   ) where
 
-import           Cardano.Api.Shelley        (Hash, HashableScriptData,
-                                             NetworkId, PaymentKey,
-                                             PlutusScript, PlutusScriptV1,
-                                             PlutusScriptV2, ScriptHash,
-                                             TxBodyContent (..), WitCtxTxIn,
-                                             Witness)
-import qualified Cardano.Api.Shelley        as C
-import           Control.Lens               (_1, _2, at, mapped, over, set,
-                                             view, (&))
-import qualified Control.Lens               as L
-import           Control.Monad.Except       (MonadError (..))
-import           Control.Monad.Reader.Class (MonadReader (..))
-import qualified Control.Monad.State        as LazyState
-import           Control.Monad.State.Class  (MonadState (..))
-import qualified Control.Monad.State.Strict as StrictState
-import           Control.Monad.Trans.Class  (MonadTrans (..))
-import           Control.Monad.Trans.Except (ExceptT)
-import           Control.Monad.Writer       (WriterT, execWriterT, runWriterT)
-import           Control.Monad.Writer.Class (MonadWriter (..))
-import           Convex.Class               (MonadBlockchain (..),
-                                             MonadBlockchainCardanoNodeT,
-                                             MonadMockchain (..))
-import qualified Convex.Lenses              as L
-import           Convex.MonadLog            (MonadLog (..), MonadLogIgnoreT,
-                                             MonadLogKatipT)
-import           Convex.Scripts             (toHashableScriptData)
-import           Data.Functor.Identity      (Identity (..))
-import           Data.List                  (nub)
-import           Data.Map                   (Map)
-import qualified Data.Map                   as Map
-import           Data.Maybe                 (fromMaybe)
-import           Data.Set                   (Set)
-import qualified Data.Set                   as Set
-import qualified PlutusLedgerApi.V1         as Plutus
+import           Cardano.Api.Shelley           (Hash, HashableScriptData,
+                                                NetworkId, PaymentKey,
+                                                PlutusScript, PlutusScriptV1,
+                                                PlutusScriptV2, ScriptHash,
+                                                TxBodyContent (..), WitCtxTxIn,
+                                                Witness)
+import qualified Cardano.Api.Shelley           as C
+import qualified Cardano.Ledger.Shelley.TxCert as TxCert
+import           Control.Lens                  (_1, _2, at, mapped, over, set,
+                                                view, (&))
+import qualified Control.Lens                  as L
+import           Control.Monad.Except          (MonadError (..))
+import           Control.Monad.Reader.Class    (MonadReader (..))
+import qualified Control.Monad.State           as LazyState
+import           Control.Monad.State.Class     (MonadState (..))
+import qualified Control.Monad.State.Strict    as StrictState
+import           Control.Monad.Trans.Class     (MonadTrans (..))
+import           Control.Monad.Trans.Except    (ExceptT)
+import           Control.Monad.Writer          (WriterT, execWriterT,
+                                                runWriterT)
+import           Control.Monad.Writer.Class    (MonadWriter (..))
+import           Convex.Class                  (MonadBlockchain (..),
+                                                MonadBlockchainCardanoNodeT,
+                                                MonadMockchain (..))
+import qualified Convex.Lenses                 as L
+import           Convex.MonadLog               (MonadLog (..), MonadLogIgnoreT,
+                                                MonadLogKatipT)
+import           Convex.Scripts                (toHashableScriptData)
+import           Data.Functor.Identity         (Identity (..))
+import           Data.List                     (nub)
+import           Data.Map                      (Map)
+import qualified Data.Map                      as Map
+import           Data.Maybe                    (fromMaybe)
+import           Data.Set                      (Set)
+import qualified Data.Set                      as Set
+import qualified PlutusLedgerApi.V1            as Plutus
 
 {-| A map of all inputs of the final transaction produced by a @TxBuilder@
 -}
@@ -508,12 +513,38 @@ addWithdrawal address amount witness =
   let withdrawal = (address, C.quantityToLovelace amount, C.BuildTxWith witness)
   in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
 
+{-| Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
+Includes the script in the transaction.
+-}
+addWithdrawZeroPlutusV2InTransaction :: (MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => PlutusScript PlutusScriptV2 -> redeemer -> m ()
+addWithdrawZeroPlutusV2InTransaction script redeemer = do
+  n <- networkId
+  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
+      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) C.NoScriptDatumForStake (toHashableScriptData redeemer) (C.ExecutionUnits 0 0))
+  addWithdrawal addr 0 wit
+
+{-| Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
+The script is provided as a reference input.
+-}
+addWithdrawZeroPlutusV2Reference :: (MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> ScriptHash -> redeemer -> m ()
+addWithdrawZeroPlutusV2Reference refTxIn script redeemer = do
+  n <- networkId
+  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript script
+      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn (Just script)) C.NoScriptDatumForStake (toHashableScriptData redeemer) (C.ExecutionUnits 0 0))
+  addWithdrawal addr 0 wit
+
 {-| Add a certificate (stake delegation, stake pool registration, etc)
 to the transaction
 -}
 addCertificate :: MonadBuildTx m => C.Certificate C.BabbageEra -> m ()
 addCertificate cert =
   addBtx (over (L.txCertificates . L._TxCertificates . _1) ((:) cert))
+
+{-| Add a 'C.StakeCredential' as a certificate to the transaction
+-}
+addStakeCredentialCertificate :: MonadBuildTx m => C.StakeCredential -> m ()
+addStakeCredentialCertificate =
+  addCertificate . C.ShelleyRelatedCertificate C.ShelleyToBabbageEraBabbage . TxCert.RegTxCert . C.toShelleyStakeCredential
 
 {-| Add a stake witness to the transaction
 -}
