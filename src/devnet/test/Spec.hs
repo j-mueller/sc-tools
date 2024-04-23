@@ -3,12 +3,14 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE OverloadedStrings  #-}
 module Main where
 
 import qualified Cardano.Api                as C
 import qualified Cardano.Api.Shelley        as C
 import           Control.Monad.Except       (runExceptT)
-import           Convex.Devnet.CardanoNode  (NodeLog, RunningNode (..),
+import           Control.Concurrent         (threadDelay)
+import           Convex.Devnet.CardanoNode  (NodeLog (..), RunningNode (..),
                                              RunningStakePoolNode (..),
                                              StakePoolNodeParams (..),
                                              GenesisConfigChanges (..),
@@ -17,8 +19,7 @@ import           Convex.Devnet.CardanoNode  (NodeLog, RunningNode (..),
                                              getCardanoNodeVersion,
                                              withCardanoNodeDevnet,
                                              withCardanoNodeDevnetConfig,
-                                             withCardanoStakePoolNodeDevnetConfig,
-                                             waitForNextEpoch)
+                                             withCardanoStakePoolNodeDevnetConfig)
 import           Convex.Devnet.Logging      (contramap, showLogsOnFailure)
 import           Convex.Devnet.NodeQueries  (loadConnectInfo)
 import           Convex.Devnet.Utils        (failAfter, failure, withTempDir)
@@ -37,6 +38,7 @@ import qualified Data.Set                   as Set
 import qualified Data.Map                   as Map
 import           GHC.Generics               (Generic)
 import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
+import           System.FilePath            ((</>))
 import           Test.Tasty                 (defaultMain, testGroup)
 import           Test.Tasty.HUnit           (assertBool, assertEqual, testCase)
 
@@ -49,7 +51,7 @@ main = do
     , testCase "make a payment" makePayment
     , testCase "start local stake pool node" startLocalStakePoolNode
     , testCase "stake pool registration" registeredStakePoolNode
-    , testCase "stake reward" stakeReward
+    , testCase "stake pool rewards" stakePoolRewards
     , testCase "run the wallet server" runWalletServer
     , testCase "change max tx size" changeMaxTxSize
     ]
@@ -74,12 +76,13 @@ startLocalStakePoolNode = do
   showLogsOnFailure $ \tr -> do
     failAfter 10 $
       withTempDir "cardano-cluster" $ \tmp -> do
-        withCardanoNodeDevnet (contramap TLNode tr)  tmp $ \runningNode -> do
+        withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode -> do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
+              nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode $ \RunningStakePoolNode{rspnNode} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile 3002 [3001] runningNode $ \RunningStakePoolNode{rspnNode} -> do
               runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
                 Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
                 Right{}  -> pure ()
@@ -92,41 +95,63 @@ registeredStakePoolNode = do
         withCardanoNodeDevnet (contramap TLNode tr)  tmp $ \runningNode@RunningNode{rnConnectInfo} -> do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
+              nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let mode = fst rnConnectInfo
           initialStakePools <- queryStakePools mode
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams mempty runningNode $ \_ -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile 3002 [3001]  runningNode $ \_ -> do
               currentStakePools <- queryStakePools mode
               let
                 initial = length initialStakePools
                 current = length currentStakePools
               assertEqual "Blockchain should have one new registered stake pool" 1 (current - initial)
 
-stakeReward :: IO ()
-stakeReward = do
+stakePoolRewards :: IO ()
+stakePoolRewards = do
   showLogsOnFailure $ \tr -> do
-    failAfter 10 $
+    failAfter 50 $
       withTempDir "cardano-cluster" $ \tmp -> do
-        withCardanoNodeDevnetConfig (contramap TLNode tr) tmp confChange $ \runningNode@RunningNode{rnConnectInfo} -> do
-          let lovelacePerUtxo = 1_000_000_000
-              numUtxos        = 10
+        withCardanoNodeDevnetConfig (contramap TLNode tr) tmp confChange 3001 [3002] $ \runningNode -> do
+          let lovelacePerUtxo = 10_000_000_000
+              numUtxos        = 4
+              nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          let mode = fst rnConnectInfo
-              stakepoolParams = StakePoolNodeParams 400 (1 % 100) 100_000_000
+          let stakepoolParams = StakePoolNodeParams 340_000_000 (1 % 100) 10_000_000_000 --100_000_000
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams confChange runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
-              let nid = rnNetworkId rspnNode
-                  stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams nodeConfigFile 3002 [3001] runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
+              let stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
                   stakeCred = C.StakeCredentialByKey stakeHash
-              oldRewards <- sum . Map.elems . fst <$> queryStakeAddresses mode (Set.singleton stakeCred) nid
-              _ <- waitForNextEpoch runningNode
-              newRewards <- sum . Map.elems . fst <$> queryStakeAddresses mode (Set.singleton stakeCred) nid
+              rewards <- waitForStakeRewards rspnNode  stakeCred
+              assertBool "Expect staking rewards" $ rewards > 0
+    where
+      confChange =
+        GenesisConfigChanges
+          (\g -> g
+            { C.sgEpochLength = 10
+            , C.sgSlotLength = 1
+            , C.sgSecurityParam = 1
+            }
+          ) id
 
-              assertBool "Expect staking rewards" $ oldRewards < newRewards
-  where
-    confChange =
-      GenesisConfigChanges (\g -> g {C.sgEpochLength = 1}) id
+      getStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Lovelace
+      getStakeRewards RunningNode{rnConnectInfo, rnNetworkId} cred =
+        let
+          mode  = fst rnConnectInfo
+          creds = Set.singleton cred
+        in
+         sum . Map.elems . fst <$> queryStakeAddresses mode creds rnNetworkId
+
+      waitForStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Lovelace
+      waitForStakeRewards node cred =
+        getStakeRewards node cred >>= waitForStakeRewards' node cred
+
+      waitForStakeRewards' :: RunningNode -> C.StakeCredential -> C.Lovelace -> IO C.Lovelace
+      waitForStakeRewards' node cred amount = do
+        rewards <- getStakeRewards node cred
+        if rewards > amount then
+          pure rewards else
+          threadDelay 1_000_000 >> waitForStakeRewards' node cred amount
 
 makePayment :: IO ()
 makePayment = do
@@ -156,8 +181,8 @@ changeMaxTxSize =
   let getMaxTxSize = fmap C.protocolParamMaxTxSize . queryProtocolParameters . fst . rnConnectInfo in
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
-      standardTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp mempty getMaxTxSize
-      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions getMaxTxSize
+      standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize
+      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions 3001 [] getMaxTxSize
       assertEqual "tx size should be large" (2 * standardTxSize) largeTxSize
 
 data TestLog =

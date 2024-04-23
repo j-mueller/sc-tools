@@ -128,13 +128,13 @@ data CardanoNodeArgs = CardanoNodeArgs
   , nodeKesKeyFile         :: Maybe FilePath
   , nodeVrfKeyFile         :: Maybe FilePath
   , nodePort               :: Maybe Port
-  }
+  } deriving Show
 
 defaultCardanoNodeArgs :: CardanoNodeArgs
 defaultCardanoNodeArgs =
   CardanoNodeArgs
     { nodeSocket = "node.socket"
-    , nodeConfigFile = "configuration.json"
+    , nodeConfigFile = "cardano-node.json"
     , nodeByronGenesisFile = "genesis-byron.json"
     , nodeShelleyGenesisFile = "genesis-shelley.json"
     , nodeAlonzoGenesisFile = "genesis-alonzo.json"
@@ -360,7 +360,7 @@ withCardanoNodeDevnet ::
   (RunningNode -> IO a) ->
   IO a
 withCardanoNodeDevnet tracer stateDirectory action =
-  withCardanoNodeDevnetConfig tracer stateDirectory mempty action
+  withCardanoNodeDevnetConfig tracer stateDirectory mempty 3001 [] action
 
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
@@ -371,9 +371,14 @@ withCardanoNodeDevnetConfig ::
   FilePath ->
   -- | Changes to apply to the default genesis configurations
   GenesisConfigChanges ->
+  -- | Port on which the node is running
+  Port ->
+  -- | Ports on which all other nodes in the network run
+  [Port] ->
+  -- | Action
   (RunningNode -> IO a) ->
   IO a
-withCardanoNodeDevnetConfig tracer stateDirectory configChanges action = do
+withCardanoNodeDevnetConfig tracer stateDirectory configChanges port topology action = do
   createDirectoryIfMissing True stateDirectory
   [dlgCert, signKey, vrfKey, kesKey, opCert] <-
     mapM
@@ -391,10 +396,11 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges action = do
           , nodeVrfKeyFile = Just vrfKey
           , nodeKesKeyFile = Just kesKey
           , nodeOpCertFile = Just opCert
+          , nodePort = Just port
           }
   copyDevnetFiles args
   refreshSystemStart stateDirectory args
-  writeTopology [] args
+  writeTopology topology args
 
   withCardanoNode tracer networkId stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
@@ -482,6 +488,7 @@ refreshSystemStart stateDirectory args = do
       <&> addField "ByronGenesisHash" byronGenesisHash
       <&> addField "ShelleyGenesisFile" (nodeShelleyGenesisFile args)
       <&> addField "ShelleyGenesisHash" shelleyGenesisHash
+      <&> addField "AlonzoGenesisFile" (nodeAlonzoGenesisFile args)
       <&> addField "AlonzoGenesisHash" alonzoGenesisHash
 
   Aeson.encodeFile (stateDirectory </> nodeConfigFile args) config
@@ -522,9 +529,7 @@ computeGenesisHash fp =
   -- drop the last character (newline)
   take 64 <$> readProcess "cardano-cli" ["genesis", "hash", "--genesis", fp] ""
 
-
-{-| TODO: comment
--}
+-- | Stake pool node params
 data StakePoolNodeParams = StakePoolNodeParams
   { spnCost   :: Lovelace
   , spnMargin :: Rational
@@ -534,8 +539,7 @@ data StakePoolNodeParams = StakePoolNodeParams
 defaultStakePoolNodeParams :: StakePoolNodeParams
 defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
 
-{-| TODO: comment
--}
+-- | Launch a Cardano stake pool node with predefined node configuration, port and topology.
 withCardanoStakePoolNodeDevnetConfig ::
   Tracer IO NodeLog ->
   -- | State directory in which credentials, db & logs are persisted.
@@ -544,12 +548,18 @@ withCardanoStakePoolNodeDevnetConfig ::
   Wallet ->
   -- | Stake pool params
   StakePoolNodeParams ->
-  -- | Changes to apply to the default genesis configurations
-  GenesisConfigChanges ->
+  -- | The absolute path of the cardano-node.json configuration file
+  FilePath ->
+  -- | Port on which the node is running
+  Port ->
+  -- | Ports on which all other nodes in the network run
+  [Port] ->
+  -- | Running node
   RunningNode ->
+  -- | Action
   (RunningStakePoolNode -> IO a) ->
   IO a
-withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configChanges node@RunningNode{rnNodeSocket, rnNetworkId} action = do
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile port topology node@RunningNode{rnNodeSocket, rnNetworkId} action = do
   createDirectoryIfMissing True stateDirectory
   
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -575,11 +585,12 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
         (paymentCredential wallet)
         (StakeAddressByValue stakeCred)
 
-    poolId = C.verificationKeyHash . C.getVerificationKey $ stakePoolKey
+    stakePoolVerKey = C.getVerificationKey stakePoolKey
+    poolId = C.verificationKeyHash stakePoolVerKey
 
     delegationCert =
       C.makeStakeAddressDelegationCertificate stakeCred poolId
-
+    
     stakePoolParams = 
      StakePoolParameters
        poolId
@@ -588,8 +599,8 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
        (spnMargin params)
        stakeAddress
        (spnPledge params)
-       [stakeHash]
-       [] -- no relays
+       [stakeHash] -- owners
+       [] -- relays
        Nothing
 
     poolCert = 
@@ -598,18 +609,16 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
   -- create the node certificate
   let
     opCertCounter =
-      OperationalCertificateIssueCounter 0 (C.getVerificationKey stakePoolKey)
-    -- slotsPerKESPeriod from config/genesis-shelley.json
-    slotsPerKESPeriod = 129600
-    -- Word64 to Word
-    kesPeriod = KESPeriod . fromIntegral . div slotNo $ slotsPerKESPeriod
+      OperationalCertificateIssueCounter 0 stakePoolVerKey
+    slotsPerKESPeriod = 129600 -- slotsPerKESPeriod from config/genesis-shelley.json
+    kesPeriod = KESPeriod . fromIntegral . div slotNo $ slotsPerKESPeriod -- Word64 to Word
     opCert = C.issueOperationalCertificate
       (C.getVerificationKey kesKey)
       (Left stakePoolKey)
       kesPeriod
       opCertCounter
   
-  (opCert', opCertCounter') <- case opCert of
+  (nextOpCert, nextOpCertCounter) <- case opCert of
     Left _    -> failure "withCardanoStakePoolNodeDevnetConfig: Issue operational certificate failure"
     Right res -> pure res
 
@@ -635,47 +644,33 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params configC
   _ <- W.balanceAndSubmit mempty node wallet delegCertTx [WitnessStakeKey stakeKey, WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node >>= traceWith tracer . MsgFoundBlock . C.unBlockNo
 
+  vrfKeyFile <- writeEnvelope vrfKey "vrf.skey"
+  kesKeyFile <- writeEnvelope kesKey "kes.skey"
+  opCertFile <- writeEnvelope nextOpCert "opcert.cert"
+
   let
-    vrfKeyFile = "vrf.skey"
-    kesKeyFile = "kes.skey"
-    opCertFile = "opcert.cert"
     args =
         defaultCardanoNodeArgs
           { nodeVrfKeyFile = Just vrfKeyFile
           , nodeKesKeyFile = Just kesKeyFile
           , nodeOpCertFile = Just opCertFile
+          , nodePort = Just port
+          , nodeConfigFile = nodeConfigFile
           }
 
-  void $ C.writeFileTextEnvelopeWithOwnerPermissions (stateDirectory </> vrfKeyFile) Nothing vrfKey
-  void $ C.writeFileTextEnvelopeWithOwnerPermissions (stateDirectory </> kesKeyFile) Nothing kesKey
-  void $ C.writeFileTextEnvelopeWithOwnerPermissions (stateDirectory </> opCertFile) Nothing opCert'
-
-  copyDevnetFiles args
-  refreshSystemStart stateDirectory args
-  writeTopology [] args -- TODO: Do I need to know all nodes?
+  writeTopology topology args
 
   withCardanoNode tracer rnNetworkId stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
-    action (RunningStakePoolNode rn stakeKey vrfKey kesKey stakePoolKey opCertCounter')
+    action (RunningStakePoolNode rn stakeKey vrfKey kesKey stakePoolKey nextOpCertCounter)
  where
 
-  GenesisConfigChanges{cfAlonzo, cfShelley} = configChanges
-
-  copyDevnetFiles args = do
-    readConfigFile ("devnet" </> "cardano-node.json")
-      >>= BS.writeFile
-        (stateDirectory </> nodeConfigFile args)
-    readConfigFile ("devnet" </> "genesis-byron.json")
-      >>= BS.writeFile
-        (stateDirectory </> nodeByronGenesisFile args)
-    readConfigFile ("devnet" </> "genesis-shelley.json")
-      >>= copyAndChangeJSONFile
-        cfShelley
-        (stateDirectory </> nodeShelleyGenesisFile args)
-    readConfigFile ("devnet" </> "genesis-alonzo.json")
-      >>= copyAndChangeJSONFile
-        cfAlonzo
-        (stateDirectory </> nodeAlonzoGenesisFile args)
+  writeEnvelope :: C.HasTextEnvelope a => a -> FilePath -> IO FilePath
+  writeEnvelope envelope name = do
+    let destination = stateDirectory </> name
+    void $ C.writeFileTextEnvelope destination Nothing envelope
+    setFileMode destination ownerReadMode
+    return name
 
   writeTopology peers args =
     Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
