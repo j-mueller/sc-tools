@@ -4,6 +4,7 @@
 module Convex.Devnet.CardanoNode.Types (
   Port,
   PortsConfig (..),
+  GenesisConfigChanges (..),
   RunningNode (..),
   RunningStakePoolNode (..),
   StakePoolNodeParams (..),
@@ -15,7 +16,10 @@ import           Cardano.Api                      (CardanoMode, Env,
                                                    NetworkId, Lovelace)
 import           Cardano.Api.Shelley              (StakeKey, Key(..), VrfKey,
                                                    KesKey, StakePoolKey,
-                                                   OperationalCertificateIssueCounter)
+                                                   OperationalCertificateIssueCounter,
+                                                   ShelleyGenesis)
+import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
+import           Ouroboros.Consensus.Shelley.Eras (BabbageEra, StandardCrypto)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
@@ -63,3 +67,21 @@ data StakePoolNodeParams = StakePoolNodeParams
 
 defaultStakePoolNodeParams :: StakePoolNodeParams
 defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
+
+{-| Modifications to apply to the default genesis configurations
+-}
+data GenesisConfigChanges =
+  GenesisConfigChanges
+    { cfShelley :: ShelleyGenesis (BabbageEra StandardCrypto) -> ShelleyGenesis (BabbageEra StandardCrypto)
+    , cfAlonzo  :: AlonzoGenesis -> AlonzoGenesis
+    }
+
+instance Semigroup GenesisConfigChanges where
+  l <> r =
+    GenesisConfigChanges
+      { cfShelley = cfShelley r . cfShelley l
+      , cfAlonzo  = cfAlonzo  r . cfAlonzo l
+      }
+
+instance Monoid GenesisConfigChanges where
+  mempty = GenesisConfigChanges id id

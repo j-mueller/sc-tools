@@ -39,7 +39,6 @@ import           Cardano.Api.Shelley              (KESPeriod (..),
                                                    StakePoolParameters (..),
                                                    OperationalCertificateIssueCounter (..),
                                                    ShelleyWitnessSigningKey (..))
-import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
 import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
 import           Cardano.Ledger.Shelley.PParams   (PParams, _maxTxSize)
 import           Cardano.Slotting.Slot            (withOriginToMaybe)
@@ -55,7 +54,8 @@ import           Control.Tracer                   (Tracer, traceWith)
 import           Convex.Devnet.CardanoNode.Types  (Port, RunningNode (..),
                                                    PortsConfig (..),
                                                    RunningStakePoolNode (..),
-                                                   StakePoolNodeParams (..))
+                                                   StakePoolNodeParams (..),
+                                                   GenesisConfigChanges (..))
 import qualified Convex.Devnet.NodeQueries        as Q
 import qualified Convex.Devnet.Wallet             as W
 import           Convex.Devnet.Utils              (checkProcessHasNotDied,
@@ -292,25 +292,6 @@ waitForNextEpoch' n@RunningNode{rnNodeSocket, rnNetworkId} epochNo = do
   if currentEpochNo > epochNo then
     pure currentEpochNo else
     threadDelay 1_000_000 >> waitForNextEpoch' n epochNo
-
-
-{-| Modifications to apply to the default genesis configurations
--}
-data GenesisConfigChanges =
-  GenesisConfigChanges
-    { cfShelley :: ShelleyGenesis (BabbageEra StandardCrypto) -> ShelleyGenesis (BabbageEra StandardCrypto)
-    , cfAlonzo  :: AlonzoGenesis -> AlonzoGenesis
-    }
-
-instance Semigroup GenesisConfigChanges where
-  l <> r =
-    GenesisConfigChanges
-      { cfShelley = cfShelley r . cfShelley l
-      , cfAlonzo  = cfAlonzo  r . cfAlonzo l
-      }
-
-instance Monoid GenesisConfigChanges where
-  mempty = GenesisConfigChanges id id
 
 -- {-| Change the alonzo genesis config to allow transactions with up to twice the normal size
 -- -}

@@ -12,10 +12,10 @@ import           Control.Monad.Except            (runExceptT)
 import           Control.Concurrent              (threadDelay)
 import           Convex.Devnet.CardanoNode.Types (StakePoolNodeParams (..),
                                                   PortsConfig (..),
+                                                  GenesisConfigChanges (..),
                                                   defaultStakePoolNodeParams)
 import           Convex.Devnet.CardanoNode       (NodeLog (..), RunningNode (..),
                                                   RunningStakePoolNode (..),
-                                                  GenesisConfigChanges (..),
                                                   allowLargeTransactions,
                                                   getCardanoNodeVersion,
                                                   withCardanoNodeDevnet,
