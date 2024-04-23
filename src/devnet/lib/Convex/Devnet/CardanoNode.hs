@@ -14,9 +14,7 @@ module Convex.Devnet.CardanoNode(
   RunningNode(..),
   DevnetConfig(..),
   CardanoNodeArgs(..),
-  StakePoolNodeParams(..),
   RunningStakePoolNode(..),
-  defaultStakePoolNodeParams,
   defaultCardanoNodeArgs,
   withCardanoNode,
   getCardanoNodeVersion,
@@ -34,7 +32,7 @@ module Convex.Devnet.CardanoNode(
   withCardanoStakePoolNodeDevnetConfig
 ) where
 
-import           Cardano.Api                      (NetworkId, Lovelace)
+import           Cardano.Api                      (NetworkId)
 import qualified Cardano.Api                      as C
 import           Cardano.Api.Shelley              (KESPeriod (..),
                                                    StakeCredential (..),
@@ -55,8 +53,10 @@ import           Control.Exception                (finally, throwIO)
 import           Control.Monad                    (unless, when, void, (>=>))
 import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
-import           Convex.Devnet.CardanoNode.Types  (RunningNode (..),
-                                                   RunningStakePoolNode (..))
+import           Convex.Devnet.CardanoNode.Types  (Port, RunningNode (..),
+                                                   PortsConfig (..),
+                                                   RunningStakePoolNode (..),
+                                                   StakePoolNodeParams (..))
 import qualified Convex.Devnet.NodeQueries        as Q
 import qualified Convex.Devnet.Wallet             as W
 import           Convex.Devnet.Utils              (checkProcessHasNotDied,
@@ -73,7 +73,6 @@ import qualified Data.ByteString                  as BS
 import qualified Data.ByteString.Lazy             as BSL
 import           Data.Fixed                       (Centi)
 import           Data.Functor                     ((<&>))
-import           Data.Ratio                       ((%))
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
 import           Data.Time.Clock                  (UTCTime, addUTCTime,
@@ -95,8 +94,6 @@ import           System.Process                   (CreateProcess (..),
                                                    withCreateProcess)
 
 import           Prelude
-
-type Port = Int
 
 newtype NodeId = NodeId Int
   deriving newtype (Eq, Show, Num, ToJSON, FromJSON)
@@ -147,17 +144,6 @@ defaultCardanoNodeArgs =
     , nodeVrfKeyFile = Nothing
     , nodePort = Nothing
     }
-
--- | Configuration of ports from the perspective of a peer in the context of a
--- fully sockected topology.
-data PortsConfig = PortsConfig
-  { -- | Our node TCP port.
-    ours  :: Port
-  , -- | Other peers TCP ports.
-    peers :: [Port]
-  }
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (ToJSON, FromJSON)
 
 getCardanoNodeVersion :: IO String
 getCardanoNodeVersion =
@@ -360,7 +346,7 @@ withCardanoNodeDevnet ::
   (RunningNode -> IO a) ->
   IO a
 withCardanoNodeDevnet tracer stateDirectory action =
-  withCardanoNodeDevnetConfig tracer stateDirectory mempty 3001 [] action
+  withCardanoNodeDevnetConfig tracer stateDirectory mempty (PortsConfig 3001 []) action
 
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
@@ -371,14 +357,12 @@ withCardanoNodeDevnetConfig ::
   FilePath ->
   -- | Changes to apply to the default genesis configurations
   GenesisConfigChanges ->
-  -- | Port on which the node is running
-  Port ->
-  -- | Ports on which all other nodes in the network run
-  [Port] ->
+  -- | Ports config
+  PortsConfig ->
   -- | Action
   (RunningNode -> IO a) ->
   IO a
-withCardanoNodeDevnetConfig tracer stateDirectory configChanges port topology action = do
+withCardanoNodeDevnetConfig tracer stateDirectory configChanges PortsConfig{ours, peers} action = do
   createDirectoryIfMissing True stateDirectory
   [dlgCert, signKey, vrfKey, kesKey, opCert] <-
     mapM
@@ -396,11 +380,11 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges port topology ac
           , nodeVrfKeyFile = Just vrfKey
           , nodeKesKeyFile = Just kesKey
           , nodeOpCertFile = Just opCert
-          , nodePort = Just port
+          , nodePort = Just ours
           }
   copyDevnetFiles args
   refreshSystemStart stateDirectory args
-  writeTopology topology args
+  writeTopology peers stateDirectory args
 
   withCardanoNode tracer networkId stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
@@ -436,9 +420,10 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges port topology ac
         cfAlonzo
         (stateDirectory </> nodeAlonzoGenesisFile args)
 
-  writeTopology peers args =
-    Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
-      mkTopology peers
+writeTopology :: [Port] -> FilePath -> CardanoNodeArgs -> IO ()
+writeTopology peers stateDirectory args =
+  Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
+    mkTopology peers
 
 {-| Decode a json file, change the value, and write the result to another JSON file
 -}
@@ -529,16 +514,6 @@ computeGenesisHash fp =
   -- drop the last character (newline)
   take 64 <$> readProcess "cardano-cli" ["genesis", "hash", "--genesis", fp] ""
 
--- | Stake pool node params
-data StakePoolNodeParams = StakePoolNodeParams
-  { spnCost   :: Lovelace
-  , spnMargin :: Rational
-  , spnPledge :: Lovelace
-  }
-
-defaultStakePoolNodeParams :: StakePoolNodeParams
-defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
-
 -- | Launch a Cardano stake pool node with predefined node configuration, port and topology.
 withCardanoStakePoolNodeDevnetConfig ::
   Tracer IO NodeLog ->
@@ -550,16 +525,14 @@ withCardanoStakePoolNodeDevnetConfig ::
   StakePoolNodeParams ->
   -- | The absolute path of the cardano-node.json configuration file
   FilePath ->
-  -- | Port on which the node is running
-  Port ->
-  -- | Ports on which all other nodes in the network run
-  [Port] ->
+  -- | Ports config
+  PortsConfig ->
   -- | Running node
   RunningNode ->
   -- | Action
   (RunningStakePoolNode -> IO a) ->
   IO a
-withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile port topology node@RunningNode{rnNodeSocket, rnNetworkId} action = do
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile PortsConfig{ours, peers} node@RunningNode{rnNodeSocket, rnNetworkId} action = do
   createDirectoryIfMissing True stateDirectory
   
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -654,11 +627,11 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
           { nodeVrfKeyFile = Just vrfKeyFile
           , nodeKesKeyFile = Just kesKeyFile
           , nodeOpCertFile = Just opCertFile
-          , nodePort = Just port
+          , nodePort = Just ours
           , nodeConfigFile = nodeConfigFile
           }
 
-  writeTopology topology args
+  writeTopology peers stateDirectory args
 
   withCardanoNode tracer rnNetworkId stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
@@ -671,7 +644,3 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     void $ C.writeFileTextEnvelope destination Nothing envelope
     setFileMode destination ownerReadMode
     return name
-
-  writeTopology peers args =
-    Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
-      mkTopology peers

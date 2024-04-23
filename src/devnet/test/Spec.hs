@@ -6,41 +6,42 @@
 {-# LANGUAGE OverloadedStrings  #-}
 module Main where
 
-import qualified Cardano.Api                as C
-import qualified Cardano.Api.Shelley        as C
-import           Control.Monad.Except       (runExceptT)
-import           Control.Concurrent         (threadDelay)
-import           Convex.Devnet.CardanoNode  (NodeLog (..), RunningNode (..),
-                                             RunningStakePoolNode (..),
-                                             StakePoolNodeParams (..),
-                                             GenesisConfigChanges (..),
-                                             defaultStakePoolNodeParams,
-                                             allowLargeTransactions,
-                                             getCardanoNodeVersion,
-                                             withCardanoNodeDevnet,
-                                             withCardanoNodeDevnetConfig,
-                                             withCardanoStakePoolNodeDevnetConfig)
-import           Convex.Devnet.Logging      (contramap, showLogsOnFailure)
-import           Convex.Devnet.NodeQueries  (loadConnectInfo)
-import           Convex.Devnet.Utils        (failAfter, failure, withTempDir)
-import           Convex.Devnet.Wallet       (WalletLog)
-import qualified Convex.Devnet.Wallet       as W
-import           Convex.Devnet.WalletServer (getUTxOs, withWallet)
-import qualified Convex.Devnet.WalletServer as WS
-import           Convex.NodeQueries         (queryProtocolParameters,
-                                             queryStakePools, queryStakeAddresses)
-import qualified Convex.Utxos               as Utxos
-import           Data.Aeson                 (FromJSON, ToJSON)
-import           Data.List                  (isInfixOf)
-import qualified Data.Text                  as Text
-import           Data.Ratio                 ((%))
-import qualified Data.Set                   as Set
-import qualified Data.Map                   as Map
-import           GHC.Generics               (Generic)
-import           GHC.IO.Encoding            (setLocaleEncoding, utf8)
-import           System.FilePath            ((</>))
-import           Test.Tasty                 (defaultMain, testGroup)
-import           Test.Tasty.HUnit           (assertBool, assertEqual, testCase)
+import qualified Cardano.Api                     as C
+import qualified Cardano.Api.Shelley             as C
+import           Control.Monad.Except            (runExceptT)
+import           Control.Concurrent              (threadDelay)
+import           Convex.Devnet.CardanoNode.Types (StakePoolNodeParams (..),
+                                                  PortsConfig (..),
+                                                  defaultStakePoolNodeParams)
+import           Convex.Devnet.CardanoNode       (NodeLog (..), RunningNode (..),
+                                                  RunningStakePoolNode (..),
+                                                  GenesisConfigChanges (..),
+                                                  allowLargeTransactions,
+                                                  getCardanoNodeVersion,
+                                                  withCardanoNodeDevnet,
+                                                  withCardanoNodeDevnetConfig,
+                                                  withCardanoStakePoolNodeDevnetConfig)
+import           Convex.Devnet.Logging           (contramap, showLogsOnFailure)
+import           Convex.Devnet.NodeQueries       (loadConnectInfo)
+import           Convex.Devnet.Utils             (failAfter, failure, withTempDir)
+import           Convex.Devnet.Wallet            (WalletLog)
+import qualified Convex.Devnet.Wallet            as W
+import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
+import qualified Convex.Devnet.WalletServer      as WS
+import           Convex.NodeQueries              (queryProtocolParameters,
+                                                  queryStakePools, queryStakeAddresses)
+import qualified Convex.Utxos                    as Utxos
+import           Data.Aeson                      (FromJSON, ToJSON)
+import           Data.List                       (isInfixOf)
+import qualified Data.Text                       as Text
+import           Data.Ratio                      ((%))
+import qualified Data.Set                        as Set
+import qualified Data.Map                        as Map
+import           GHC.Generics                    (Generic)
+import           GHC.IO.Encoding                 (setLocaleEncoding, utf8)
+import           System.FilePath                 ((</>))
+import           Test.Tasty                      (defaultMain, testGroup)
+import           Test.Tasty.HUnit                (assertBool, assertEqual, testCase)
 
 main :: IO ()
 main = do
@@ -82,7 +83,7 @@ startLocalStakePoolNode = do
               nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile 3002 [3001] runningNode $ \RunningStakePoolNode{rspnNode} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode} -> do
               runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
                 Left err -> failure (Text.unpack (C.renderInitialLedgerStateError err))
                 Right{}  -> pure ()
@@ -100,7 +101,7 @@ registeredStakePoolNode = do
           let mode = fst rnConnectInfo
           initialStakePools <- queryStakePools mode
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile 3002 [3001]  runningNode $ \_ -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001])  runningNode $ \_ -> do
               currentStakePools <- queryStakePools mode
               let
                 initial = length initialStakePools
@@ -112,14 +113,14 @@ stakePoolRewards = do
   showLogsOnFailure $ \tr -> do
     failAfter 50 $
       withTempDir "cardano-cluster" $ \tmp -> do
-        withCardanoNodeDevnetConfig (contramap TLNode tr) tmp confChange 3001 [3002] $ \runningNode -> do
+        withCardanoNodeDevnetConfig (contramap TLNode tr) tmp confChange (PortsConfig 3001 [3002]) $ \runningNode -> do
           let lovelacePerUtxo = 10_000_000_000
               numUtxos        = 4
               nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let stakepoolParams = StakePoolNodeParams 340_000_000 (1 % 100) 10_000_000_000 --100_000_000
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams nodeConfigFile 3002 [3001] runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams nodeConfigFile (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
               let stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
                   stakeCred = C.StakeCredentialByKey stakeHash
               rewards <- waitForStakeRewards rspnNode  stakeCred
@@ -182,7 +183,7 @@ changeMaxTxSize =
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize
-      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions 3001 [] getMaxTxSize
+      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions (PortsConfig 3001 []) getMaxTxSize
       assertEqual "tx size should be large" (2 * standardTxSize) largeTxSize
 
 data TestLog =

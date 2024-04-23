@@ -1,14 +1,37 @@
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DerivingStrategies #-}
 module Convex.Devnet.CardanoNode.Types (
+  Port,
+  PortsConfig (..),
   RunningNode (..),
-  RunningStakePoolNode(..)
+  RunningStakePoolNode (..),
+  StakePoolNodeParams (..),
+  defaultStakePoolNodeParams
 ) where
 
 import           Cardano.Api                      (CardanoMode, Env,
                                                    LocalNodeConnectInfo,
-                                                   NetworkId)
+                                                   NetworkId, Lovelace)
 import           Cardano.Api.Shelley              (StakeKey, Key(..), VrfKey,
                                                    KesKey, StakePoolKey,
                                                    OperationalCertificateIssueCounter)
+import           Data.Aeson                       (FromJSON, ToJSON)
+import           Data.Ratio                       ((%))
+import           GHC.Generics                     (Generic)
+
+type Port = Int
+
+-- | Configuration of ports from the perspective of a peer in the context of a
+-- fully sockected topology.
+data PortsConfig = PortsConfig
+  { -- | Our node TCP port.
+    ours  :: Port
+  , -- | Other peers TCP ports.
+    peers :: [Port]
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 {-| Describes a running pool node
 -}
@@ -29,3 +52,14 @@ data RunningStakePoolNode = RunningStakePoolNode
   , rspnStakePoolKey :: SigningKey StakePoolKey
   , rspnCounter :: OperationalCertificateIssueCounter
   }
+
+{- | Stake pool node params
+-}
+data StakePoolNodeParams = StakePoolNodeParams
+  { spnCost   :: Lovelace
+  , spnMargin :: Rational
+  , spnPledge :: Lovelace
+  }
+
+defaultStakePoolNodeParams :: StakePoolNodeParams
+defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
