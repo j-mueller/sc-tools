@@ -12,7 +12,6 @@ module Convex.Devnet.CardanoNode(
   NodeId(..),
   NodeLog(..),
   RunningNode(..),
-  DevnetConfig(..),
   CardanoNodeArgs(..),
   RunningStakePoolNode(..),
   defaultCardanoNodeArgs,
@@ -92,23 +91,10 @@ import           System.Process                   (CreateProcess (..),
                                                    StdStream (UseHandle), proc,
                                                    readProcess,
                                                    withCreateProcess)
-
 import           Prelude
 
 newtype NodeId = NodeId Int
   deriving newtype (Eq, Show, Num, ToJSON, FromJSON)
-
--- | Configuration parameters for a single node devnet
-data DevnetConfig = DevnetConfig
-  { -- | Parent state directory
-    dcStateDirectory :: FilePath
-  , -- | Blockchain start time
-    dcSystemStart    :: UTCTime
-  , -- | A list of port
-    dcPorts          :: PortsConfig
-  }
-  deriving stock (Eq, Show, Generic)
-  deriving anyclass (ToJSON, FromJSON)
 
 -- | Arguments given to the 'cardano-node' command-line to run a node.
 data CardanoNodeArgs = CardanoNodeArgs
