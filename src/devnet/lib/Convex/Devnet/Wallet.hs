@@ -105,8 +105,7 @@ balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOu
 balanceAndSubmitReturn tracer node wallet returnOutput tx keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    let additionalSignatures = fromIntegral (length keys)
-    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx additionalSignatures)
+    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx)
 
     let wit' = (C.makeShelleyKeyWitness body <$> keys) ++ wit
         tx'  = C.makeSignedTransaction wit' body

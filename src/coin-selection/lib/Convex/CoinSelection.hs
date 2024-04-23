@@ -44,7 +44,7 @@ module Convex.CoinSelection(
 
 import           Cardano.Api.Shelley       (BabbageEra, BuildTx, CardanoMode,
                                             EraHistory, PoolId, TxBodyContent,
-                                            TxOut, UTxO (..))
+                                            TxOut, UTxO (..), StakePoolParameters (..))
 import qualified Cardano.Api.Shelley       as C
 import qualified Cardano.Ledger.Core       as Core
 import           Cardano.Ledger.Crypto     (StandardCrypto)
@@ -493,12 +493,9 @@ balanceTx ::
   -- | The unbalanced transaction body
   TxBodyContent BuildTx ERA ->
 
-  -- | Additional required signature count
-  TransactionSignatureCount ->
-
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
-balanceTx dbg returnUTxO0 walletUtxo txb count' = do
+balanceTx dbg returnUTxO0 walletUtxo txb = do
   (params, ledgerPPs) <- queryProtocolParameters
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
@@ -515,7 +512,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb count' = do
     bodyWithInputs <- addOwnInput txb0 walletUtxo
     bodyWithCollat <- setCollateral bodyWithInputs walletUtxo
     balancePositive (natTracer lift dbg) pools ledgerPPs combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
-  count <- (+count') <$> requiredSignatureCount finalBody
+  count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
@@ -534,18 +531,18 @@ checkCompatibilityLevel tr txB (UtxoSet w) = do
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> TransactionSignatureCount -> m (C.Tx ERA, BalanceChanges)
-balanceForWallet dbg wallet walletUtxo txb count = do
+balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet dbg wallet walletUtxo txb = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = L.emptyTxOut walletAddress
-  balanceForWalletReturn dbg wallet walletUtxo txOut txb count
+  balanceForWalletReturn dbg wallet walletUtxo txOut txb
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> TransactionSignatureCount -> m (C.Tx ERA, BalanceChanges)
-balanceForWalletReturn dbg wallet walletUtxo returnOutput txb count = do
-  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb count
+balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
+  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
 
 {-| Sign a transaction with the wallet's key
 -}
@@ -702,13 +699,49 @@ keyWitnesses (requiredTxIns -> inputs) = do
 
 -- | The number of signatures required to spend the transaction's inputs
 --   and to satisfy the "extra key witnesses" constraint
+--   and required for certification.
 requiredSignatureCount :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
 requiredSignatureCount content = do
   keyWits <- keyWitnesses content
   let hsh (C.PaymentKeyHash h) = h
       extraSigs = view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) content
       allSigs = Set.union keyWits (Set.fromList $ fmap hsh extraSigs)
-  pure $ TransactionSignatureCount $ fromIntegral $ Set.size allSigs
+
+      certKeyWits = case view L.txCertificates content of
+        C.TxCertificates _ cs _ -> mconcat $ getCertKeyWits <$> cs
+        C.TxCertificatesNone -> Set.empty
+
+      getCertKeyWits :: C.Certificate -> Set CertificateKeyWitness
+      getCertKeyWits (C.StakeAddressRegistrationCertificate (C.StakeCredentialByKey hash)) =
+        Set.singleton $ CertificateStakeKey hash
+      getCertKeyWits (C.StakeAddressRegistrationCertificate _) =
+        Set.empty
+      getCertKeyWits (C.StakeAddressDeregistrationCertificate (C.StakeCredentialByKey hash)) =
+        Set.singleton $ CertificateStakeKey hash
+      getCertKeyWits (C.StakeAddressDeregistrationCertificate _) = 
+        Set.empty
+      getCertKeyWits (C.StakeAddressDelegationCertificate (C.StakeCredentialByKey hash) poolHash) =
+        Set.fromList [CertificateStakeKey hash, CertificateStakePoolKey poolHash]
+      getCertKeyWits (C.StakeAddressDelegationCertificate _ poolHash) =
+        Set.singleton (CertificateStakePoolKey poolHash)
+      getCertKeyWits (C.StakePoolRegistrationCertificate StakePoolParameters{stakePoolId, stakePoolOwners}) =
+           Set.singleton (CertificateStakePoolKey stakePoolId)
+        <> Set.fromList (CertificateStakeKey <$> stakePoolOwners)
+      getCertKeyWits (C.StakePoolRetirementCertificate hash _) =
+        Set.singleton $ CertificateStakePoolKey hash
+      getCertKeyWits C.GenesisKeyDelegationCertificate {} =
+        error "Genesis key delegation certificate key witness count not supported"
+      getCertKeyWits (C.MIRCertificate _ _) =
+        error "MIR certificate key witness count not supported"
+
+  pure $ TransactionSignatureCount (fromIntegral $ Set.size allSigs + Set.size certKeyWits)
+
+{- | Certificate key witness
+-}
+data CertificateKeyWitness =
+    CertificateStakeKey (C.Hash C.StakeKey)
+  | CertificateStakePoolKey (C.Hash C.StakePoolKey)
+  deriving stock (Eq, Ord)
 
 publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
 publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)

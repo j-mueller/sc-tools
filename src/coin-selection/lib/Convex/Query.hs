@@ -47,8 +47,7 @@ import           Control.Tracer                     (Tracer, natTracer)
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT)
 import           Convex.CoinSelection               (BalanceTxError,
-                                                     TxBalancingMessage,
-                                                     TransactionSignatureCount)
+                                                     TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MockChain                   (MockchainT, utxoSet)
 import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
@@ -104,10 +103,10 @@ deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWai
 {-| Balance the transaction body using the UTxOs locked by the payment credentials,
 returning any unused funds to the given return output
 |-}
-balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => Tracer m TxBalancingMessage -> [PaymentCredential] -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> TransactionSignatureCount -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
-balanceTx dbg inputCredentials changeOutput txBody count = do
+balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => Tracer m TxBalancingMessage -> [PaymentCredential] -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
+balanceTx dbg inputCredentials changeOutput txBody = do
   o <- fromApiUtxo <$> utxosByPaymentCredentials (Set.fromList inputCredentials)
-  runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody count)
+  runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody)
 
 newtype WalletAPIQueryT m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog)
@@ -140,7 +139,7 @@ balancePaymentCredentials ::
   -> m (C.Tx C.BabbageEra)
 balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
   output <- maybe (returnOutputFor primaryCred) pure returnOutput
-  (C.BalancedTxBody txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody 0)
+  (C.BalancedTxBody txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody)
   pure (C.makeSignedTransaction [] txbody)
 
 {-| Balance a transaction body using the funds locked by the payment credential
