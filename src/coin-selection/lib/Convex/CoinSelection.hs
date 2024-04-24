@@ -44,7 +44,7 @@ module Convex.CoinSelection(
 
 import           Cardano.Api.Shelley       (BabbageEra, BuildTx, CardanoMode,
                                             EraHistory, PoolId, TxBodyContent,
-                                            TxOut, UTxO (..))
+                                            TxOut, UTxO (..), StakePoolParameters (..))
 import qualified Cardano.Api.Shelley       as C
 import qualified Cardano.Ledger.Core       as Core
 import           Cardano.Ledger.Crypto     (StandardCrypto)
@@ -699,13 +699,49 @@ keyWitnesses (requiredTxIns -> inputs) = do
 
 -- | The number of signatures required to spend the transaction's inputs
 --   and to satisfy the "extra key witnesses" constraint
+--   and required for certification.
 requiredSignatureCount :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
 requiredSignatureCount content = do
   keyWits <- keyWitnesses content
   let hsh (C.PaymentKeyHash h) = h
       extraSigs = view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) content
       allSigs = Set.union keyWits (Set.fromList $ fmap hsh extraSigs)
-  pure $ TransactionSignatureCount $ fromIntegral $ Set.size allSigs
+
+      certKeyWits = case view L.txCertificates content of
+        C.TxCertificates _ cs _ -> mconcat $ getCertKeyWits <$> cs
+        C.TxCertificatesNone -> Set.empty
+
+      getCertKeyWits :: C.Certificate -> Set CertificateKeyWitness
+      getCertKeyWits (C.StakeAddressRegistrationCertificate (C.StakeCredentialByKey hash)) =
+        Set.singleton $ CertificateStakeKey hash
+      getCertKeyWits (C.StakeAddressRegistrationCertificate _) =
+        Set.empty
+      getCertKeyWits (C.StakeAddressDeregistrationCertificate (C.StakeCredentialByKey hash)) =
+        Set.singleton $ CertificateStakeKey hash
+      getCertKeyWits (C.StakeAddressDeregistrationCertificate _) = 
+        Set.empty
+      getCertKeyWits (C.StakeAddressDelegationCertificate (C.StakeCredentialByKey hash) poolHash) =
+        Set.fromList [CertificateStakeKey hash, CertificateStakePoolKey poolHash]
+      getCertKeyWits (C.StakeAddressDelegationCertificate _ poolHash) =
+        Set.singleton (CertificateStakePoolKey poolHash)
+      getCertKeyWits (C.StakePoolRegistrationCertificate StakePoolParameters{stakePoolId, stakePoolOwners}) =
+           Set.singleton (CertificateStakePoolKey stakePoolId)
+        <> Set.fromList (CertificateStakeKey <$> stakePoolOwners)
+      getCertKeyWits (C.StakePoolRetirementCertificate hash _) =
+        Set.singleton $ CertificateStakePoolKey hash
+      getCertKeyWits C.GenesisKeyDelegationCertificate {} =
+        error "Genesis key delegation certificate key witness count not supported"
+      getCertKeyWits (C.MIRCertificate _ _) =
+        error "MIR certificate key witness count not supported"
+
+  pure $ TransactionSignatureCount (fromIntegral $ Set.size allSigs + Set.size certKeyWits)
+
+{- | Certificate key witness
+-}
+data CertificateKeyWitness =
+    CertificateStakeKey (C.Hash C.StakeKey)
+  | CertificateStakePoolKey (C.Hash C.StakePoolKey)
+  deriving stock (Eq, Ord)
 
 publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
 publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)
