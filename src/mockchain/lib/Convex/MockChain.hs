@@ -18,6 +18,7 @@ module Convex.MockChain(
   env,
   poolState,
   transactions,
+  failedTransactions,
   utxoSet,
   datums,
   walletUtxo,
@@ -109,8 +110,8 @@ import qualified Cardano.Ledger.Shelley.API
 import           Cardano.Ledger.Shelley.Constraints    (UsesTxOut (..))
 import           Cardano.Ledger.Shelley.LedgerState    (DPState (..),
                                                         LedgerState (..),
-                                                        UTxOState (..),
-                                                        smartUTxOState, rewards)
+                                                        UTxOState (..), rewards,
+                                                        smartUTxOState)
 import           Cardano.Ledger.Shelley.TxBody         (DCert, Wdrl)
 import           Cardano.Ledger.ShelleyMA.Timelocks    (ValidityInterval)
 import qualified Cardano.Ledger.Val                    as Val
@@ -130,7 +131,8 @@ import           Control.Monad.State                   (MonadState, StateT, get,
                                                         runStateT)
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
-                                                        MonadMockchain (..))
+                                                        MonadMockchain (..),
+                                                        SendTxFailed (..))
 import           Convex.Era                            (ERA)
 import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
@@ -149,13 +151,13 @@ import           Data.ByteString.Short                 (ShortByteString)
 import           Data.Default                          (Default (def))
 import           Data.Foldable                         (for_, traverse_)
 import           Data.Functor.Identity                 (Identity (..))
-import           Data.UMap                             (delView, rewView, (⋪))
 import           Data.Map                              (Map)
 import qualified Data.Map                              as Map
 import           Data.Proxy                            (Proxy (..))
 import           Data.Sequence.Strict                  (StrictSeq)
 import           Data.Set                              (Set)
 import qualified Data.Set                              as Set
+import           Data.UMap                             (delView, rewView, (⋪))
 import           GHC.Records                           (HasField (..))
 import           Plutus.ApiCommon                      (mkTermToEvaluate)
 import qualified Plutus.ApiCommon                      as Plutus
@@ -185,18 +187,37 @@ fullyAppliedScript params (script, lang, arguments, _, _) = do
   appliedTerm <- first show $ mkTermToEvaluate lng pv script pArgs
   pure $ UPLC.Program () (PLC.defaultVersion ()) appliedTerm
 
+data ExUnitsError =
+  Phase1Error (TranslationError StandardCrypto)
+  | Phase2Error (TransactionScriptFailure StandardCrypto)
+  deriving (Eq, Show)
+
+makePrisms ''ExUnitsError
+
+data ValidationError =
+  VExUnits ExUnitsError
+  | PredicateFailures [CollectError (Crypto ERA)]
+  | ApplyTxFailure (ApplyTxError ERA)
+  deriving (Eq, Show)
+
+makePrisms ''ValidationError
+
+{-| State of the mockchain
+-}
 data MockChainState =
   MockChainState
-    { mcsEnv          :: MempoolEnv ERA
-    , mcsPoolState    :: MempoolState ERA
-    , mcsTransactions :: [(Validated (Core.Tx ERA), [ScriptContext ERA])]
-    , mcsDatums       :: Map (Hash ScriptData) ScriptData
+    { mcsEnv                :: MempoolEnv ERA
+    , mcsPoolState          :: MempoolState ERA
+    , mcsTransactions       :: [(Validated (Core.Tx ERA), [ScriptContext ERA])] -- ^ Transactions that were submitted to the mockchain and validated
+    , mcsFailedTransactions :: [(Tx BabbageEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+    , mcsDatums             :: Map (Hash ScriptData) ScriptData
     }
 
 makeLensesFor
   [ ("mcsEnv", "env")
   , ("mcsPoolState", "poolState")
   , ("mcsTransactions", "transactions")
+  , ("mcsFailedTransactions", "failedTransactions")
   , ("mcsDatums", "datums")
   ] ''MockChainState
 
@@ -240,26 +261,12 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
           , lsDPState = DPState def def
           }
       , mcsTransactions = []
+      , mcsFailedTransactions = []
       , mcsDatums = Map.empty
       }
 
 utxoEnv :: NodeParams -> SlotNo -> UtxoEnv ERA
 utxoEnv params slotNo = UtxoEnv slotNo (Defaults.pParams params) mempty (GenDelegs mempty)
-
-data ExUnitsError =
-  Phase1Error (TranslationError StandardCrypto)
-  | Phase2Error (TransactionScriptFailure StandardCrypto)
-  deriving (Eq, Show)
-
-makePrisms ''ExUnitsError
-
-data ValidationError =
-  VExUnits ExUnitsError
-  | PredicateFailures [CollectError (Crypto ERA)]
-  | ApplyTxFailure (ApplyTxError ERA)
-  deriving (Eq, Show)
-
-makePrisms ''ValidationError
 
 {-| Compute the exunits of a transaction
 -}
@@ -369,8 +376,7 @@ instance MonadTrans MockchainT where
   lift = MockchainT . lift . lift . lift
 
 data MockchainError =
-  MockchainValidationFailed ValidationError
-  | FailWith String
+  FailWith String
   deriving (Eq, Show)
 
 instance Monad m => MonadFail (MockchainT m) where
@@ -382,10 +388,12 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     addDatumHashes tx
     st <- get
     case applyTransaction nps st tx of
-      Left err       -> throwError (MockchainValidationFailed err)
+      Left err       -> do
+        failedTransactions %= ((:) (tx, err))
+        return $ Left $ SendTxFailed $ show err
       Right (st', _) ->
         let Cardano.Api.Tx body _ = tx
-        in put st' >> return (Cardano.Api.getTxId body)
+        in put st' >> return (Right $ Cardano.Api.getTxId body)
   utxoByTxIn txIns = MockchainT $ do
     Cardano.Api.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState . _1 . to (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage))
     let mp' = Map.restrictKeys mp txIns
