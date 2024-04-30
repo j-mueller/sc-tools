@@ -47,6 +47,7 @@ import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
 import qualified Cardano.Api.Shelley           as C
+import           Cardano.Ledger.Coin           (Coin (..))
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
 import qualified Cardano.Ledger.Shelley.TxCert as TxCert
@@ -129,7 +130,7 @@ makeLensesFor
 data CoinSelectionError =
   UnsupportedBalance (C.TxOutValue ERA)
   | BodyError Text
-  | NotEnoughInputsFor{ lovelaceRequired :: C.Lovelace, lovelaceFound :: C.Lovelace }
+  | NotEnoughInputsFor{ lovelaceRequired :: C.Quantity, lovelaceFound :: C.Quantity }
   | NotEnoughMixedOutputsFor{ valuesNeeded :: C.Value, valueProvided :: C.Value, txBalance :: C.Value }
   | NoWalletUTxOs -- ^ The wallet utxo set is empty
   | NoAdaOnlyUTxOsForCollateral -- ^ The transaction body needs a collateral input, but there are no inputs that hold nothing but Ada
@@ -141,7 +142,7 @@ bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
 data BalancingError =
   BalancingError Text
-  | CheckMinUtxoValueError (C.TxOut C.CtxTx BabbageEra) C.Lovelace
+  | CheckMinUtxoValueError (C.TxOut C.CtxTx BabbageEra) C.Quantity
   | BalanceCheckError BalancingError
   | ComputeBalanceChangeError
   deriving stock (Show, Generic)
@@ -157,11 +158,11 @@ data TxBalancingMessage =
   | PrepareInputs{availableBalance :: C.Value, transactionBalance :: C.Value } -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
-  | Txfee{ fee :: C.Lovelace } -- ^ The transaction fee
+  | Txfee{ fee :: C.Quantity } -- ^ The transaction fee
   | TxRemainingBalance{ remainingBalance :: C.Value } -- ^ The remaining balance (after paying the fee)
   | NoAssetsMissing -- ^ The transaction was not missing any assets
   | MissingAssets C.Value -- ^ The transaction is missing some inputs, these will be covered from the wallet's UTxOs.
-  | MissingLovelace C.Lovelace -- ^ The transaction is missing some Ada. The amount will be covered from the wallet's UTxOs.
+  | MissingLovelace C.Quantity -- ^ The transaction is missing some Ada. The amount will be covered from the wallet's UTxOs.
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON)
 
@@ -194,13 +195,13 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
         handleExUnitsErrors C.ScriptValid failures exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
 
   txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody
-  let txbodycontent1' = txbodycontent1 & set L.txFee (C.Lovelace (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
+  let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
   -- append output instead of prepending
   txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
 
-  let !t_fee = C.evaluateTransactionFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) txbody1 numWits 0
-  traceWith tracer Txfee{fee = t_fee}
+  let !t_fee = C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) csiUtxo txbody1 numWits
+  traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee}
 
   let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeOutput
   txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
@@ -245,7 +246,7 @@ checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
   let minUTxO  = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txout (C.unLedgerProtocolParameters pparams')
   if C.txOutValueToLovelace v >= minUTxO
   then pure ()
-  else throwError (CheckMinUtxoValueError txout minUTxO)
+  else throwError (CheckMinUtxoValueError txout $ C.lovelaceToQuantity minUTxO)
 
 appendTxOut :: C.TxOut C.CtxTx C.BabbageEra -> C.TxBodyContent C.BuildTx ERA -> C.TxBodyContent C.BuildTx ERA
 appendTxOut out = over L.txOuts (|> out)
@@ -359,7 +360,7 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
     mapScriptWitnessesWithdrawals (C.TxWithdrawals supported withdrawals) =
       let mappedWithdrawals
             :: [( C.StakeAddress
-                , C.Lovelace
+                , Coin
                 , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxStake C.BabbageEra))
                 )]
           mappedWithdrawals =
@@ -649,15 +650,15 @@ addOutputForNonAdaAssets ::
   C.LedgerProtocolParameters BabbageEra -> -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
   C.TxOut C.CtxTx C.BabbageEra -> -- ^ Change output. Overflow non-Ada assets will be added to this output's value.
   C.Value -> -- ^ The balance of the transaction
-  (C.TxOut C.CtxTx C.BabbageEra, C.Lovelace) -- ^ The modified change output and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
+  (C.TxOut C.CtxTx C.BabbageEra, C.Quantity) -- ^ The modified change output and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
 addOutputForNonAdaAssets pparams returnUTxO (C.valueFromList . snd . splitValue -> positives)
   | isNothing (C.valueToLovelace positives) =
       let vlWithoutAda = positives & set (L._Value . at C.AdaAssetId) Nothing
           output =
             setMinAdaDeposit pparams
             $ returnUTxO & L._TxOut . _2 . L._TxOutValue <>~ vlWithoutAda
-      in  (output, output ^. L._TxOut . _2 . L._TxOutValue . to C.selectLovelace)
-  | otherwise = (returnUTxO, C.Lovelace 0)
+      in  (output, output ^. L._TxOut . _2 . L._TxOutValue . to (C.lovelaceToQuantity . C.selectLovelace))
+  | otherwise = (returnUTxO, C.Quantity 0)
 
 splitValue :: C.Value -> ([(C.AssetId, C.Quantity)], [(C.AssetId, C.Quantity)])
 splitValue =

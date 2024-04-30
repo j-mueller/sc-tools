@@ -153,7 +153,7 @@ import qualified UntypedPlutusCore                     as UPLC
 {-| Apply the plutus script to all its arguments and return a plutus
 program
 -}
-fullyAppliedScript :: NodeParams -> PlutusWithContext -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+fullyAppliedScript :: NodeParams -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
 fullyAppliedScript params PlutusWithContext{pwcScript, pwcDatums} = do
   let plutus = either id Plutus.Language.plutusFromRunnable pwcScript
       binScript = plutusBinary plutus
@@ -188,7 +188,7 @@ data MockChainState =
   MockChainState
     { mcsEnv                :: MempoolEnv ERA
     , mcsPoolState          :: MempoolState ERA
-    , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext])] -- ^ Transactions that were submitted to the mockchain and validated
+    , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
     , mcsFailedTransactions :: [(Tx BabbageEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
     , mcsDatums             :: Map (Hash ScriptData) ScriptData
     }
@@ -275,7 +275,7 @@ applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
 
 {-| Evaluate a transaction, returning all of its script contexts.
 -}
-evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [PlutusWithContext]
+evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [PlutusWithContext StandardCrypto]
 evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
     (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
     _ <- applyTx params state vtx scripts
@@ -303,7 +303,7 @@ constructValidated ::
   UtxoEnv Babbage ->
   UTxOState Babbage ->
   Core.Tx Babbage ->
-  m (AlonzoTx Babbage, [PlutusWithContext])
+  m (AlonzoTx Babbage, [PlutusWithContext StandardCrypto])
 constructValidated globals (UtxoEnv _ pp _) st tx =
   case collectPlutusScriptsWithContext ei sysS pp tx utxo of
     Left errs -> throwError errs
@@ -327,7 +327,7 @@ applyTx ::
   NodeParams ->
   MockChainState ->
   Core.Tx ERA ->
-  [PlutusWithContext] ->
+  [PlutusWithContext StandardCrypto] ->
   Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
@@ -373,7 +373,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
         Map.fromList
           $ bimap
               fromLedgerStakeAddress
-              Cardano.Api.fromShelleyLovelace <$> Map.toList (rewardMap rewards')
+              Cardano.Api.lovelaceToQuantity <$> Map.toList (rewardMap rewards')
       poolMap =
         Map.fromList
           $ bimap

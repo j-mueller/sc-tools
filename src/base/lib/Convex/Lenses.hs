@@ -185,9 +185,9 @@ txValidityLowerBound = lens get set_ where
   get = C.txValidityLowerBound
   set_ body range = body{C.txValidityLowerBound = range}
 
-txFee :: Lens' (C.TxBodyContent v BabbageEra) C.Lovelace
+txFee :: Lens' (C.TxBodyContent v BabbageEra) Coin
 txFee = lens get set_ where
-  get :: C.TxBodyContent v BabbageEra -> C.Lovelace
+  get :: C.TxBodyContent v BabbageEra -> Coin
   get b = case C.txFee b of { C.TxFeeExplicit C.ShelleyBasedEraBabbage t_fee -> t_fee }
   set_ body fee = body{C.txFee = C.TxFeeExplicit C.ShelleyBasedEraBabbage fee}
 
@@ -250,9 +250,9 @@ _TxExtraKeyWitnesses = iso from to where
   to []   = C.TxExtraKeyWitnessesNone
   to keys = C.TxExtraKeyWitnesses C.AlonzoEraOnwardsBabbage keys
 
-_TxWithdrawals :: Iso' (C.TxWithdrawals v BabbageEra) [(C.StakeAddress, C.Lovelace, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
+_TxWithdrawals :: Iso' (C.TxWithdrawals v BabbageEra) [(C.StakeAddress, Coin, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
 _TxWithdrawals = iso from to where
-  from :: C.TxWithdrawals v BabbageEra -> [(C.StakeAddress, C.Lovelace, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
+  from :: C.TxWithdrawals v BabbageEra -> [(C.StakeAddress, Coin, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
   from C.TxWithdrawalsNone    = []
   from (C.TxWithdrawals _ xs) = xs
 

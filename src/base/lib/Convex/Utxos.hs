@@ -89,7 +89,7 @@ import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
-import           GHC.Word                      (Word64)
+import           GHC.Word                      (Word32)
 import           Prelude                       hiding (null)
 import           Prettyprinter                 (Doc, Pretty (..), hang, parens,
                                                 viaShow, vsep, (<+>))
@@ -276,8 +276,8 @@ txId = either aueTxId rueTxId
 newtype BalanceChanges = BalanceChanges{tbBalances :: Map PaymentCredential Value }
   deriving stock (Eq, Show)
 
-prettyAda :: C.Lovelace -> Doc ann
-prettyAda (C.Lovelace lvl) =
+prettyAda :: C.Quantity -> Doc ann
+prettyAda (C.Quantity lvl) =
   let ada :: Double = fromIntegral lvl / 1_000_000
   in pretty ada
 
@@ -296,7 +296,7 @@ instance Pretty BalanceChanges where
 
 prettyValue :: C.Value -> [Doc ann]
 prettyValue vl =
-  let k (C.AdaAssetId, C.Quantity l)  = "Ada" <+> prettyAda (C.Lovelace l)
+  let k (C.AdaAssetId, l)             = "Ada" <+> prettyAda l
       k (C.AssetId p n, C.Quantity q) = prettyPolicy p n <+> pretty q
   in k <$> C.valueToList vl
 
@@ -393,7 +393,7 @@ extractBabbageTxn :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> Mayb
 extractBabbageTxn ex cred state = DList.toList . extractBabbageTxn' ex state cred
 
 extractBabbage :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> Block BabbageEra -> DList (UtxoChangeEvent a)
-extractBabbage ex state cred (Block _blockHeader txns) = foldMap (extractBabbageTxn' ex state cred) txns
+extractBabbage ex state cred (CS.Block _blockHeader txns) = foldMap (extractBabbageTxn' ex state cred) txns
 
 extractBabbageTxn' :: forall a. (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Maybe a) -> UtxoSet C.CtxTx a -> Maybe AddressCredential -> C.Tx BabbageEra -> DList (UtxoChangeEvent a)
 extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
@@ -407,10 +407,10 @@ extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
               C.TxBodyScriptData _ _ r -> unRedeemers r
               _                        -> mempty
 
-      checkInput :: (Word64, TxIn) -> Maybe (TxIn, ((C.TxOut C.CtxTx C.BabbageEra, a), Maybe (HashableScriptData, ExecutionUnits)))
+      checkInput :: (Word32, TxIn) -> Maybe (TxIn, ((C.TxOut C.CtxTx C.BabbageEra, a), Maybe (HashableScriptData, ExecutionUnits)))
       checkInput (idx, txIn) = fmap (txIn,) $ do
         o <- Map.lookup txIn _utxos
-        let redeemer = fmap (bimap CS.fromAlonzoData CS.fromAlonzoExUnits) (Map.lookup (Scripts.AlonzoSpending $ Scripts.AsIndex $ fromIntegral idx) txReds)
+        let redeemer = fmap (bimap CS.fromAlonzoData CS.fromAlonzoExUnits) (Map.lookup (Scripts.AlonzoSpending $ Scripts.AsIx idx) txReds)
         pure (o, redeemer)
 
       checkOutput :: TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Maybe (TxIn, (C.TxOut C.CtxTx C.BabbageEra, a))

@@ -27,8 +27,7 @@ module Convex.NodeClient.Fold(
   foldClient'
   ) where
 
-import           Cardano.Api                                           (Block (..),
-                                                                        BlockHeader (..),
+import           Cardano.Api                                           (BlockHeader (..),
                                                                         BlockInMode (..),
                                                                         BlockNo (..),
                                                                         ChainPoint (..),
@@ -41,6 +40,7 @@ import           Cardano.Api                                           (Block (.
                                                                         chainTipToChainPoint,
                                                                         envSecurityParam)
 import           Cardano.Api.LedgerEvents.LedgerEvent                  (LedgerEvent)
+import qualified Cardano.Api                                           as CAPI
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONBlockNo (..),
                                                                         JSONChainPoint (..),
@@ -191,8 +191,9 @@ foldClient' initialState ledgerStateArgs env applyRollback accumulate = Pipeline
       -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n history =
       ClientStNext {
-          recvMsgRollForward = \newBlock@(BlockInMode _ bim@(Block bh@(BlockHeader slotNo _blockHash currBlockNo) _)) serverChainTip -> do
-              let newClientTip = At currBlockNo
+          recvMsgRollForward = \newBlock@(BlockInMode _ bim) serverChainTip -> do
+              let CAPI.Block bh@(BlockHeader slotNo _blockHash currBlockNo) _ = bim
+                  newClientTip = At currBlockNo
                   newServerTip = fromChainTip serverChainTip
                   cu = if newClientTip == newServerTip
                         then caughtUpWithNode serverChainTip
@@ -209,7 +210,7 @@ foldClient' initialState ledgerStateArgs env applyRollback accumulate = Pipeline
                   update (LedgerStateUpdate currentLedgerState _) currentState = do
                     let
                       LedgerStateArgs _ validationMode = ledgerStateArgs
-                      newLedgerStateE = applyBlock env currentLedgerState validationMode bim
+                      newLedgerStateE = applyBlock env currentLedgerState validationMode newBlock
 
                     case newLedgerStateE of
                       Left _  -> return Nothing

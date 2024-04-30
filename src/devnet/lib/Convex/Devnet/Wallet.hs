@@ -24,7 +24,7 @@ module Convex.Devnet.Wallet(
 ) where
 
 import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
-                                            Lovelace, Tx, TxBodyContent)
+                                            Quantity, Tx, TxBodyContent)
 import qualified Cardano.Api               as C
 import           Control.Monad             (replicateM)
 import           Control.Monad.IO.Class    (MonadIO (..))
@@ -62,15 +62,15 @@ walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}
-sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Lovelace -> IO (Tx BabbageEra)
+sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Quantity -> IO (Tx BabbageEra)
 sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
-  balanceAndSubmit tracer node fct $ BuildTx.execBuildTx' $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue amount))
+  balanceAndSubmit tracer node fct $ BuildTx.execBuildTx' $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))
 
 {-| Create a new wallet and send @n@ times the given amount of lovelace to it. Returns when the seed txn has been registered
 on the chain.
 -}
-createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Int -> Lovelace -> IO Wallet
+createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Int -> Quantity -> IO Wallet
 createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} n amount = do
   wallet <- Wallet.generateWallet
   traceWith tracer (GeneratedWallet wallet)

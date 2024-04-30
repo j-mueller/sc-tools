@@ -29,8 +29,6 @@ module Convex.Devnet.CardanoNode(
 import           Cardano.Api                      (Env, LocalNodeConnectInfo,
                                                    NetworkId)
 import qualified Cardano.Api                      as C
-import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
-import           Cardano.Ledger.Conway.Genesis    (ConwayGenesis)
 import qualified Cardano.Ledger.Core              as Core
 import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
 import           Cardano.Slotting.Slot            (withOriginToMaybe)
@@ -289,8 +287,21 @@ waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
 data GenesisConfigChanges =
   GenesisConfigChanges
     { cfShelley :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
-    , cfAlonzo  :: AlonzoGenesis -> AlonzoGenesis
-    , cfConway  :: ConwayGenesis StandardCrypto -> ConwayGenesis StandardCrypto
+
+    -- this is spiritually a 'Cardano.Ledger.Alonzo.Genesis.AlonzoGenesis' value
+    -- we can't JSON roundtrip it here because the cardano node that we use in
+    -- CI uses a slightly different JSON encoding and will trip even if we
+    -- just write 'toJSON . fromJSON' without modifying the value
+    -- Note that the problem is with the ToJSON instance!
+    , cfAlonzo  :: Aeson.Value -> Aeson.Value
+
+
+    -- this is spiritually a 'Cardano.Ledger.Conway.Genesis.ConwayGenesis' value
+    -- we can't JSON roundtrip it here because the cardano node that we use in
+    -- CI uses a slightly different JSON encoding and will trip even if we
+    -- just write 'toJSON . fromJSON' without modifying the value
+    -- Note that the problem is with the ToJSON instance!
+    , cfConway :: Aeson.Value -> Aeson.Value
     }
 
 instance Semigroup GenesisConfigChanges where
