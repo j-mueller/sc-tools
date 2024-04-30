@@ -20,13 +20,14 @@ import           Cardano.Api                                        (ChainPoint,
                                                                      EraHistory,
                                                                      InitialLedgerStateError,
                                                                      LocalNodeConnectInfo (..),
+                                                                     Lovelace,
                                                                      NetworkId (Mainnet, Testnet),
                                                                      NetworkMagic (..),
                                                                      SystemStart,
-                                                                     Lovelace,
                                                                      envSecurityParam)
 import qualified Cardano.Api                                        as CAPI
-import           Cardano.Api.Shelley                                (PoolId, StakeAddress,
+import           Cardano.Api.Shelley                                (PoolId,
+                                                                     StakeAddress,
                                                                      StakeCredential)
 import qualified Cardano.Chain.Genesis
 import           Cardano.Crypto                                     (RequiresNetworkMagic (..),
@@ -36,9 +37,9 @@ import           Control.Monad.Except                               (MonadError,
                                                                      throwError)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Control.Monad.Trans.Except                         (runExceptT)
-import           Data.SOP.Strict                                    (NP ((:*)))
-import           Data.Set                                           (Set)
 import           Data.Map                                           (Map)
+import           Data.Set                                           (Set)
+import           Data.SOP.Strict                                    (NP ((:*)))
 import qualified Ouroboros.Consensus.Cardano.CanHardFork            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras as HFC

@@ -8,7 +8,7 @@ import           Control.Monad                  (void)
 import           Convex.BuildTx                 (execBuildTx', payToPlutusV2,
                                                  spendPlutusV2)
 import           Convex.Class                   (MonadMockchain)
-import           Convex.MockChain.CoinSelection (balanceAndSubmit)
+import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.MockChain.Utils         (mockchainSucceeds)
 import           Convex.Plutarch                (plutarchScriptToCapiScript)
@@ -38,6 +38,6 @@ tests = testGroup "plutarch"
 alwaysSucceeds :: (MonadFail m, MonadMockchain m) => m ()
 alwaysSucceeds = failOnError $ do
   k <- either (fail . Text.unpack) (pure . plutarchScriptToCapiScript) (compile (Config NoTracing) alwaysSucceedsP)
-  ref <- fmap (C.getTxId . C.getTxBody) $ balanceAndSubmit mempty Wallet.w1 $ execBuildTx' $ do
+  ref <- fmap (C.getTxId . C.getTxBody) $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx' $ do
           payToPlutusV2 Defaults.networkId k () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
-  void $ balanceAndSubmit mempty Wallet.w1 $ execBuildTx' (spendPlutusV2 (C.TxIn ref (C.TxIx 0)) k () ())
+  void $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx' (spendPlutusV2 (C.TxIn ref (C.TxIx 0)) k () ())
