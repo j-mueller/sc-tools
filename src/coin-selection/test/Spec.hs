@@ -349,7 +349,7 @@ largeTransactionTest = do
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
     Right (Left{}, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxFailure (ApplyTxError (UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20304 16384))):|[]))) -> pure ()
+      ApplyTxFailure (ApplyTxError (UtxowFailure (UtxoFailure (AlonzoInBabbageUtxoPredFailure (MaxTxSizeUTxO 20304 16384))):|[])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
     Right _ -> fail $ "Unexpected success. Expected 1 failed transaction."
     Left err -> fail $ "Unexpected failure: " <> show err

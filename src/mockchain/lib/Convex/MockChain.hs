@@ -373,7 +373,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
         Map.fromList
           $ bimap
               fromLedgerStakeAddress
-              Cardano.Api.fromShelleyLovelace <$> Map.toList (rewardMap rewards')
+              Cardano.Api.lovelaceToQuantity <$> Map.toList (rewardMap rewards')
       poolMap =
         Map.fromList
           $ bimap

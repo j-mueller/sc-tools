@@ -191,8 +191,8 @@ foldClient' initialState ledgerStateArgs env applyRollback accumulate = Pipeline
       -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n history =
       ClientStNext {
-          recvMsgRollForward = \newBlock serverChainTip -> do
-              let BlockInMode _ bim@(CAPI.Block bh@(BlockHeader slotNo _blockHash currBlockNo) _) = newBlock
+          recvMsgRollForward = \newBlock@(BlockInMode _ bim) serverChainTip -> do
+              let CAPI.Block bh@(BlockHeader slotNo _blockHash currBlockNo) _ = bim
                   newClientTip = At currBlockNo
                   newServerTip = fromChainTip serverChainTip
                   cu = if newClientTip == newServerTip
@@ -210,7 +210,7 @@ foldClient' initialState ledgerStateArgs env applyRollback accumulate = Pipeline
                   update (LedgerStateUpdate currentLedgerState _) currentState = do
                     let
                       LedgerStateArgs _ validationMode = ledgerStateArgs
-                      newLedgerStateE = applyBlock env currentLedgerState validationMode bim
+                      newLedgerStateE = applyBlock env currentLedgerState validationMode newBlock
 
                     case newLedgerStateE of
                       Left _  -> return Nothing
