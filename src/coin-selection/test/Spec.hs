@@ -386,7 +386,7 @@ withdrawZero = do
     Nothing -> fail "txI not found"
     Just{} -> pure ()
 
-matchingIndexMP ::  (MonadMockchain m, MonadError BalanceTxError m) => m ()
+matchingIndexMP ::  (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
 matchingIndexMP = do
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
