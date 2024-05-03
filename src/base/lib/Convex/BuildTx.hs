@@ -14,11 +14,11 @@ module Convex.BuildTx(
   lookupIndexSpending,
   lookupIndexReference,
   lookupIndexMinted,
-  lookupIndexWithdrawl,
+  lookupIndexWithdrawal,
   findIndexSpending,
   findIndexReference,
   findIndexMinted,
-  findIndexWithdrawl,
+  findIndexWithdrawal,
   buildTx,
   buildTxWith,
   -- * Effect
@@ -67,6 +67,7 @@ module Convex.BuildTx(
 
   -- ** Staking
   addWithdrawal,
+  addScriptWithdrawal,
   addWithdrawZeroPlutusV2InTransaction,
   addWithdrawZeroPlutusV2Reference,
   addCertificate,
@@ -77,6 +78,11 @@ module Convex.BuildTx(
   mintPlutusV1,
   mintPlutusV2,
   mintPlutusV2Ref,
+
+  -- ** Constructing script witness
+  buildV1ScriptWitness,
+  buildV2ScriptWitness,
+  buildV2RefScriptWitness,
 
   -- ** Utilities
   assetValue,
@@ -91,7 +97,7 @@ import           Cardano.Api.Shelley           (Hash, HashableScriptData,
                                                 NetworkId, PaymentKey,
                                                 PlutusScript, PlutusScriptV1,
                                                 PlutusScriptV2, ScriptHash,
-                                                WitCtxTxIn, Witness)
+                                                WitCtxTxIn)
 import qualified Cardano.Api.Shelley           as C
 import qualified Cardano.Ledger.Shelley.TxCert as TxCert
 import           Control.Lens                  (_1, _2, at, mapped, over, set,
@@ -157,15 +163,15 @@ lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxM
 findIndexMinted :: C.PolicyId -> TxBody -> Int
 findIndexMinted policy = fromJust . lookupIndexMinted policy
 
-{-| Look up the index of the @StakeAddress@ in the list of withdrawls.
+{-| Look up the index of the @StakeAddress@ in the list of withdrawals.
 -}
-lookupIndexWithdrawl :: C.StakeAddress -> TxBody -> Maybe Int
-lookupIndexWithdrawl stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (L.txWithdrawals . L._TxWithdrawals)
+lookupIndexWithdrawal :: C.StakeAddress -> TxBody -> Maybe Int
+lookupIndexWithdrawal stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (L.txWithdrawals . L._TxWithdrawals)
 
-{-| Look up the index of the @StakeAddress@ in the list of withdrawls. Throws an error if the @StakeAddress@ is not present.
+{-| Look up the index of the @StakeAddress@ in the list of withdrawals. Throws an error if the @StakeAddress@ is not present.
 -}
-findIndexWithdrawl :: C.StakeAddress -> TxBody -> Int
-findIndexWithdrawl stakeAddress = fromJust . lookupIndexWithdrawl stakeAddress
+findIndexWithdrawal :: C.StakeAddress -> TxBody -> Int
+findIndexWithdrawal stakeAddress = fromJust . lookupIndexWithdrawal stakeAddress
 
 
 {-|
@@ -299,13 +305,13 @@ execBuildTx = runIdentity . execBuildTxT
 execBuildTx' :: BuildTxT Identity a -> TxBody
 execBuildTx' = buildTx . runIdentity . execBuildTxT
 
-{-| These functions allow to build the witness for an input/asset/withdrawl
+{-| These functions allow to build the witness for an input/asset/withdrawal
 by accessing the final @TxBodyContent@. To avoid an infinite loop when
 constructing the witness, make sure that the witness does not depend on
 itself. For example: @addInputWithTxBody txi (\body -> find (\in -> in == txi) (txInputs body))@
 is going to loop.
 -}
-addInputWithTxBody :: MonadBuildTx m => C.TxIn -> (TxBody -> Witness WitCtxTxIn C.BabbageEra) -> m ()
+addInputWithTxBody :: MonadBuildTx m => C.TxIn -> (TxBody -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
 addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> (over L.txIns ((txIn, C.BuildTxWith $ f body) :)))
 
 addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
@@ -324,34 +330,79 @@ spendPublicKeyOutput txIn = do
   let wit = C.BuildTxWith (C.KeyWitness (C.KeyWitnessForSpending))
   addBtx (over L.txIns ((txIn, wit) :))
 
-spendPlutusV1 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> (redeemer) -> m ()
-spendPlutusV1 txIn s (toHashableScriptData -> dat) (toHashableScriptData -> red) =
-  let wit = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
-      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
-  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
+{-| Utility function to build a v1 script witness
+-}
+buildV1ScriptWitness :: forall redeemer witctx . Plutus.ToData redeemer =>
+  C.PlutusScript C.PlutusScriptV1 ->
+  C.ScriptDatum witctx ->
+  redeemer ->
+  C.ScriptWitness witctx C.BabbageEra
+buildV1ScriptWitness script datum redeemer =
+  C.PlutusScriptWitness
+    C.PlutusScriptV1InBabbage
+    C.PlutusScriptV1
+    (C.PScript script)
+    datum
+    (toHashableScriptData redeemer)
+    (C.ExecutionUnits 0 0)
+
+{-| Utility function to build a v2 script witness
+-}
+buildV2ScriptWitness :: forall redeemer witctx . Plutus.ToData redeemer =>
+  C.PlutusScript C.PlutusScriptV2 ->
+  C.ScriptDatum witctx ->
+  redeemer ->
+  C.ScriptWitness witctx C.BabbageEra
+buildV2ScriptWitness script datum redeemer =
+  C.PlutusScriptWitness
+    C.PlutusScriptV2InBabbage
+    C.PlutusScriptV2
+    (C.PScript script)
+    datum
+    (toHashableScriptData redeemer)
+    (C.ExecutionUnits 0 0)
+
+{-| Utility function to build a reference script witness
+-}
+buildV2RefScriptWitness :: forall redeemer witctx . Plutus.ToData redeemer =>
+  C.TxIn ->
+  Maybe C.ScriptHash ->
+  C.ScriptDatum witctx ->
+  redeemer ->
+  C.ScriptWitness witctx C.BabbageEra
+buildV2RefScriptWitness refTxIn mbSh datum redeemer =
+  C.PlutusScriptWitness
+    C.PlutusScriptV2InBabbage
+    C.PlutusScriptV2
+    (C.PReferenceScript refTxIn mbSh)
+    datum
+    (toHashableScriptData redeemer)
+    (C.ExecutionUnits 0 0)
+
+spendPlutusV1 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> m ()
+spendPlutusV1 txIn s (toHashableScriptData -> dat) red =
+  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV1ScriptWitness s (C.ScriptDatumForTxIn dat) red
+  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
 
 spendPlutusV2 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> m ()
-spendPlutusV2 txIn s (toHashableScriptData -> dat) (toHashableScriptData -> red) =
-  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) (C.ScriptDatumForTxIn dat) red (C.ExecutionUnits 0 0)
-      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
-  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
+spendPlutusV2 txIn s (toHashableScriptData -> dat) red =
+  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s (C.ScriptDatumForTxIn dat) red
+  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
 
 {-| Spend an output locked by a Plutus V2 validator with an inline datum
 -}
 spendPlutusV2InlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> redeemer -> m ()
-spendPlutusV2InlineDatum txIn s (toHashableScriptData -> red) =
-  let wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript s) C.InlineScriptDatum red (C.ExecutionUnits 0 0)
-      wit' = C.BuildTxWith (C.ScriptWitness C.ScriptWitnessForSpending wit)
-  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit') :))
+spendPlutusV2InlineDatum txIn s red =
+  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s C.InlineScriptDatum red
+  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
 
 {-| Spend an output locked by a Plutus V2 validator using the redeemer provided. The redeemer
 can depend on the index of the @TxIn@ in the inputs of the final transaction.
 -}
 spendPlutusV2RefBase :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
 spendPlutusV2RefBase txIn refTxIn sh dat red =
-  let wit lkp = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn sh) dat (toHashableScriptData $ red $ findIndexSpending txIn lkp) (C.ExecutionUnits 0 0)
-      wit' = C.BuildTxWith . C.ScriptWitness C.ScriptWitnessForSpending . wit
-  in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit' body) :))
+  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2RefScriptWitness refTxIn sh dat (red $ findIndexSpending txIn txBody)
+  in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit body) :))
 
 {-| Spend an output locked by a Plutus V2 validator using the redeemer
 -}
@@ -378,11 +429,11 @@ spendPlutusV2RefWithoutInRefInlineDatum :: forall redeemer m. (MonadBuildTx m, P
 spendPlutusV2RefWithoutInRefInlineDatum txIn refTxIn sh red = spendPlutusV2RefBase txIn refTxIn sh C.InlineScriptDatum (const red)
 
 mintPlutusV1 :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> m ()
-mintPlutusV1 script (toHashableScriptData -> red) assetName quantity =
+mintPlutusV1 script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
-      wit      = C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
+      wit      = buildV1ScriptWitness script C.NoScriptDatumForMint red
   in  setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
 
 {-| A value containing the given amount of the native asset
@@ -392,17 +443,17 @@ assetValue hsh assetName quantity =
   C.valueFromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
 
 mintPlutusV2 :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => PlutusScript PlutusScriptV2 -> redeemer -> C.AssetName -> C.Quantity -> m ()
-mintPlutusV2 script (toHashableScriptData -> red) assetName quantity =
+mintPlutusV2 script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
-      wit      = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
+      wit      = buildV2ScriptWitness script C.NoScriptDatumForMint red
   in  setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
 
 mintPlutusV2Ref :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => C.TxIn -> C.ScriptHash -> redeemer -> C.AssetName -> C.Quantity -> m ()
-mintPlutusV2Ref refTxIn sh (toHashableScriptData -> red) assetName quantity =
+mintPlutusV2Ref refTxIn sh red assetName quantity =
   let v = assetValue sh assetName quantity
-      wit = C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn (Just sh)) (C.NoScriptDatumForMint) red (C.ExecutionUnits 0 0)
+      wit = buildV2RefScriptWitness refTxIn (Just sh) C.NoScriptDatumForMint red
       policyId = C.PolicyId sh
   in  setScriptsValid
       >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
@@ -534,25 +585,26 @@ addWithdrawal address amount witness =
   let withdrawal = (address, C.quantityToLovelace amount, C.BuildTxWith witness)
   in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
 
+addScriptWithdrawal :: (MonadBlockchain m, MonadBuildTx m) => ScriptHash -> C.Quantity -> C.ScriptWitness C.WitCtxStake C.BabbageEra -> m ()
+addScriptWithdrawal sh quantity witness = do
+  n <- networkId
+  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript sh
+      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr witness
+  addWithdrawal addr quantity wit
+
 {-| Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
 Includes the script in the transaction.
 -}
 addWithdrawZeroPlutusV2InTransaction :: (MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => PlutusScript PlutusScriptV2 -> redeemer -> m ()
 addWithdrawZeroPlutusV2InTransaction script redeemer = do
-  n <- networkId
-  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) C.NoScriptDatumForStake (toHashableScriptData redeemer) (C.ExecutionUnits 0 0))
-  addWithdrawal addr 0 wit
+  let sh = C.hashScript $ C.PlutusScript C.PlutusScriptV2 script
+  addScriptWithdrawal sh 0 $ buildV2ScriptWitness script C.NoScriptDatumForStake redeemer
 
 {-| Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
 The script is provided as a reference input.
 -}
 addWithdrawZeroPlutusV2Reference :: (MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> ScriptHash -> redeemer -> m ()
-addWithdrawZeroPlutusV2Reference refTxIn script redeemer = do
-  n <- networkId
-  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript script
-      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn (Just script)) C.NoScriptDatumForStake (toHashableScriptData redeemer) (C.ExecutionUnits 0 0))
-  addWithdrawal addr 0 wit
+addWithdrawZeroPlutusV2Reference refTxIn script redeemer = addScriptWithdrawal script 0 $ buildV2RefScriptWitness refTxIn (Just script) C.NoScriptDatumForStake redeemer
 
 {-| Add a certificate (stake delegation, stake pool registration, etc)
 to the transaction
