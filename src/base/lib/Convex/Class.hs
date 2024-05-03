@@ -6,13 +6,17 @@
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
-{-| Typeclass for blockchain operations
+{-| Typeclasses for blockchain operations
 -}
 module Convex.Class(
+
+  -- * Monad blockchain
   MonadBlockchain(..),
   trySendTx,
   SendTxFailed(..),
   singleUTxO,
+
+  -- * Monad mockchain
   MonadMockchain(..),
   MonadBlockchainError(..),
   getSlot,
@@ -22,6 +26,10 @@ module Convex.Class(
   setTimeToValidRange,
   getUtxo,
   setUtxo,
+
+  -- * MonadUtxoQuery
+  MonadUtxoQuery(..),
+  utxosByPaymentCredential,
 
   -- * Implementation
   MonadBlockchainCardanoNodeT(..),
@@ -35,6 +43,7 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     LedgerProtocolParameters (..),
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
+                                                                    PaymentCredential,
                                                                     PoolId,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
@@ -246,6 +255,30 @@ data MonadBlockchainError e =
   | FailWith String
   deriving stock (Functor, Generic, Show)
   deriving anyclass (ToJSON)
+
+{- Note [MonadUtxoQuery design]
+
+The 'MonadUtxoQuery' class provides a lookup function that tells us the
+unspent transaction outputs locked by one of a set of payment credentials.
+
+The reason why this is not part of 'MonadBlockchain' is that the latter can
+be implemented efficiently using only a running cardano-node, while 'MonadUtxoQuery'
+requires a separate indexer. The classes are split to give callers more fine-grained
+control over the capabilities they require.
+
+-}
+
+-- | A capability typeclass that provides methods for querying a chain indexer.
+--   See note [MonadUtxoQuery design].
+--   NOTE: There are currently no implementations of this class in sc-tools.
+class Monad m => MonadUtxoQuery m where
+  -- | Given a set of payment credentials, retrieve all UTxOs associated with
+  -- those payment credentials according to the current indexed blockchain state.
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UTxO BabbageEra)
+
+-- | Given a single payment credential, find the UTxOs with that credential
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UTxO BabbageEra)
+utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [sendTx Failure]
 

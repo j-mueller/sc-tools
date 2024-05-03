@@ -39,8 +39,8 @@ import           Cardano.Api                                           (BlockHea
                                                                         applyBlock,
                                                                         chainTipToChainPoint,
                                                                         envSecurityParam)
-import           Cardano.Api.LedgerEvents.LedgerEvent                  (LedgerEvent)
 import qualified Cardano.Api                                           as CAPI
+import           Cardano.Api.LedgerEvents.LedgerEvent                  (LedgerEvent)
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONBlockNo (..),
                                                                         JSONChainPoint (..),
