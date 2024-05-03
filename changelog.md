@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Convex.Lenses`: Added lenses for staking certificates, withdrawals, proposal procedures and voting procedures and isos for certificates and withdrawals
 - `Convex.BuildTx`: Added functions for withdrawals, certificates and stake witnesses
 - `Convex.Class`: Add `singleUTxO` function to retrieve a single output from the UTxO set
+- `Convex.Class`: Add `MonadUtxoQuery` class for looking up unspent transaction outputs by payment credential.
 
 ### Deleted
 
