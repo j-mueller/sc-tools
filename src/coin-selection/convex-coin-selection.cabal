@@ -76,7 +76,6 @@ test-suite convex-coin-selection-test
     tasty-quickcheck,
     QuickCheck,
     lens,
-    cardano-ledger-core,
     cardano-ledger-alonzo,
     cardano-ledger-babbage,
     cardano-ledger-shelley,
