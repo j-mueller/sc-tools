@@ -124,6 +124,7 @@ import           Control.Monad.State                   (MonadState, StateT, get,
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadMockchain (..),
+                                                        MonadUtxoQuery (..),
                                                         SendTxFailed (..))
 import           Convex.Constants                      (ERA)
 import qualified Convex.Lenses                         as L
@@ -134,7 +135,9 @@ import           Convex.NodeParams                     (NodeParams (..))
 import           Convex.Utils                          (slotToUtcTime)
 import           Convex.Utxos                          (UtxoSet (..),
                                                         fromApiUtxo,
-                                                        onlyCredential)
+                                                        onlyCredential,
+                                                        onlyCredentials,
+                                                        toApiUtxo)
 import           Convex.Wallet                         (Wallet, addressInEra,
                                                         paymentCredential)
 import           Data.Bifunctor                        (Bifunctor (..))
@@ -408,6 +411,9 @@ instance Monad m => MonadMockchain (MockchainT m) where
     pure a
   resolveDatumHash k = MockchainT (gets (Map.lookup k . view datums))
 
+instance Monad m => MonadUtxoQuery (MockchainT m) where
+  utxosByPaymentCredentials cred =
+    toApiUtxo . onlyCredentials cred <$> utxoSet
 
 {-| Add all datums from the transaction to the map of known datums
 -}

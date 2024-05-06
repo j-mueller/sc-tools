@@ -274,10 +274,10 @@ control over the capabilities they require.
 class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain state.
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UTxO BabbageEra)
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (C.UTxO BabbageEra)
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UTxO BabbageEra)
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (C.UTxO BabbageEra)
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [sendTx Failure]
