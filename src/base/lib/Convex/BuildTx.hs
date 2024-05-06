@@ -585,6 +585,9 @@ addWithdrawal address amount witness =
   let withdrawal = (address, C.quantityToLovelace amount, C.BuildTxWith witness)
   in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
 
+{- Like `addWithdrawal` but the stake address is built from the supplied script hash. This is an utility to make withdrawals guarded by
+scripts easier to trigger
+-}
 addScriptWithdrawal :: (MonadBlockchain m, MonadBuildTx m) => ScriptHash -> C.Quantity -> C.ScriptWitness C.WitCtxStake C.BabbageEra -> m ()
 addScriptWithdrawal sh quantity witness = do
   n <- networkId
