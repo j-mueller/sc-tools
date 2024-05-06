@@ -54,15 +54,10 @@ the redeemer to the index of the input in the final transaction
 -}
 spendMatchingIndex :: MonadBuildTx m => TxIn -> m ()
 spendMatchingIndex txi =
-  let witness txBody =
-        C.ScriptWitness C.ScriptWitnessForSpending
-        $ C.PlutusScriptWitness
-            C.PlutusScriptV2InBabbage
-            C.PlutusScriptV2
-            (C.PScript matchingIndexValidatorScript)
-            (C.ScriptDatumForTxIn $ toHashableScriptData ())
-            (toHashableScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi txBody)
-            (C.ExecutionUnits 0 0)
+  let witness txBody = C.ScriptWitness C.ScriptWitnessForSpending $ BuildTx.buildV2ScriptWitness
+        matchingIndexValidatorScript
+        (C.ScriptDatumForTxIn $ toHashableScriptData ())
+        (fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi txBody)
   in BuildTx.setScriptsValid >> BuildTx.addInputWithTxBody txi witness
 
 {-| Mint a token from the 'matchingIndexMPScript', setting
@@ -70,12 +65,8 @@ the redeemer to the index of its currency symbol in the final transaction mint
 -}
 mintMatchingIndex :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> m ()
 mintMatchingIndex policy assetName quantity =
-  let witness txBody =
-        C.PlutusScriptWitness
-          C.PlutusScriptV2InBabbage
-          C.PlutusScriptV2
-          (C.PScript matchingIndexMPScript)
-          (C.NoScriptDatumForMint)
-          (toHashableScriptData $ fromIntegral @Int @Integer $ BuildTx.findIndexMinted policy txBody)
-          (C.ExecutionUnits 0 0)
+  let witness txBody = BuildTx.buildV2ScriptWitness
+        matchingIndexMPScript
+        (C.NoScriptDatumForMint)
+        (fromIntegral @Int @Integer $ BuildTx.findIndexMinted policy txBody)
   in BuildTx.setScriptsValid >> BuildTx.addMintWithTxBody policy assetName quantity witness
