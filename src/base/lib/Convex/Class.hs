@@ -276,6 +276,27 @@ class Monad m => MonadUtxoQuery m where
   -- those payment credentials according to the current indexed blockchain state.
   utxosByPaymentCredentials :: Set PaymentCredential -> m (C.UTxO BabbageEra)
 
+instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (ExceptT e m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (ReaderT e m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (StrictState.StateT s m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (LazyState.StateT s m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
 -- | Given a single payment credential, find the UTxOs with that credential
 utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (C.UTxO BabbageEra)
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
