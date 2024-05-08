@@ -11,16 +11,16 @@ module Convex.Devnet.CardanoNode.Types (
   defaultStakePoolNodeParams
 ) where
 
-import           Cardano.Api                      (Env, NetworkId, Lovelace,
+import           Cardano.Api                      (Env, NetworkId,
                                                    LocalNodeConnectInfo)
+import           Cardano.Api.Value                (Coin)
 import           Cardano.Api.Shelley              (StakeKey, Key(..), VrfKey,
                                                    KesKey, StakePoolKey,
                                                    OperationalCertificateIssueCounter,
                                                    ShelleyGenesis)
-import           Cardano.Ledger.Alonzo.Genesis    (AlonzoGenesis)
-import           Cardano.Ledger.Conway.Genesis    (ConwayGenesis)
 import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import           Data.Aeson                       (FromJSON, ToJSON)
+import qualified Data.Aeson                       as Aeson
 import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
 
@@ -60,9 +60,9 @@ data RunningStakePoolNode = RunningStakePoolNode
 {- | Stake pool node params
 -}
 data StakePoolNodeParams = StakePoolNodeParams
-  { spnCost   :: Lovelace
+  { spnCost   :: Coin
   , spnMargin :: Rational
-  , spnPledge :: Lovelace
+  , spnPledge :: Coin
   }
 
 defaultStakePoolNodeParams :: StakePoolNodeParams
@@ -73,8 +73,21 @@ defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
 data GenesisConfigChanges =
   GenesisConfigChanges
     { cfShelley :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
-    , cfAlonzo  :: AlonzoGenesis -> AlonzoGenesis
-    , cfConway  :: ConwayGenesis StandardCrypto -> ConwayGenesis StandardCrypto
+
+    -- this is spiritually a 'Cardano.Ledger.Alonzo.Genesis.AlonzoGenesis' value
+    -- we can't JSON roundtrip it here because the cardano node that we use in
+    -- CI uses a slightly different JSON encoding and will trip even if we
+    -- just write 'toJSON . fromJSON' without modifying the value
+    -- Note that the problem is with the ToJSON instance!
+    , cfAlonzo  :: Aeson.Value -> Aeson.Value
+
+
+    -- this is spiritually a 'Cardano.Ledger.Conway.Genesis.ConwayGenesis' value
+    -- we can't JSON roundtrip it here because the cardano node that we use in
+    -- CI uses a slightly different JSON encoding and will trip even if we
+    -- just write 'toJSON . fromJSON' without modifying the value
+    -- Note that the problem is with the ToJSON instance!
+    , cfConway :: Aeson.Value -> Aeson.Value
     }
 
 instance Semigroup GenesisConfigChanges where
