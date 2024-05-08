@@ -7,8 +7,7 @@ module Main where
 
 import qualified Cardano.Api                     as C
 import qualified Cardano.Api.Shelley             as C
-import           Cardano.Api.Value               (Quantity)
-import           Cardano.Api.GenesisParameters   (EpochSize (..))
+import           Cardano.Ledger.Slot             (EpochSize (..))
 import           Control.Monad                   (unless)
 import           Control.Monad.Except            (runExceptT)
 import           Control.Concurrent              (threadDelay)
@@ -140,7 +139,7 @@ stakePoolRewards = do
             }
           ) id id
 
-      getStakeRewards :: RunningNode -> C.StakeCredential -> IO Quantity
+      getStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Quantity
       getStakeRewards RunningNode{rnConnectInfo, rnNetworkId} cred =
         let
           mode  = fst rnConnectInfo
@@ -148,11 +147,11 @@ stakePoolRewards = do
         in
          sum . Map.elems . fst <$> queryStakeAddresses mode creds rnNetworkId
 
-      waitForStakeRewards :: RunningNode -> C.StakeCredential -> IO Quantity
+      waitForStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Quantity
       waitForStakeRewards node cred =
         getStakeRewards node cred >>= waitForStakeRewards' node cred
 
-      waitForStakeRewards' :: RunningNode -> C.StakeCredential -> Quantity -> IO Quantity
+      waitForStakeRewards' :: RunningNode -> C.StakeCredential -> C.Quantity -> IO C.Quantity
       waitForStakeRewards' node cred amount = do
         rewards <- getStakeRewards node cred
         if rewards > amount then
