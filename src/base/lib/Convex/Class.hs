@@ -40,6 +40,7 @@ import qualified Cardano.Api                                       as C
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     EraHistory (..),
                                                                     Hash,
+                                                                    HashableScriptData,
                                                                     LedgerProtocolParameters (..),
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
@@ -183,7 +184,7 @@ class MonadBlockchain m => MonadMockchain m where
   {-| Look up the datum of a script hash, taking into account
   all datums that were part of transactions submitted with @sendTx@.
   -}
-  resolveDatumHash :: Hash ScriptData -> m (Maybe ScriptData)
+  resolveDatumHash :: Hash ScriptData -> m (Maybe (HashableScriptData))
 
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Considering withdrawals and certificates in `mapTxScriptWtinesses`.
 * Function `substituteExecutionUnits` updated to trigger `TxBodyErrorAutoBalance` when witnesses are not found.
 * `MonadMockchain.sendTx` returns `Either` to allow the caller to handle submission failures
+* `MonadMockchain.resolveDatumHash` returns `HashableScriptData` instead of `ScriptData` to avoid re-hashing data values as much as possible
 
 ### Added
 
