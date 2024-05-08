@@ -23,10 +23,10 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api                     (AddressInEra, BabbageEra, BuildTx,
-                                                  Tx, TxBodyContent)
+import           Cardano.Api                     (AddressInEra, BabbageEra,
+                                                  BuildTx, Quantity, Tx,
+                                                  TxBodyContent)
 import qualified Cardano.Api                     as C
-import           Cardano.Api.Value               (Quantity)
 import           Control.Monad                   (replicateM)
 import           Control.Monad.IO.Class          (MonadIO (..))
 import           Control.Monad.Reader            (ReaderT (..), ask, lift)
@@ -49,7 +49,8 @@ import qualified Convex.Wallet                   as Wallet
 import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.Text                       (Text)
 import           GHC.Generics                    (Generic)
-import           Prettyprinter                   (defaultLayoutOptions, layoutPretty)
+import           Prettyprinter                   (defaultLayoutOptions,
+                                                  layoutPretty)
 import qualified Prettyprinter.Render.Text       as Render
 
 faucet :: IO Wallet
