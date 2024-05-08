@@ -14,9 +14,8 @@ module Convex.Devnet.WalletServer(
   sendFundsToOperator
 ) where
 
-import           Cardano.Api                     (BabbageEra, CtxTx, Tx)
+import           Cardano.Api                     (BabbageEra, CtxTx, Tx, Quantity)
 import qualified Cardano.Api                     as C
-import           Cardano.Api.Value               (Quantity)
 import           Control.Concurrent              (threadDelay)
 import           Control.Tracer                  (Tracer, contramap, traceWith)
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))

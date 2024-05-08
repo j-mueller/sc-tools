@@ -30,14 +30,14 @@ module Convex.Devnet.CardanoNode(
 import qualified Cardano.Api                        as C
 import           Cardano.Api                        (NetworkId,
                                                      StakeAddressReference (..))
-import           Cardano.Api.Address                (StakeCredential (..))
-import           Cardano.Api.Certificate            (StakePoolParameters (..),
+import           Cardano.Api.Shelley                (StakeCredential (..),
+                                                     StakePoolParameters (..),
                                                      StakeAddressRequirements (..),
                                                      StakeDelegationRequirements (..),
                                                      StakePoolRegistrationRequirements (..),
+                                                     KESPeriod (..),
+                                                     OperationalCertificateIssueCounter (..),
                                                      toShelleyPoolParams)
-import           Cardano.Api.OperationalCertificate (KESPeriod (..),
-                                                     OperationalCertificateIssueCounter (..))
 import qualified Cardano.Ledger.Core                as Core
 import           Cardano.Ledger.Shelley.Genesis     (ShelleyGenesis (..))
 import           Cardano.Slotting.Slot              (withOriginToMaybe)

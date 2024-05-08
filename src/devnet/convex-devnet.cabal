@@ -79,7 +79,6 @@ library
 
       -- cardano-node deps.
       , cardano-api
-      , cardano-api:internal
       , cardano-ledger-core
       , cardano-ledger-shelley
       , cardano-slotting
@@ -112,7 +111,6 @@ test-suite convex-devnet-test
     , convex-devnet
     , convex-base
     , cardano-api
-    , cardano-api:internal
     , mtl
     , aeson
     , containers

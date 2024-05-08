@@ -40,7 +40,7 @@ import           Cardano.Api                                           (BlockHea
                                                                         chainTipToChainPoint,
                                                                         envSecurityParam)
 import qualified Cardano.Api                                           as CAPI
-import           Cardano.Api.LedgerEvents.LedgerEvent                  (LedgerEvent)
+import qualified Cardano.Api.Shelley                                   as CAPI
 import           Cardano.Slotting.Slot                                 (WithOrigin (At))
 import           Convex.NodeClient.ChainTip                            (JSONBlockNo (..),
                                                                         JSONChainPoint (..),
@@ -75,7 +75,7 @@ data LedgerStateArgs mode where
 -- | Whether we have the current ledger state for the client folding function
 data LedgerStateUpdate mode where
   NoLedgerStateUpdate :: LedgerStateUpdate 'NoLedgerState
-  LedgerStateUpdate :: LedgerState -> [LedgerEvent] -> LedgerStateUpdate 'FullLedgerState
+  LedgerStateUpdate :: LedgerState -> [CAPI.LedgerEvent] -> LedgerStateUpdate 'FullLedgerState
 
 -- | A history of the last @k@ states
 type History mode a = Seq (SlotNo, LedgerStateUpdate mode, a)

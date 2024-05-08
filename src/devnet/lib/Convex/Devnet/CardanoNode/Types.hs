@@ -13,11 +13,11 @@ module Convex.Devnet.CardanoNode.Types (
 
 import           Cardano.Api                      (Env, NetworkId,
                                                    LocalNodeConnectInfo)
-import           Cardano.Api.Value                (Coin)
 import           Cardano.Api.Shelley              (StakeKey, Key(..), VrfKey,
                                                    KesKey, StakePoolKey,
                                                    OperationalCertificateIssueCounter,
                                                    ShelleyGenesis)
+import           Cardano.Ledger.Shelley.API       (Coin)
 import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as Aeson

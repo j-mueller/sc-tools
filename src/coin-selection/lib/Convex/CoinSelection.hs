@@ -46,11 +46,11 @@ import qualified Cardano.Api                   as Cardano.Api
 import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
-import qualified Cardano.Api.Shelley           as C
-import           Cardano.Api.ReexposeLedger    (KeyHash (..), KeyRole (..),
-                                                Credential (..), EraCrypto (..),
+import           Cardano.Ledger.Shelley.API    (KeyHash (..), KeyRole (..),
+                                                Credential (..), Coin (..),
                                                 PoolParams (..))
-import           Cardano.Ledger.Coin           (Coin (..))
+import           Cardano.Ledger.Shelley.Core   (EraCrypto)
+import qualified Cardano.Api.Shelley           as C
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
 import qualified Cardano.Ledger.Shelley.TxCert as TxCert

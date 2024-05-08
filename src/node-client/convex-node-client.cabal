@@ -51,7 +51,6 @@ library
     -- cardano dependencies
     build-depends:
       cardano-api,
-      cardano-api:internal,
       cardano-slotting,
       ouroboros-consensus,
       ouroboros-network-protocols,

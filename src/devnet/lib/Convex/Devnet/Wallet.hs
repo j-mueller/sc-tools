@@ -24,9 +24,8 @@ module Convex.Devnet.Wallet(
 ) where
 
 import           Cardano.Api                     (AddressInEra, BabbageEra, BuildTx,
-                                                  Tx, TxBodyContent)
+                                                  Tx, TxBodyContent, Quantity)
 import qualified Cardano.Api                     as C
-import           Cardano.Api.Value               (Quantity)
 import           Control.Monad                   (replicateM)
 import           Control.Monad.IO.Class          (MonadIO (..))
 import           Control.Monad.Reader            (ReaderT (..), ask, lift)
