@@ -123,7 +123,7 @@ import           Convex.Scripts                (toHashableScriptData)
 import           Data.Functor.Identity         (Identity (..))
 import           Data.List                     (nub)
 import qualified Data.Map                      as Map
-import           Data.Maybe                    (fromMaybe, fromJust)
+import           Data.Maybe                    (fromJust, fromMaybe)
 import qualified Data.Set                      as Set
 import qualified PlutusLedgerApi.V1            as Plutus
 

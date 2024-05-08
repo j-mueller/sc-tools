@@ -12,13 +12,13 @@ module Scripts.MatchingIndex(
   , mintingPolicy
 ) where
 
-import           PlutusLedgerApi.V2.Contexts (ScriptContext (..),
-                                            ScriptPurpose (..), TxInInfo (..),
-                                            TxInfo (..))
 import           PlutusLedgerApi.V1.Value    (flattenValue)
-import           PlutusTx.IsData.Class     (UnsafeFromData (unsafeFromBuiltinData))
-import           PlutusTx.Prelude          (BuiltinData)
-import qualified PlutusTx.Prelude          as P
+import           PlutusLedgerApi.V2.Contexts (ScriptContext (..),
+                                              ScriptPurpose (..), TxInInfo (..),
+                                              TxInfo (..))
+import           PlutusTx.IsData.Class       (UnsafeFromData (unsafeFromBuiltinData))
+import           PlutusTx.Prelude            (BuiltinData)
+import qualified PlutusTx.Prelude            as P
 
 {-# INLINABLE validator #-}
 validator :: BuiltinData -> BuiltinData -> BuiltinData -> ()
