@@ -167,7 +167,7 @@ makePayment = do
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           bal <- Utxos.totalBalance <$> W.walletUtxos runningNode wllt
-          assertEqual "Wallet should have the expected balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.selectLovelace bal)
+          assertEqual "Wallet should have the expected balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.lovelaceToQuantity $ C.selectLovelace bal)
 
 runWalletServer :: IO ()
 runWalletServer =

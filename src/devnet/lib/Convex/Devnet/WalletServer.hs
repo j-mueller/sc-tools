@@ -100,7 +100,7 @@ withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, 
                 , rwsManager
                 , rwsClient
                 }
-        _ <- sendFundsToOperator tracer rn op (C.Lovelace 100_000_000) >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
+        _ <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000) >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
         waitUntilAvailable tracer rws
         action rws
 
@@ -179,7 +179,7 @@ waitUntilAvailable tr RunningWalletServer{rwsClient} =
 
 {-| Send faucet funds to the operator
 -}
-sendFundsToOperator :: Tracer IO WalletLog -> RunningNode -> Operator k -> Lovelace -> IO (Tx BabbageEra)
+sendFundsToOperator :: Tracer IO WalletLog -> RunningNode -> Operator k -> Quantity -> IO (Tx BabbageEra)
 sendFundsToOperator tr node@RunningNode{rnNetworkId} op lvl = do
   let opAddress = operatorAddress rnNetworkId op
   Wallet.sendFaucetFundsTo (contramap WWallet tr) node (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) opAddress) 10 lvl

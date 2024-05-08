@@ -28,6 +28,7 @@ data-files:
   config/devnet/opcert.cert
   config/devnet/vrf.skey
 
+
 common lang
     default-language: Haskell2010
     default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
@@ -80,8 +81,6 @@ library
       , cardano-api
       , cardano-api:internal
       , cardano-ledger-core
-      , cardano-ledger-alonzo
-      , cardano-ledger-conway
       , cardano-ledger-shelley
       , cardano-slotting
       , io-classes

@@ -35,6 +35,7 @@ module Convex.Lenses(
   _TxMintValue,
   _TxInsReference,
   _Value,
+  _AssetId,
   _TxOut,
   _TxOutValue,
   _ShelleyAddressInBabbageEra,
@@ -185,9 +186,9 @@ txValidityLowerBound = lens get set_ where
   get = C.txValidityLowerBound
   set_ body range = body{C.txValidityLowerBound = range}
 
-txFee :: Lens' (C.TxBodyContent v BabbageEra) C.Lovelace
+txFee :: Lens' (C.TxBodyContent v BabbageEra) Coin
 txFee = lens get set_ where
-  get :: C.TxBodyContent v BabbageEra -> C.Lovelace
+  get :: C.TxBodyContent v BabbageEra -> Coin
   get b = case C.txFee b of { C.TxFeeExplicit C.ShelleyBasedEraBabbage t_fee -> t_fee }
   set_ body fee = body{C.txFee = C.TxFeeExplicit C.ShelleyBasedEraBabbage fee}
 
@@ -250,9 +251,9 @@ _TxExtraKeyWitnesses = iso from to where
   to []   = C.TxExtraKeyWitnessesNone
   to keys = C.TxExtraKeyWitnesses C.AlonzoEraOnwardsBabbage keys
 
-_TxWithdrawals :: Iso' (C.TxWithdrawals v BabbageEra) [(C.StakeAddress, C.Lovelace, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
+_TxWithdrawals :: Iso' (C.TxWithdrawals v BabbageEra) [(C.StakeAddress, Coin, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
 _TxWithdrawals = iso from to where
-  from :: C.TxWithdrawals v BabbageEra -> [(C.StakeAddress, C.Lovelace, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
+  from :: C.TxWithdrawals v BabbageEra -> [(C.StakeAddress, Coin, BuildTxWith v (C.Witness C.WitCtxStake BabbageEra))]
   from C.TxWithdrawalsNone    = []
   from (C.TxWithdrawals _ xs) = xs
 
@@ -322,12 +323,18 @@ _TxInsReference = iso from to where
     [] -> C.TxInsReferenceNone
     xs -> C.TxInsReference C.BabbageEraOnwardsBabbage xs
 
-
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to where
   -- the 'Value' constructor is not exposed so we have to take the long way around
   from = Map.fromList . C.valueToList
   to = C.valueFromList . Map.toList
+
+_AssetId :: Prism' C.AssetId (C.PolicyId, C.AssetName)
+_AssetId = prism' from to where
+  from (p, a) = C.AssetId p a
+  to = \case
+    C.AssetId p a -> Just (p, a)
+    _1            -> Nothing
 
 _TxOut :: Iso' (TxOut ctx era) (AddressInEra era, TxOutValue era, TxOutDatum ctx era, ReferenceScript era)
 _TxOut = iso from to where

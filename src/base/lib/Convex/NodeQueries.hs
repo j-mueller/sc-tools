@@ -22,11 +22,12 @@ import           Cardano.Api                                        (ChainPoint,
                                                                      LocalNodeConnectInfo (..),
                                                                      NetworkId (Mainnet, Testnet),
                                                                      NetworkMagic (..),
+                                                                     Quantity,
                                                                      SystemStart,
-                                                                     Lovelace,
                                                                      envSecurityParam)
 import qualified Cardano.Api                                        as CAPI
-import           Cardano.Api.Shelley                                (PoolId, StakeAddress,
+import           Cardano.Api.Shelley                                (PoolId,
+                                                                     StakeAddress,
                                                                      StakeCredential)
 import qualified Cardano.Chain.Genesis
 import           Cardano.Crypto                                     (RequiresNetworkMagic (..),
@@ -36,9 +37,10 @@ import           Control.Monad.Except                               (MonadError,
                                                                      throwError)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Control.Monad.Trans.Except                         (runExceptT)
-import           Data.SOP.Strict                                    (NP ((:*)))
-import           Data.Set                                           (Set)
+import           Data.Bifunctor                                     (Bifunctor (..))
 import           Data.Map                                           (Map)
+import           Data.Set                                           (Set)
+import           Data.SOP.Strict                                    (NP ((:*)))
 import qualified Ouroboros.Consensus.Cardano.CanHardFork            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras as HFC
@@ -108,7 +110,7 @@ queryStakePools connectInfo = do
       fail ("queryStakePools: failed with: " <> show err)
     Right k -> pure k
 
-queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> NetworkId -> IO (Map StakeAddress Lovelace, Map StakeAddress PoolId)
+queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> NetworkId -> IO (Map StakeAddress Quantity, Map StakeAddress PoolId)
 queryStakeAddresses info creds nid = do
   result <- queryLocalState
               (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage (CAPI.QueryStakeAddresses creds nid)))
@@ -116,7 +118,7 @@ queryStakeAddresses info creds nid = do
   case result of
     Left err -> do
       fail ("queryStakeAddresses: failed with: " <> show err)
-    Right k -> pure k
+    Right k -> pure (first (fmap CAPI.lovelaceToQuantity) k)
 
 -- | Run a local state query on the local cardano node, using the volatile tip
 queryLocalState :: CAPI.QueryInMode b -> LocalNodeConnectInfo -> IO b

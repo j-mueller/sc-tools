@@ -23,7 +23,7 @@ jobs:
       - uses: haskell-actions/setup@v2
         id: cabal-setup
         with:
-          ghc-version: '9.6.3'
+          ghc-version: '9.6.4'
           cabal-version: '3.10.1.0'
 
       - uses: actions/checkout@v4
@@ -37,7 +37,7 @@ jobs:
       - name: Build haddocks
         run: |
           cabal update
-          ./scripts/haddocks.sh
+          cabal haddock-project --local --output=haddocks
 
       - name: Upload GH pages artifact
         uses: actions/upload-pages-artifact@v2.0.0

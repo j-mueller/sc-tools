@@ -20,6 +20,7 @@ module Convex.MockChain(
   env,
   poolState,
   transactions,
+  failedTransactions,
   utxoSet,
   datums,
   walletUtxo,
@@ -91,19 +92,20 @@ import           Cardano.Ledger.Plutus.Language        (Language (..),
                                                         PlutusBinary (..))
 import qualified Cardano.Ledger.Plutus.Language        as Plutus.Language
 import           Cardano.Ledger.Shelley.API            (AccountState (..),
-                                                        ApplyTxError, Coin (..),
+                                                        ApplyTxError,
+                                                        CertState (..),
+                                                        Coin (..),
                                                         LedgerEnv (..),
                                                         MempoolEnv,
-                                                        CertState (..),
                                                         MempoolState, UTxO (..),
                                                         UtxoEnv (..), Validated,
                                                         initialFundsPseudoTxIn)
 import qualified Cardano.Ledger.Shelley.API
 import           Cardano.Ledger.Shelley.LedgerState    (LedgerState (..),
-                                                        UTxOState (..),
-                                                        rewards,
+                                                        UTxOState (..), rewards,
                                                         smartUTxOState)
-import           Cardano.Ledger.UMap                   ((⋪), rewardMap, sPoolMap)
+import           Cardano.Ledger.UMap                   (rewardMap, sPoolMap,
+                                                        (⋪))
 import qualified Cardano.Ledger.Val                    as Val
 import           Control.Lens                          (_1, _3, over, set, to,
                                                         view, (%=), (&), (.~),
@@ -121,7 +123,8 @@ import           Control.Monad.State                   (MonadState, StateT, get,
                                                         runStateT)
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
-                                                        MonadMockchain (..))
+                                                        MonadMockchain (..),
+                                                        SendTxFailed (..))
 import           Convex.Constants                      (ERA)
 import qualified Convex.Lenses                         as L
 import           Convex.MockChain.Defaults             ()
@@ -150,7 +153,7 @@ import qualified UntypedPlutusCore                     as UPLC
 {-| Apply the plutus script to all its arguments and return a plutus
 program
 -}
-fullyAppliedScript :: NodeParams -> PlutusWithContext -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+fullyAppliedScript :: NodeParams -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
 fullyAppliedScript params PlutusWithContext{pwcScript, pwcDatums} = do
   let plutus = either id Plutus.Language.plutusFromRunnable pwcScript
       binScript = plutusBinary plutus
@@ -164,18 +167,37 @@ fullyAppliedScript params PlutusWithContext{pwcScript, pwcDatums} = do
   appliedTerm <- first show $ mkTermToEvaluate lng pv scriptForEval pArgs
   pure $ UPLC.Program () PLC.latestVersion appliedTerm
 
+data ExUnitsError =
+  Phase1Error (Cardano.Api.TransactionValidityError BabbageEra)
+  | Phase2Error Cardano.Api.ScriptExecutionError
+  deriving (Show)
+
+makePrisms ''ExUnitsError
+
+data ValidationError =
+  VExUnits ExUnitsError
+  | PredicateFailures [CollectError ERA]
+  | ApplyTxFailure (ApplyTxError ERA)
+  deriving (Show)
+
+makePrisms ''ValidationError
+
+{-| State of the mockchain
+-}
 data MockChainState =
   MockChainState
-    { mcsEnv          :: MempoolEnv ERA
-    , mcsPoolState    :: MempoolState ERA
-    , mcsTransactions :: [(Validated (Core.Tx ERA), [PlutusWithContext])]
-    , mcsDatums       :: Map (Hash ScriptData) ScriptData
+    { mcsEnv                :: MempoolEnv ERA
+    , mcsPoolState          :: MempoolState ERA
+    , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
+    , mcsFailedTransactions :: [(Tx BabbageEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+    , mcsDatums             :: Map (Hash ScriptData) ScriptData
     }
 
 makeLensesFor
   [ ("mcsEnv", "env")
   , ("mcsPoolState", "poolState")
   , ("mcsTransactions", "transactions")
+  , ("mcsFailedTransactions", "failedTransactions")
   , ("mcsDatums", "datums")
   ] ''MockChainState
 
@@ -219,26 +241,12 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
           , lsCertState = def
           }
       , mcsTransactions = []
+      , mcsFailedTransactions = []
       , mcsDatums = Map.empty
       }
 
 utxoEnv :: NodeParams -> SlotNo -> UtxoEnv ERA
 utxoEnv params slotNo = UtxoEnv slotNo (Defaults.pParams params) def
-
-data ExUnitsError =
-  Phase1Error (Cardano.Api.TransactionValidityError BabbageEra)
-  | Phase2Error Cardano.Api.ScriptExecutionError
-  deriving (Show)
-
-makePrisms ''ExUnitsError
-
-data ValidationError =
-  VExUnits ExUnitsError
-  | PredicateFailures [CollectError ERA]
-  | ApplyTxFailure (ApplyTxError ERA)
-  deriving (Show)
-
-makePrisms ''ValidationError
 
 {-| Compute the exunits of a transaction
 -}
@@ -267,7 +275,7 @@ applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
 
 {-| Evaluate a transaction, returning all of its script contexts.
 -}
-evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [PlutusWithContext]
+evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [PlutusWithContext StandardCrypto]
 evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
     (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
     _ <- applyTx params state vtx scripts
@@ -295,7 +303,7 @@ constructValidated ::
   UtxoEnv Babbage ->
   UTxOState Babbage ->
   Core.Tx Babbage ->
-  m (AlonzoTx Babbage, [PlutusWithContext])
+  m (AlonzoTx Babbage, [PlutusWithContext StandardCrypto])
 constructValidated globals (UtxoEnv _ pp _) st tx =
   case collectPlutusScriptsWithContext ei sysS pp tx utxo of
     Left errs -> throwError errs
@@ -319,7 +327,7 @@ applyTx ::
   NodeParams ->
   MockChainState ->
   Core.Tx ERA ->
-  [PlutusWithContext] ->
+  [PlutusWithContext StandardCrypto] ->
   Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
@@ -332,8 +340,7 @@ instance MonadTrans MockchainT where
   lift = MockchainT . lift . lift . lift
 
 data MockchainError =
-  MockchainValidationFailed ValidationError
-  | FailWith String
+  FailWith String
   deriving (Show)
 
 instance Monad m => MonadFail (MockchainT m) where
@@ -345,10 +352,12 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     addDatumHashes tx
     st <- get
     case applyTransaction nps st tx of
-      Left err       -> throwError (MockchainValidationFailed err)
+      Left err       -> do
+        failedTransactions %= ((:) (tx, err))
+        return $ Left $ SendTxFailed $ show err
       Right (st', _) ->
         let Cardano.Api.Tx body _ = tx
-        in put st' >> return (Cardano.Api.getTxId body)
+        in put st' >> return (Right $ Cardano.Api.getTxId body)
   utxoByTxIn txIns = MockchainT $ do
     nps <- ask
     Cardano.Api.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage))
@@ -364,7 +373,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
         Map.fromList
           $ bimap
               fromLedgerStakeAddress
-              Cardano.Api.fromShelleyLovelace <$> Map.toList (rewardMap rewards')
+              Cardano.Api.lovelaceToQuantity <$> Map.toList (rewardMap rewards')
       poolMap =
         Map.fromList
           $ bimap

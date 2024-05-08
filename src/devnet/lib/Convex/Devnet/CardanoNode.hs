@@ -270,6 +270,28 @@ waitForNextBlock node = do
   blockNo <- waitForBlock node
   waitForNextBlock' node blockNo
 
+{-| Modifications to apply to the default genesis configurations
+-}
+data GenesisConfigChanges =
+  GenesisConfigChanges
+    { cfShelley :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+
+    -- this is spiritually a 'Cardano.Ledger.Alonzo.Genesis.AlonzoGenesis' value
+    -- we can't JSON roundtrip it here because the cardano node that we use in
+    -- CI uses a slightly different JSON encoding and will trip even if we
+    -- just write 'toJSON . fromJSON' without modifying the value
+    -- Note that the problem is with the ToJSON instance!
+    , cfAlonzo  :: Aeson.Value -> Aeson.Value
+
+
+    -- this is spiritually a 'Cardano.Ledger.Conway.Genesis.ConwayGenesis' value
+    -- we can't JSON roundtrip it here because the cardano node that we use in
+    -- CI uses a slightly different JSON encoding and will trip even if we
+    -- just write 'toJSON . fromJSON' without modifying the value
+    -- Note that the problem is with the ToJSON instance!
+    , cfConway :: Aeson.Value -> Aeson.Value
+    }
+
 waitForNextBlock' :: RunningNode -> C.BlockNo -> IO C.BlockNo
 waitForNextBlock' node blockNo = do
   currentBlockNo <- waitForBlock node
