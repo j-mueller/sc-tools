@@ -46,8 +46,11 @@ import qualified Cardano.Api                   as Cardano.Api
 import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
+import           Cardano.Ledger.Shelley.API    (KeyHash (..), KeyRole (..),
+                                                Credential (..), Coin (..),
+                                                PoolParams (..))
+import           Cardano.Ledger.Shelley.Core   (EraCrypto)
 import qualified Cardano.Api.Shelley           as C
-import           Cardano.Ledger.Coin           (Coin (..))
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
 import qualified Cardano.Ledger.Shelley.TxCert as TxCert
@@ -704,13 +707,50 @@ keyWitnesses (requiredTxIns -> inputs) = do
 
 -- | The number of signatures required to spend the transaction's inputs
 --   and to satisfy the "extra key witnesses" constraint
+--   and required for certification.
 requiredSignatureCount :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
 requiredSignatureCount content = do
   keyWits <- keyWitnesses content
   let hsh (C.PaymentKeyHash h) = h
       extraSigs = view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) content
       allSigs = Set.union keyWits (Set.fromList $ fmap hsh extraSigs)
-  pure $ TransactionSignatureCount $ fromIntegral $ Set.size allSigs
+      certKeyWits = case view L.txCertificates content of
+        C.TxCertificates _ cs _ -> mconcat $ getCertKeyWits <$> cs
+        C.TxCertificatesNone -> Set.empty
+
+      getCertKeyWits :: C.Certificate era -> Set (CertificateKeyWitness era)
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert (KeyHashObj hash)))) =
+        Set.singleton $ CertificateStakeKey hash
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert _))) =
+        Set.empty
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyUnRegCert (KeyHashObj hash)))) =
+        Set.singleton $ CertificateStakeKey hash
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyUnRegCert _))) =
+        Set.empty
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert (KeyHashObj hash) poolHash))) =
+        Set.fromList [CertificateStakeKey hash, CertificateStakePoolKey poolHash]
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert _ hash))) =
+        Set.singleton $ CertificateStakePoolKey hash
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertPool (TxCert.RegPool PoolParams{ppId, ppOwners}))) =
+           Set.singleton (CertificateStakePoolKey ppId)
+        <> Set.fromList (CertificateStakeKey <$> Set.toList ppOwners)
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertPool (TxCert.RetirePool hash _))) =
+           Set.singleton (CertificateStakePoolKey hash)
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertGenesisDeleg _)) =
+        error "Genesis key delegation certificate key witness count not supported"
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertMir _)) =
+        error "MIR certificate key witness count not supported"
+      getCertKeyWits _ =
+        Set.empty
+
+  pure $ TransactionSignatureCount (fromIntegral $ Set.size allSigs + Set.size certKeyWits)
+
+{- | Certificate key witness
+-}
+data CertificateKeyWitness era =
+    CertificateStakeKey (KeyHash Staking (EraCrypto (C.ShelleyLedgerEra era)))
+  | CertificateStakePoolKey (KeyHash StakePool (EraCrypto (C.ShelleyLedgerEra era)))
+  deriving stock (Eq, Ord)
 
 publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
 publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)

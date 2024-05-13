@@ -6,6 +6,7 @@
 -}
 module Convex.Devnet.NodeQueries(
   querySystemStart,
+  queryEpoch,
   queryEraHistory,
   queryTip,
   queryTipBlock,
@@ -103,6 +104,18 @@ cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots
 
 queryTipBlock :: NetworkId -> FilePath -> IO (WithOrigin BlockNo)
 queryTipBlock = queryLocalState C.QueryChainBlockNo
+
+queryEpoch :: NetworkId -> FilePath -> IO C.EpochNo
+queryEpoch nid path = do
+  result <- queryLocalState
+             (C.QueryInEra
+                (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryEpoch)
+             )
+             nid path
+  case result of
+    Left err -> do
+      fail ("queryEpoch: failed with: " <> show err)
+    Right k -> pure k
 
 -- | Get the tip (slot no. and block hash) from the node
 queryTip ::

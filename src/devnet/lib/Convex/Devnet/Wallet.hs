@@ -23,33 +23,33 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api               (AddressInEra, BabbageEra, BuildTx,
-                                            Quantity, Tx, TxBodyContent)
-import qualified Cardano.Api               as C
-import           Control.Monad             (replicateM)
-import           Control.Monad.IO.Class    (MonadIO (..))
-import           Control.Monad.Reader      (ReaderT (..), ask, lift)
-import           Control.Tracer            (Tracer, traceWith)
-import qualified Convex.BuildTx            as BuildTx
-import           Convex.Class              (MonadBlockchain (networkId),
-                                            runMonadBlockchainCardanoNodeT,
-                                            sendTx)
-import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.Devnet.CardanoNode (RunningNode (..))
-import qualified Convex.Devnet.NodeQueries as NodeQueries
-import           Convex.Devnet.Utils       (keysFor)
-import           Convex.Lenses             (emptyTxOut)
-import           Convex.MonadLog           (MonadLog (..))
-import           Convex.Utils              (failOnError)
-import           Convex.Utxos              (UtxoSet)
-import qualified Convex.Utxos              as Utxos
-import           Convex.Wallet             (Wallet (..), address)
-import qualified Convex.Wallet             as Wallet
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Text                 (Text)
-import           GHC.Generics              (Generic)
-import           Prettyprinter             (defaultLayoutOptions, layoutPretty)
-import qualified Prettyprinter.Render.Text as Render
+import           Cardano.Api                     (AddressInEra, BabbageEra, BuildTx,
+                                                  Tx, TxBodyContent, Quantity)
+import qualified Cardano.Api                     as C
+import           Control.Monad                   (replicateM)
+import           Control.Monad.IO.Class          (MonadIO (..))
+import           Control.Monad.Reader            (ReaderT (..), ask, lift)
+import           Control.Tracer                  (Tracer, traceWith)
+import qualified Convex.BuildTx                  as BuildTx
+import           Convex.Class                    (MonadBlockchain (networkId),
+                                                  runMonadBlockchainCardanoNodeT,
+                                                  sendTx)
+import qualified Convex.CoinSelection            as CoinSelection
+import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
+import qualified Convex.Devnet.NodeQueries       as NodeQueries
+import           Convex.Devnet.Utils             (keysFor)
+import           Convex.Lenses                   (emptyTxOut)
+import           Convex.MonadLog                 (MonadLog (..))
+import           Convex.Utils                    (failOnError)
+import           Convex.Utxos                    (UtxoSet)
+import qualified Convex.Utxos                    as Utxos
+import           Convex.Wallet                   (Wallet (..), address)
+import qualified Convex.Wallet                   as Wallet
+import           Data.Aeson                      (FromJSON, ToJSON)
+import           Data.Text                       (Text)
+import           GHC.Generics                    (Generic)
+import           Prettyprinter                   (defaultLayoutOptions, layoutPretty)
+import qualified Prettyprinter.Render.Text       as Render
 
 faucet :: IO Wallet
 faucet = Wallet . snd <$> keysFor "faucet"
@@ -65,7 +65,7 @@ walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
 sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Quantity -> IO (Tx BabbageEra)
 sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
-  balanceAndSubmit tracer node fct $ BuildTx.execBuildTx' $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))
+  balanceAndSubmit tracer node fct (BuildTx.execBuildTx' $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) []
 
 {-| Create a new wallet and send @n@ times the given amount of lovelace to it. Returns when the seed txn has been registered
 on the chain.
@@ -93,20 +93,24 @@ runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBodyContent BuildTx BabbageEra -> IO (Tx BabbageEra)
-balanceAndSubmit tracer node wallet tx = do
+balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmit tracer node wallet tx keys = do
   n <- runningNodeBlockchain @String tracer node networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = emptyTxOut walletAddress
-  balanceAndSubmitReturn tracer node wallet txOut tx
+  balanceAndSubmitReturn tracer node wallet txOut tx keys
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> IO (Tx BabbageEra)
-balanceAndSubmitReturn tracer node wallet returnOutput tx = do
+balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmitReturn tracer node wallet returnOutput tx keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (tx', _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx)
+    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx)
+
+    let wit' = (C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage body <$> keys) ++ wit
+        tx'  = C.makeSignedTransaction wit' body
+
     _ <- sendTx tx'
     pure tx'
 

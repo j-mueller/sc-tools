@@ -43,6 +43,7 @@ library
     import: lang
     exposed-modules:
       Convex.Devnet.CardanoNode
+      Convex.Devnet.CardanoNode.Types
       Convex.Devnet.Logging
       Convex.Devnet.NodeQueries
       Convex.Devnet.Utils
@@ -110,5 +111,8 @@ test-suite convex-devnet-test
     , convex-devnet
     , convex-base
     , cardano-api
+    , cardano-ledger-core -any
     , mtl
     , aeson
+    , containers
+    , filepath

@@ -9,10 +9,7 @@
 {-| Startup cardano nodes programmatically
 -}
 module Convex.Devnet.CardanoNode(
-  NodeId(..),
   NodeLog(..),
-  RunningNode(..),
-  DevnetConfig(..),
   CardanoNodeArgs(..),
   defaultCardanoNodeArgs,
   withCardanoNode,
@@ -20,83 +17,80 @@ module Convex.Devnet.CardanoNode(
   waitForFullySynchronized,
   waitForBlock,
   waitForSocket,
+  waitForNextBlock,
+  waitForNextBlock',
+  waitForNextEpoch,
+  waitForNextEpoch',
   withCardanoNodeDevnet,
-  GenesisConfigChanges(..),
   allowLargeTransactions,
-  withCardanoNodeDevnetConfig
+  withCardanoNodeDevnetConfig,
+  withCardanoStakePoolNodeDevnetConfig
 ) where
 
-import           Cardano.Api                      (Env, LocalNodeConnectInfo,
-                                                   NetworkId)
-import qualified Cardano.Api                      as C
-import qualified Cardano.Ledger.Core              as Core
-import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
-import           Cardano.Slotting.Slot            (withOriginToMaybe)
-import           Cardano.Slotting.Time            (diffRelativeTime,
-                                                   getRelativeTime,
-                                                   toRelativeTime)
-import           Control.Concurrent               (threadDelay)
-import           Control.Concurrent.Async         (race)
-import           Control.Exception                (finally, throwIO)
-import           Control.Lens                     (over)
-import           Control.Monad                    (unless, when, (>=>))
-import           Control.Monad.Except             (runExceptT)
-import           Control.Tracer                   (Tracer, traceWith)
-import qualified Convex.Devnet.NodeQueries        as Q
-import           Convex.Devnet.Utils              (checkProcessHasNotDied,
-                                                   defaultNetworkId, failure,
-                                                   readConfigFile, withLogFile)
-import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
-                                                   (.=))
-import qualified Data.Aeson                       as Aeson
-import qualified Data.Aeson.KeyMap                as Aeson.KeyMap
-import qualified Data.ByteString                  as BS
-import           Data.Fixed                       (Centi)
-import           Data.Functor                     ((<&>))
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import           Data.Time.Clock                  (UTCTime, addUTCTime,
-                                                   getCurrentTime)
-import           Data.Time.Clock.POSIX            (posixSecondsToUTCTime,
-                                                   utcTimeToPOSIXSeconds)
-import           GHC.Generics                     (Generic)
-import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
-import           System.Directory                 (createDirectoryIfMissing,
-                                                   doesFileExist, removeFile)
-import           System.FilePath                  ((</>))
-import           System.IO                        (BufferMode (NoBuffering),
-                                                   hSetBuffering)
-import           System.Posix                     (ownerReadMode, setFileMode)
-import           System.Process                   (CreateProcess (..),
-                                                   StdStream (UseHandle), proc,
-                                                   readProcess,
-                                                   withCreateProcess)
+import qualified Cardano.Api                        as C
+import           Cardano.Api                        (NetworkId,
+                                                     StakeAddressReference (..))
+import           Cardano.Api.Shelley                (StakeCredential (..),
+                                                     StakePoolParameters (..),
+                                                     StakeAddressRequirements (..),
+                                                     StakeDelegationRequirements (..),
+                                                     StakePoolRegistrationRequirements (..),
+                                                     KESPeriod (..),
+                                                     OperationalCertificateIssueCounter (..),
+                                                     toShelleyPoolParams)
+import qualified Cardano.Ledger.Core                as Core
+import           Cardano.Ledger.Shelley.Genesis     (ShelleyGenesis (..))
+import           Cardano.Slotting.Slot              (withOriginToMaybe)
+import           Cardano.Slotting.Time              (diffRelativeTime,
+                                                     getRelativeTime,
+                                                     toRelativeTime)
+import           Control.Concurrent                 (threadDelay)
+import           Control.Concurrent.Async           (race)
+import           Control.Exception                  (finally, throwIO)
+import           Control.Lens                       (over)
+import           Control.Monad                      (unless, when, (>=>))
+import           Control.Monad.Except               (runExceptT)
+import           Control.Tracer                     (Tracer, traceWith)
+import           Convex.Devnet.CardanoNode.Types    (Port, RunningNode (..),
+                                                     PortsConfig (..),
+                                                     RunningStakePoolNode (..),
+                                                     StakePoolNodeParams (..),
+                                                     GenesisConfigChanges (..))
+import qualified Convex.Devnet.NodeQueries          as Q
+import qualified Convex.Devnet.Wallet               as W
+import           Convex.Devnet.Utils                (checkProcessHasNotDied,
+                                                     defaultNetworkId, failure,
+                                                     readConfigFile, withLogFile)
+import           Convex.Wallet                      (Wallet, paymentCredential)
+import           Convex.BuildTx                     (payToAddress, addCertificate,
+                                                     execBuildTx')
+import           Data.Aeson                         (FromJSON, ToJSON (toJSON),
+                                                     (.=))
+import qualified Data.Aeson                         as Aeson
+import qualified Data.Aeson.KeyMap                  as Aeson.KeyMap
+import qualified Data.ByteString                    as BS
+import           Data.Fixed                         (Centi)
+import           Data.Functor                       ((<&>))
+import           Data.Text                          (Text)
+import qualified Data.Text                          as Text
+import           Data.Time.Clock                    (UTCTime, addUTCTime,
+                                                     getCurrentTime)
+import           Data.Time.Clock.POSIX              (posixSecondsToUTCTime,
+                                                     utcTimeToPOSIXSeconds)
+import           GHC.Generics                       (Generic)
+import           Ouroboros.Consensus.Shelley.Eras   (ShelleyEra, StandardCrypto)
+import           System.Directory                   (createDirectoryIfMissing,
+                                                     doesFileExist, removeFile)
+import           System.FilePath                    ((</>))
+import           System.IO                          (BufferMode (NoBuffering),
+                                                     hSetBuffering)
+import           System.Posix                       (ownerReadMode, setFileMode)
+import           System.Process                     (CreateProcess (..),
+                                                     StdStream (UseHandle), proc,
+                                                     readProcess,
+                                                     withCreateProcess)
 
 import           Prelude
-
-type Port = Int
-
-newtype NodeId = NodeId Int
-  deriving newtype (Eq, Show, Num, ToJSON, FromJSON)
-
-data RunningNode = RunningNode
-  { rnNodeSocket     :: FilePath -- ^ Cardano node socket
-  , rnNetworkId      :: NetworkId -- ^ Network ID used by the cardano node
-  , rnNodeConfigFile :: FilePath -- ^ Cardano node config file (JSON)
-  , rnConnectInfo    :: (LocalNodeConnectInfo, Env) -- ^ Connection info for node queries
-  }
-
--- | Configuration parameters for a single node devnet
-data DevnetConfig = DevnetConfig
-  { -- | Parent state directory
-    dcStateDirectory :: FilePath
-  , -- | Blockchain start time
-    dcSystemStart    :: UTCTime
-  , -- | A list of port
-    dcPorts          :: PortsConfig
-  }
-  deriving stock (Eq, Show, Generic)
-  deriving anyclass (ToJSON, FromJSON)
 
 -- | Arguments given to the 'cardano-node' command-line to run a node.
 data CardanoNodeArgs = CardanoNodeArgs
@@ -120,7 +114,7 @@ defaultCardanoNodeArgs :: CardanoNodeArgs
 defaultCardanoNodeArgs =
   CardanoNodeArgs
     { nodeSocket = "node.socket"
-    , nodeConfigFile = "configuration.json"
+    , nodeConfigFile = "cardano-node.json"
     , nodeByronGenesisFile = "genesis-byron.json"
     , nodeShelleyGenesisFile = "genesis-shelley.json"
     , nodeAlonzoGenesisFile = "genesis-alonzo.json"
@@ -134,17 +128,6 @@ defaultCardanoNodeArgs =
     , nodeVrfKeyFile = Nothing
     , nodePort = Nothing
     }
-
--- | Configuration of ports from the perspective of a peer in the context of a
--- fully sockected topology.
-data PortsConfig = PortsConfig
-  { -- | Our node TCP port.
-    ours  :: Port
-  , -- | Other peers TCP ports.
-    peers :: [Port]
-  }
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (ToJSON, FromJSON)
 
 getCardanoNodeVersion :: IO String
 getCardanoNodeVersion =
@@ -282,38 +265,29 @@ waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
     _ -> do
       threadDelay 1_000_000 >> waitForBlock n
 
-{-| Modifications to apply to the default genesis configurations
--}
-data GenesisConfigChanges =
-  GenesisConfigChanges
-    { cfShelley :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+waitForNextBlock :: RunningNode -> IO C.BlockNo
+waitForNextBlock node = do
+  blockNo <- waitForBlock node
+  waitForNextBlock' node blockNo
 
-    -- this is spiritually a 'Cardano.Ledger.Alonzo.Genesis.AlonzoGenesis' value
-    -- we can't JSON roundtrip it here because the cardano node that we use in
-    -- CI uses a slightly different JSON encoding and will trip even if we
-    -- just write 'toJSON . fromJSON' without modifying the value
-    -- Note that the problem is with the ToJSON instance!
-    , cfAlonzo  :: Aeson.Value -> Aeson.Value
+waitForNextBlock' :: RunningNode -> C.BlockNo -> IO C.BlockNo
+waitForNextBlock' node blockNo = do
+  currentBlockNo <- waitForBlock node
+  if currentBlockNo > blockNo then
+    pure currentBlockNo else
+    threadDelay 1_000_000 >> waitForNextBlock' node blockNo
 
+waitForNextEpoch :: RunningNode -> IO C.EpochNo
+waitForNextEpoch n@RunningNode{rnNodeSocket, rnNetworkId} = do
+  currentEpochNo <- Q.queryEpoch rnNetworkId rnNodeSocket
+  waitForNextEpoch' n currentEpochNo
 
-    -- this is spiritually a 'Cardano.Ledger.Conway.Genesis.ConwayGenesis' value
-    -- we can't JSON roundtrip it here because the cardano node that we use in
-    -- CI uses a slightly different JSON encoding and will trip even if we
-    -- just write 'toJSON . fromJSON' without modifying the value
-    -- Note that the problem is with the ToJSON instance!
-    , cfConway :: Aeson.Value -> Aeson.Value
-    }
-
-instance Semigroup GenesisConfigChanges where
-  l <> r =
-    GenesisConfigChanges
-      { cfShelley = cfShelley r . cfShelley l
-      , cfAlonzo  = cfAlonzo  r . cfAlonzo l
-      , cfConway  = cfConway  r . cfConway l
-      }
-
-instance Monoid GenesisConfigChanges where
-  mempty = GenesisConfigChanges id id id
+waitForNextEpoch' :: RunningNode -> C.EpochNo -> IO C.EpochNo
+waitForNextEpoch' n@RunningNode{rnNodeSocket, rnNetworkId} epochNo = do
+  currentEpochNo <- Q.queryEpoch rnNetworkId rnNodeSocket
+  if currentEpochNo > epochNo then
+    pure currentEpochNo else
+    threadDelay 1_000_000 >> waitForNextEpoch' n epochNo
 
 -- {-| Change the alonzo genesis config to allow transactions with up to twice the normal size
 -- -}
@@ -335,7 +309,7 @@ withCardanoNodeDevnet ::
   (RunningNode -> IO a) ->
   IO a
 withCardanoNodeDevnet tracer stateDirectory action =
-  withCardanoNodeDevnetConfig tracer stateDirectory mempty action
+  withCardanoNodeDevnetConfig tracer stateDirectory mempty (PortsConfig 3001 []) action
 
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
@@ -346,9 +320,12 @@ withCardanoNodeDevnetConfig ::
   FilePath ->
   -- | Changes to apply to the default genesis configurations
   GenesisConfigChanges ->
+  -- | Ports config
+  PortsConfig ->
+  -- | Action
   (RunningNode -> IO a) ->
   IO a
-withCardanoNodeDevnetConfig tracer stateDirectory configChanges action = do
+withCardanoNodeDevnetConfig tracer stateDirectory configChanges PortsConfig{ours, peers} action = do
   createDirectoryIfMissing True stateDirectory
   [dlgCert, signKey, vrfKey, kesKey, opCert] <-
     mapM
@@ -366,10 +343,11 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges action = do
           , nodeVrfKeyFile = Just vrfKey
           , nodeKesKeyFile = Just kesKey
           , nodeOpCertFile = Just opCert
+          , nodePort = Just ours
           }
   copyDevnetFiles args
   refreshSystemStart stateDirectory args
-  writeTopology [] args
+  writeTopology peers stateDirectory args
 
   withCardanoNode tracer networkId stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
@@ -409,9 +387,10 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges action = do
         cfConway
         (stateDirectory </> nodeConwayGenesisFile args)
 
-  writeTopology peers args =
-    Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
-      mkTopology peers
+writeTopology :: [Port] -> FilePath -> CardanoNodeArgs -> IO ()
+writeTopology peers stateDirectory args =
+  Aeson.encodeFile (stateDirectory </> nodeTopologyFile args) $
+    mkTopology peers
 
 {-| Decode a json file, change the value, and write the result to another JSON file
 -}
@@ -462,7 +441,9 @@ refreshSystemStart stateDirectory args = do
       <&> addField "ByronGenesisHash" byronGenesisHash
       <&> addField "ShelleyGenesisFile" (nodeShelleyGenesisFile args)
       <&> addField "ShelleyGenesisHash" shelleyGenesisHash
+      <&> addField "AlonzoGenesisFile" (nodeAlonzoGenesisFile args)
       <&> addField "AlonzoGenesisHash" alonzoGenesisHash
+      <&> addField "ConwayGenesisFile" (nodeConwayGenesisFile args)
       <&> addField "ConwayGenesisHash" conwayGenesisHash
 
   Aeson.encodeFile (stateDirectory </> nodeConfigFile args) config
@@ -502,3 +483,144 @@ computeGenesisHash :: FilePath -> IO String
 computeGenesisHash fp =
   -- drop the last character (newline)
   take 64 <$> readProcess "cardano-cli" ["genesis", "hash", "--genesis", fp] ""
+
+-- | Launch a Cardano stake pool node with predefined node configuration, port and topology.
+withCardanoStakePoolNodeDevnetConfig ::
+  Tracer IO NodeLog ->
+  -- | State directory in which credentials, db & logs are persisted.
+  FilePath ->
+  -- | Pool owner
+  Wallet ->
+  -- | Stake pool params
+  StakePoolNodeParams ->
+  -- | The absolute path of the cardano-node.json configuration file
+  FilePath ->
+  -- | Ports config
+  PortsConfig ->
+  -- | Running node
+  RunningNode ->
+  -- | Action
+  (RunningStakePoolNode -> IO a) ->
+  IO a
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile PortsConfig{ours, peers} node@RunningNode{rnNodeSocket, rnNetworkId} action = do
+  createDirectoryIfMissing True stateDirectory
+
+  stakeKey <- C.generateSigningKey C.AsStakeKey
+  vrfKey <- C.generateSigningKey C.AsVrfKey
+  kesKey <- C.generateSigningKey C.AsKesKey
+  stakePoolKey <- C.generateSigningKey C.AsStakePoolKey
+
+  C.SlotNo slotNo <- fst <$> Q.queryTipSlotNo rnNetworkId rnNodeSocket
+
+  let
+    vrfHash =
+      C.verificationKeyHash . C.getVerificationKey $ vrfKey
+
+    stakeHash = 
+      C.verificationKeyHash . C.getVerificationKey $ stakeKey
+
+    stakeCred = StakeCredentialByKey stakeHash
+
+    stakeCert =
+      C.makeStakeAddressRegistrationCertificate
+      . StakeAddrRegistrationPreConway C.ShelleyToBabbageEraBabbage
+      $ stakeCred
+    stakeAddress = C.makeStakeAddress rnNetworkId stakeCred
+
+    paymentAddress =
+      C.makeShelleyAddressInEra
+        C.ShelleyBasedEraBabbage
+        rnNetworkId
+        (paymentCredential wallet)
+        (StakeAddressByValue stakeCred)
+
+    stakePoolVerKey = C.getVerificationKey stakePoolKey
+    poolId = C.verificationKeyHash stakePoolVerKey
+
+    delegationCert =
+      C.makeStakeAddressDelegationCertificate
+      $ StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
+
+    stakePoolParams = 
+     StakePoolParameters
+       poolId
+       vrfHash
+       (spnCost params)
+       (spnMargin params)
+       stakeAddress
+       (spnPledge params)
+       [stakeHash] -- owners
+       [] -- relays
+       Nothing
+
+    poolCert = 
+      C.makeStakePoolRegistrationCertificate
+      . StakePoolRegistrationRequirementsPreConway C.ShelleyToBabbageEraBabbage
+      . toShelleyPoolParams
+      $ stakePoolParams
+
+  -- create the node certificate
+  let
+    opCertCounter =
+      OperationalCertificateIssueCounter 0 stakePoolVerKey
+    slotsPerKESPeriod = 129600 -- slotsPerKESPeriod from config/genesis-shelley.json
+    kesPeriod = KESPeriod . fromIntegral . div slotNo $ slotsPerKESPeriod -- Word64 to Word
+    opCert = C.issueOperationalCertificate
+      (C.getVerificationKey kesKey)
+      (Left stakePoolKey)
+      kesPeriod
+      opCertCounter
+
+  (nextOpCert, nextOpCertCounter) <- case opCert of
+    Left _    -> failure "withCardanoStakePoolNodeDevnetConfig: Issue operational certificate failure"
+    Right res -> pure res
+
+  let
+    stakeCertTx = execBuildTx' $ do
+      addCertificate stakeCert
+
+    poolCertTx = execBuildTx' $ do
+      let pledge = spnPledge params
+      when (pledge > 0) $
+        payToAddress paymentAddress (C.lovelaceToValue pledge)
+      addCertificate poolCert
+
+    delegCertTx = execBuildTx' $ do
+      addCertificate delegationCert
+
+  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx [C.WitnessStakeKey stakeKey]
+  _ <- waitForNextBlock node
+
+  _ <- W.balanceAndSubmit mempty node wallet poolCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+  _ <- waitForNextBlock node
+
+  _ <- W.balanceAndSubmit mempty node wallet delegCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+  _ <- waitForNextBlock node
+
+  vrfKeyFile <- writeEnvelope vrfKey "vrf.skey"
+  kesKeyFile <- writeEnvelope kesKey "kes.skey"
+  opCertFile <- writeEnvelope nextOpCert "opcert.cert"
+
+  let
+    args =
+        defaultCardanoNodeArgs
+          { nodeVrfKeyFile = Just vrfKeyFile
+          , nodeKesKeyFile = Just kesKeyFile
+          , nodeOpCertFile = Just opCertFile
+          , nodePort = Just ours
+          , nodeConfigFile = nodeConfigFile
+          }
+
+  writeTopology peers stateDirectory args
+
+  withCardanoNode tracer rnNetworkId stateDirectory args $ \rn -> do
+    traceWith tracer MsgNodeIsReady
+    action (RunningStakePoolNode rn stakeKey vrfKey kesKey stakePoolKey nextOpCertCounter)
+ where
+
+  writeEnvelope :: C.HasTextEnvelope a => a -> FilePath -> IO FilePath
+  writeEnvelope envelope name = do
+    let destination = stateDirectory </> name
+    _ <- C.writeFileTextEnvelope (C.File destination) Nothing envelope
+    setFileMode destination ownerReadMode
+    return name
