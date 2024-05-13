@@ -719,27 +719,26 @@ requiredSignatureCount content = do
         C.TxCertificatesNone    -> Set.empty
 
       getCertKeyWits :: C.Certificate era -> Set (CertificateKeyWitness era)
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert (KeyHashObj hash)))) =
-        Set.singleton $ CertificateStakeKey hash
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert _))) =
-        Set.empty
+      {- Certificates that don't require a witness:
+      * For a DCertregkey certificate, cwitness is not defined as stake key
+      registrations do not require a witness. (See SL-D5)
+      * For a DCertmir certificate, cwitness is not defined as there is no
+      single core node or genesis key that posts the certificate. (See SL-D5)
+      -}
       getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyUnRegCert (KeyHashObj hash)))) =
         Set.singleton $ CertificateStakeKey hash
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyUnRegCert _))) =
-        Set.empty
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert (KeyHashObj hash) poolHash))) =
-        Set.fromList [CertificateStakeKey hash, CertificateStakePoolKey poolHash]
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert _ hash))) =
-        Set.singleton $ CertificateStakePoolKey hash
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert (KeyHashObj hash) _))) =
+        Set.singleton $ CertificateStakeKey hash
       getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertPool (TxCert.RegPool PoolParams{ppId, ppOwners}))) =
+      {- The pool registration certificate tx requires witnesses from all owner
+      stake addresses, as well as a witness for the pool key. (See SL-D1)
+      -}
            Set.singleton (CertificateStakePoolKey ppId)
         <> Set.fromList (CertificateStakeKey <$> Set.toList ppOwners)
       getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertPool (TxCert.RetirePool hash _))) =
            Set.singleton (CertificateStakePoolKey hash)
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertGenesisDeleg _)) =
-        error "Genesis key delegation certificate key witness count not supported"
-      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertMir _)) =
-        error "MIR certificate key witness count not supported"
+      getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertGenesisDeleg (TxCert.GenesisDelegCert hash _ _))) =
+           Set.singleton (CertificateGenesisKey hash)
       getCertKeyWits _ =
         Set.empty
 
@@ -750,6 +749,7 @@ requiredSignatureCount content = do
 data CertificateKeyWitness era =
     CertificateStakeKey (KeyHash Staking (EraCrypto (C.ShelleyLedgerEra era)))
   | CertificateStakePoolKey (KeyHash StakePool (EraCrypto (C.ShelleyLedgerEra era)))
+  | CertificateGenesisKey (KeyHash Genesis (EraCrypto (C.ShelleyLedgerEra era)))
   deriving stock (Eq, Ord)
 
 publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)

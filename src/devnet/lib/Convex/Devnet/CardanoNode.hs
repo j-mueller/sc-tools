@@ -588,13 +588,13 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     delegCertTx = execBuildTx' $ do
       addCertificate delegationCert
 
-  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx [C.WitnessStakeKey stakeKey]
+  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx []
   _ <- waitForNextBlock node
 
   _ <- W.balanceAndSubmit mempty node wallet poolCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node
 
-  _ <- W.balanceAndSubmit mempty node wallet delegCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+  _ <- W.balanceAndSubmit mempty node wallet delegCertTx [C.WitnessStakeKey stakeKey]
   _ <- waitForNextBlock node
 
   vrfKeyFile <- writeEnvelope vrfKey "vrf.skey"
