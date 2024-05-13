@@ -26,7 +26,8 @@ import qualified Control.Monad.Trans.State        as StrictState
 import qualified Control.Monad.Trans.State.Strict as LazyState
 import           Control.Tracer                   (Tracer, natTracer)
 import           Convex.Class                     (MonadBlockchain (..),
-                                                   MonadMockchain (..))
+                                                   MonadMockchain (..),
+                                                   MonadUtxoQuery (..))
 import           Convex.CoinSelection             (BalanceTxError,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
@@ -95,6 +96,9 @@ instance MonadMockchain m => MonadMockchain (BalancingT m) where
   modifyUtxo = lift . modifyUtxo
   resolveDatumHash = lift . resolveDatumHash
 
+instance MonadUtxoQuery m => MonadUtxoQuery (BalancingT m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
 {-| Implementation of @MonadBalance@ that uses the provided tracer for debugging output
 -}
 newtype TracingBalancingT m a = TracingBalancingT{ runTracingBalancingT' :: ReaderT (Tracer m TxBalancingMessage) m a }
@@ -114,6 +118,9 @@ instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
   resolveDatumHash = lift . resolveDatumHash
+
+instance MonadUtxoQuery m => MonadUtxoQuery (TracingBalancingT m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 runTracingBalancingT :: Tracer m TxBalancingMessage -> TracingBalancingT m a -> m a
 runTracingBalancingT tracer (TracingBalancingT action) = runReaderT action tracer

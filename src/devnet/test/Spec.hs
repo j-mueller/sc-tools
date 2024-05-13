@@ -8,41 +8,44 @@ module Main where
 import qualified Cardano.Api                     as C
 import qualified Cardano.Api.Shelley             as C
 import           Cardano.Ledger.Slot             (EpochSize (..))
+import           Control.Concurrent              (threadDelay)
 import           Control.Monad                   (unless)
 import           Control.Monad.Except            (runExceptT)
-import           Control.Concurrent              (threadDelay)
-import           Convex.Devnet.CardanoNode.Types (StakePoolNodeParams (..),
-                                                  RunningStakePoolNode (..),
-                                                  RunningNode (..),
-                                                  PortsConfig (..),
-                                                  GenesisConfigChanges (..),
-                                                  defaultStakePoolNodeParams)
 import           Convex.Devnet.CardanoNode       (NodeLog (..),
                                                   allowLargeTransactions,
                                                   getCardanoNodeVersion,
                                                   withCardanoNodeDevnet,
                                                   withCardanoNodeDevnetConfig,
                                                   withCardanoStakePoolNodeDevnetConfig)
+import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
+                                                  PortsConfig (..),
+                                                  RunningNode (..),
+                                                  RunningStakePoolNode (..),
+                                                  StakePoolNodeParams (..),
+                                                  defaultStakePoolNodeParams)
 import           Convex.Devnet.Logging           (contramap, showLogsOnFailure)
 import           Convex.Devnet.NodeQueries       (loadConnectInfo)
-import           Convex.Devnet.Utils             (failAfter, failure, withTempDir)
+import           Convex.Devnet.Utils             (failAfter, failure,
+                                                  withTempDir)
 import           Convex.Devnet.Wallet            (WalletLog)
 import qualified Convex.Devnet.Wallet            as W
 import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer      as WS
 import           Convex.NodeQueries              (queryProtocolParameters,
-                                                  queryStakePools, queryStakeAddresses)
+                                                  queryStakeAddresses,
+                                                  queryStakePools)
 import qualified Convex.Utxos                    as Utxos
 import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.List                       (isInfixOf)
+import qualified Data.Map                        as Map
 import           Data.Ratio                      ((%))
 import qualified Data.Set                        as Set
-import qualified Data.Map                        as Map
 import           GHC.Generics                    (Generic)
 import           GHC.IO.Encoding                 (setLocaleEncoding, utf8)
 import           System.FilePath                 ((</>))
 import           Test.Tasty                      (defaultMain, testGroup)
-import           Test.Tasty.HUnit                (assertBool, assertEqual, testCase)
+import           Test.Tasty.HUnit                (assertBool, assertEqual,
+                                                  testCase)
 
 main :: IO ()
 main = do

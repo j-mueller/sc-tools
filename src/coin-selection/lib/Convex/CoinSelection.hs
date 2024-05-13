@@ -46,13 +46,13 @@ import qualified Cardano.Api                   as Cardano.Api
 import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
-import           Cardano.Ledger.Shelley.API    (KeyHash (..), KeyRole (..),
-                                                Credential (..), Coin (..),
-                                                PoolParams (..))
-import           Cardano.Ledger.Shelley.Core   (EraCrypto)
 import qualified Cardano.Api.Shelley           as C
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
+import           Cardano.Ledger.Shelley.API    (Coin (..), Credential (..),
+                                                KeyHash (..), KeyRole (..),
+                                                PoolParams (..))
+import           Cardano.Ledger.Shelley.Core   (EraCrypto)
 import qualified Cardano.Ledger.Shelley.TxCert as TxCert
 import           Cardano.Slotting.Time         (SystemStart)
 import           Control.Lens                  (_1, _2, _3, at, makeLensesFor,
@@ -716,7 +716,7 @@ requiredSignatureCount content = do
       allSigs = Set.union keyWits (Set.fromList $ fmap hsh extraSigs)
       certKeyWits = case view L.txCertificates content of
         C.TxCertificates _ cs _ -> mconcat $ getCertKeyWits <$> cs
-        C.TxCertificatesNone -> Set.empty
+        C.TxCertificatesNone    -> Set.empty
 
       getCertKeyWits :: C.Certificate era -> Set (CertificateKeyWitness era)
       getCertKeyWits (C.ShelleyRelatedCertificate _ (TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert (KeyHashObj hash)))) =

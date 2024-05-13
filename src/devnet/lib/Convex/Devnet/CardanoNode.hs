@@ -27,68 +27,68 @@ module Convex.Devnet.CardanoNode(
   withCardanoStakePoolNodeDevnetConfig
 ) where
 
-import qualified Cardano.Api                        as C
-import           Cardano.Api                        (NetworkId,
-                                                     StakeAddressReference (..))
-import           Cardano.Api.Shelley                (StakeCredential (..),
-                                                     StakePoolParameters (..),
-                                                     StakeAddressRequirements (..),
-                                                     StakeDelegationRequirements (..),
-                                                     StakePoolRegistrationRequirements (..),
-                                                     KESPeriod (..),
-                                                     OperationalCertificateIssueCounter (..),
-                                                     toShelleyPoolParams)
-import qualified Cardano.Ledger.Core                as Core
-import           Cardano.Ledger.Shelley.Genesis     (ShelleyGenesis (..))
-import           Cardano.Slotting.Slot              (withOriginToMaybe)
-import           Cardano.Slotting.Time              (diffRelativeTime,
-                                                     getRelativeTime,
-                                                     toRelativeTime)
-import           Control.Concurrent                 (threadDelay)
-import           Control.Concurrent.Async           (race)
-import           Control.Exception                  (finally, throwIO)
-import           Control.Lens                       (over)
-import           Control.Monad                      (unless, when, (>=>))
-import           Control.Monad.Except               (runExceptT)
-import           Control.Tracer                     (Tracer, traceWith)
-import           Convex.Devnet.CardanoNode.Types    (Port, RunningNode (..),
-                                                     PortsConfig (..),
-                                                     RunningStakePoolNode (..),
-                                                     StakePoolNodeParams (..),
-                                                     GenesisConfigChanges (..))
-import qualified Convex.Devnet.NodeQueries          as Q
-import qualified Convex.Devnet.Wallet               as W
-import           Convex.Devnet.Utils                (checkProcessHasNotDied,
-                                                     defaultNetworkId, failure,
-                                                     readConfigFile, withLogFile)
-import           Convex.Wallet                      (Wallet, paymentCredential)
-import           Convex.BuildTx                     (payToAddress, addCertificate,
-                                                     execBuildTx')
-import           Data.Aeson                         (FromJSON, ToJSON (toJSON),
-                                                     (.=))
-import qualified Data.Aeson                         as Aeson
-import qualified Data.Aeson.KeyMap                  as Aeson.KeyMap
-import qualified Data.ByteString                    as BS
-import           Data.Fixed                         (Centi)
-import           Data.Functor                       ((<&>))
-import           Data.Text                          (Text)
-import qualified Data.Text                          as Text
-import           Data.Time.Clock                    (UTCTime, addUTCTime,
-                                                     getCurrentTime)
-import           Data.Time.Clock.POSIX              (posixSecondsToUTCTime,
-                                                     utcTimeToPOSIXSeconds)
-import           GHC.Generics                       (Generic)
-import           Ouroboros.Consensus.Shelley.Eras   (ShelleyEra, StandardCrypto)
-import           System.Directory                   (createDirectoryIfMissing,
-                                                     doesFileExist, removeFile)
-import           System.FilePath                    ((</>))
-import           System.IO                          (BufferMode (NoBuffering),
-                                                     hSetBuffering)
-import           System.Posix                       (ownerReadMode, setFileMode)
-import           System.Process                     (CreateProcess (..),
-                                                     StdStream (UseHandle), proc,
-                                                     readProcess,
-                                                     withCreateProcess)
+import           Cardano.Api                      (NetworkId,
+                                                   StakeAddressReference (..))
+import qualified Cardano.Api                      as C
+import           Cardano.Api.Shelley              (KESPeriod (..),
+                                                   OperationalCertificateIssueCounter (..),
+                                                   StakeAddressRequirements (..),
+                                                   StakeCredential (..),
+                                                   StakeDelegationRequirements (..),
+                                                   StakePoolParameters (..),
+                                                   StakePoolRegistrationRequirements (..),
+                                                   toShelleyPoolParams)
+import qualified Cardano.Ledger.Core              as Core
+import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
+import           Cardano.Slotting.Slot            (withOriginToMaybe)
+import           Cardano.Slotting.Time            (diffRelativeTime,
+                                                   getRelativeTime,
+                                                   toRelativeTime)
+import           Control.Concurrent               (threadDelay)
+import           Control.Concurrent.Async         (race)
+import           Control.Exception                (finally, throwIO)
+import           Control.Lens                     (over)
+import           Control.Monad                    (unless, when, (>=>))
+import           Control.Monad.Except             (runExceptT)
+import           Control.Tracer                   (Tracer, traceWith)
+import           Convex.BuildTx                   (addCertificate, execBuildTx',
+                                                   payToAddress)
+import           Convex.Devnet.CardanoNode.Types  (GenesisConfigChanges (..),
+                                                   Port, PortsConfig (..),
+                                                   RunningNode (..),
+                                                   RunningStakePoolNode (..),
+                                                   StakePoolNodeParams (..))
+import qualified Convex.Devnet.NodeQueries        as Q
+import           Convex.Devnet.Utils              (checkProcessHasNotDied,
+                                                   defaultNetworkId, failure,
+                                                   readConfigFile, withLogFile)
+import qualified Convex.Devnet.Wallet             as W
+import           Convex.Wallet                    (Wallet, paymentCredential)
+import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
+                                                   (.=))
+import qualified Data.Aeson                       as Aeson
+import qualified Data.Aeson.KeyMap                as Aeson.KeyMap
+import qualified Data.ByteString                  as BS
+import           Data.Fixed                       (Centi)
+import           Data.Functor                     ((<&>))
+import           Data.Text                        (Text)
+import qualified Data.Text                        as Text
+import           Data.Time.Clock                  (UTCTime, addUTCTime,
+                                                   getCurrentTime)
+import           Data.Time.Clock.POSIX            (posixSecondsToUTCTime,
+                                                   utcTimeToPOSIXSeconds)
+import           GHC.Generics                     (Generic)
+import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
+import           System.Directory                 (createDirectoryIfMissing,
+                                                   doesFileExist, removeFile)
+import           System.FilePath                  ((</>))
+import           System.IO                        (BufferMode (NoBuffering),
+                                                   hSetBuffering)
+import           System.Posix                     (ownerReadMode, setFileMode)
+import           System.Process                   (CreateProcess (..),
+                                                   StdStream (UseHandle), proc,
+                                                   readProcess,
+                                                   withCreateProcess)
 
 import           Prelude
 
@@ -516,7 +516,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     vrfHash =
       C.verificationKeyHash . C.getVerificationKey $ vrfKey
 
-    stakeHash = 
+    stakeHash =
       C.verificationKeyHash . C.getVerificationKey $ stakeKey
 
     stakeCred = StakeCredentialByKey stakeHash
@@ -541,7 +541,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
       C.makeStakeAddressDelegationCertificate
       $ StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
 
-    stakePoolParams = 
+    stakePoolParams =
      StakePoolParameters
        poolId
        vrfHash
@@ -553,7 +553,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
        [] -- relays
        Nothing
 
-    poolCert = 
+    poolCert =
       C.makeStakePoolRegistrationCertificate
       . StakePoolRegistrationRequirementsPreConway C.ShelleyToBabbageEraBabbage
       . toShelleyPoolParams
