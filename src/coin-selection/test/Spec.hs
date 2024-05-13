@@ -229,7 +229,7 @@ checkResolveDatumHash = do
       assertDatumPresent vl = resolveDatumHash (C.hashScriptDataBytes vl) >>= \case
         Nothing -> fail "Expected datum"
         Just x
-          | x == C.getScriptData vl -> pure ()
+          | x == vl -> pure ()
           | otherwise -> fail $ "Expected " <> show (C.getScriptData vl) <> ", found " <> show x
 
 

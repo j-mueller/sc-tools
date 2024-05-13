@@ -40,6 +40,7 @@ import qualified Cardano.Api                                       as C
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     EraHistory (..),
                                                                     Hash,
+                                                                    HashableScriptData,
                                                                     LedgerProtocolParameters (..),
                                                                     LocalNodeConnectInfo,
                                                                     NetworkId,
@@ -183,7 +184,7 @@ class MonadBlockchain m => MonadMockchain m where
   {-| Look up the datum of a script hash, taking into account
   all datums that were part of transactions submitted with @sendTx@.
   -}
-  resolveDatumHash :: Hash ScriptData -> m (Maybe ScriptData)
+  resolveDatumHash :: Hash ScriptData -> m (Maybe (HashableScriptData))
 
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
@@ -275,6 +276,27 @@ class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain state.
   utxosByPaymentCredentials :: Set PaymentCredential -> m (C.UTxO BabbageEra)
+
+instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (ExceptT e m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (ReaderT e m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (StrictState.StateT s m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (LazyState.StateT s m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 -- | Given a single payment credential, find the UTxOs with that credential
 utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (C.UTxO BabbageEra)

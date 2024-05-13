@@ -67,6 +67,7 @@ module Convex.MockChain(
 import           Cardano.Api.Shelley                   (AddressInEra,
                                                         BabbageEra,
                                                         Hash (StakePoolKeyHash),
+                                                        HashableScriptData,
                                                         ScriptData,
                                                         ShelleyLedgerEra,
                                                         SlotNo, Tx,
@@ -193,7 +194,7 @@ data MockChainState =
     , mcsPoolState          :: MempoolState ERA
     , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
     , mcsFailedTransactions :: [(Tx BabbageEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
-    , mcsDatums             :: Map (Hash ScriptData) ScriptData
+    , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
     }
 
 makeLensesFor
@@ -422,7 +423,7 @@ addDatumHashes (Cardano.Api.Tx (ShelleyTxBody Cardano.Api.ShelleyBasedEraBabbage
   let txOuts = Cardano.Api.fromLedgerTxOuts Cardano.Api.ShelleyBasedEraBabbage txBody scriptData
 
   let insertHashableScriptData hashableScriptData =
-        datums %= Map.insert (Cardano.Api.hashScriptDataBytes hashableScriptData) (Cardano.Api.getScriptData hashableScriptData)
+        datums %= Map.insert (Cardano.Api.hashScriptDataBytes hashableScriptData) hashableScriptData
 
   for_ txOuts $ \(view (L._TxOut . _3) -> txDat) -> case txDat of
     Cardano.Api.TxOutDatumInline _ dat -> insertHashableScriptData dat
