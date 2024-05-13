@@ -14,7 +14,8 @@ module Convex.Devnet.WalletServer(
   sendFundsToOperator
 ) where
 
-import           Cardano.Api                     (BabbageEra, CtxTx, Tx, Quantity)
+import           Cardano.Api                     (BabbageEra, CtxTx, Quantity,
+                                                  Tx)
 import qualified Cardano.Api                     as C
 import           Control.Concurrent              (threadDelay)
 import           Control.Tracer                  (Tracer, contramap, traceWith)
@@ -35,7 +36,8 @@ import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.Text                       (Text)
 import           GHC.Generics                    (Generic)
 import           GHC.IO.Handle.Types             (Handle)
-import           Network.HTTP.Client             (Manager, defaultManagerSettings,
+import           Network.HTTP.Client             (Manager,
+                                                  defaultManagerSettings,
                                                   newManager)
 import           Servant.Client                  (ClientEnv, ClientError (..),
                                                   mkClientEnv)
@@ -43,7 +45,8 @@ import           Servant.Client.Core.BaseUrl     (BaseUrl (..), Scheme (..))
 import           System.FilePath                 ((</>))
 import           System.IO                       (BufferMode (NoBuffering),
                                                   hSetBuffering)
-import           System.Process                  (CreateProcess (..), ProcessHandle,
+import           System.Process                  (CreateProcess (..),
+                                                  ProcessHandle,
                                                   StdStream (UseHandle), proc,
                                                   readCreateProcess,
                                                   withCreateProcess)

@@ -11,18 +11,18 @@ module Convex.Devnet.CardanoNode.Types (
   defaultStakePoolNodeParams
 ) where
 
-import           Cardano.Api                      (Env, NetworkId,
-                                                   LocalNodeConnectInfo)
-import           Cardano.Api.Shelley              (StakeKey, Key(..), VrfKey,
-                                                   KesKey, StakePoolKey,
+import           Cardano.Api                      (Env, LocalNodeConnectInfo,
+                                                   NetworkId)
+import           Cardano.Api.Shelley              (KesKey, Key (..),
                                                    OperationalCertificateIssueCounter,
-                                                   ShelleyGenesis)
+                                                   ShelleyGenesis, StakeKey,
+                                                   StakePoolKey, VrfKey)
 import           Cardano.Ledger.Shelley.API       (Coin)
-import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as Aeson
 import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
+import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 
 type Port = Int
 
@@ -49,12 +49,12 @@ data RunningNode = RunningNode
 {-| Describes a running stake pool node
 -}
 data RunningStakePoolNode = RunningStakePoolNode
-  { rspnNode :: RunningNode -- ^ Running ardano node
-  , rspnStakeKey :: SigningKey StakeKey
-  , rspnVrfKey :: SigningKey VrfKey
-  , rspnKesKey :: SigningKey KesKey
+  { rspnNode         :: RunningNode -- ^ Running ardano node
+  , rspnStakeKey     :: SigningKey StakeKey
+  , rspnVrfKey       :: SigningKey VrfKey
+  , rspnKesKey       :: SigningKey KesKey
   , rspnStakePoolKey :: SigningKey StakePoolKey
-  , rspnCounter :: OperationalCertificateIssueCounter
+  , rspnCounter      :: OperationalCertificateIssueCounter
   }
 
 {- | Stake pool node params
