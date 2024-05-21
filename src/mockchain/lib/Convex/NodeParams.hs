@@ -3,6 +3,7 @@
 module Convex.NodeParams(
   NodeParams(..),
   networkId,
+  ledgerProtocolParameters,
   protocolParameters,
   systemStart,
   eraHistory,
@@ -59,12 +60,16 @@ data NodeParams =
 
 makeLensesFor
   [ ("npNetworkId", "networkId")
-  , ("npProtocolParameters", "protocolParameters")
+  , ("npProtocolParameters", "ledgerProtocolParameters")
   , ("npSystemStart", "systemStart")
   , ("npEraHistory", "eraHistory")
   , ("npStakePools", "stakePools")
   , ("npSlotLength", "slotLength")
   ] ''NodeParams
+
+makeLensesFor
+  [ ("unLedgerProtocolParameters", "protocolParameters")
+  ] ''LedgerProtocolParameters
 
 makeLensesFor
   [ ("protocolParamProtocolVersion", "protocolVersion")

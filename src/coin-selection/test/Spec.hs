@@ -47,7 +47,7 @@ import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Utils         (mockchainSucceeds,
                                                  runMockchainProp)
-import           Convex.NodeParams              (maxTxSize, protocolParameters)
+import           Convex.NodeParams              (maxTxSize, ledgerProtocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Utils                   (failOnError)
 import qualified Convex.Utxos                   as Utxos
@@ -353,7 +353,7 @@ largeTransactionTest = do
 
   -- the tx should succeed after setting the max tx size to exactly 20304 (see the error message in the test above)
   let protParams = Defaults.protocolParameters & maxTxSize .~ 20304
-      params' = Defaults.nodeParams & protocolParameters .~ (either (error. show) id (C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage protParams))
+      params' = Defaults.nodeParams & ledgerProtocolParameters .~ (either (error. show) id (C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage protParams))
   runMockchain0IOWith Wallet.initialUTxOs params' (failOnError largeDatumTx) >>= \case
     Right (Right{}, view failedTransactions -> []) -> pure ()
     Right _ -> fail $ "Unexpected failure. Expected 1 successful transaction."

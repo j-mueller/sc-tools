@@ -18,6 +18,7 @@ module Convex.Lenses(
   txMintValue,
   txFee,
   txFee',
+  txValidityRange,
   txValidityLowerBound,
   txValidityUpperBound,
   txMetadata,
@@ -85,6 +86,7 @@ module Convex.Lenses(
   _TxOutDatumInline,
   _TxOutDatumInTx,
   _TxOutDatumHash,
+  _HashableScriptData,
   _ScriptData
 ) where
 
@@ -176,15 +178,20 @@ txFee' = lens get set_ where
   get           = C.txFee
   set_ body fee = body{C.txFee = fee}
 
-txValidityUpperBound :: Lens' (C.TxBodyContent v e) (C.TxValidityUpperBound e)
-txValidityUpperBound = lens get set_ where
-  get = C.txValidityUpperBound
-  set_ body range = body{C.txValidityUpperBound = range}
+txValidityRange :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e, C.TxValidityUpperBound e)
+txValidityRange = lens get set_ where
+  get txb = (C.txValidityLowerBound txb, C.txValidityUpperBound txb)
+  set_ body (lowerBound, upperBound) = body{C.txValidityLowerBound = lowerBound, C.txValidityUpperBound = upperBound}
 
 txValidityLowerBound :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e)
 txValidityLowerBound = lens get set_ where
   get = C.txValidityLowerBound
-  set_ body range = body{C.txValidityLowerBound = range}
+  set_ body lowerBound = body{C.txValidityLowerBound = lowerBound }
+
+txValidityUpperBound :: Lens' (C.TxBodyContent v e) (C.TxValidityUpperBound e)
+txValidityUpperBound = lens get set_ where
+  get = C.txValidityUpperBound
+  set_ body upperBound = body{C.txValidityUpperBound = upperBound}
 
 txFee :: Lens' (C.TxBodyContent v BabbageEra) Coin
 txFee = lens get set_ where
@@ -494,6 +501,14 @@ _PaymentCredential = iso from to where
   from (C.PaymentCredentialByScript sh)                 = Credential.ScriptHashObj (C.toShelleyScriptHash sh)
 
   to = C.fromShelleyPaymentCredential
+
+_HashableScriptData :: forall a. (PV1.FromData a, PV1.ToData a) => Prism' C.HashableScriptData a
+_HashableScriptData = prism' from to where
+  to :: C.HashableScriptData -> Maybe a
+  to = Scripts.fromHashableScriptData
+
+  from :: a -> C.HashableScriptData
+  from = Scripts.toHashableScriptData
 
 _ScriptData :: forall a. (PV1.FromData a, PV1.ToData a) => Prism' C.ScriptData a
 _ScriptData = prism' from to where

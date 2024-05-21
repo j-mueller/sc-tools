@@ -46,6 +46,7 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     NetworkId,
                                                                     PaymentCredential,
                                                                     PoolId,
+                                                                    HashableScriptData,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
@@ -74,7 +75,7 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
-import           Data.Aeson                                        (ToJSON)
+import           Data.Aeson                                        (ToJSON, FromJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
 import           Data.Map                                          (Map)
 import qualified Data.Map                                          as Map
@@ -184,7 +185,7 @@ class MonadBlockchain m => MonadMockchain m where
   {-| Look up the datum of a script hash, taking into account
   all datums that were part of transactions submitted with @sendTx@.
   -}
-  resolveDatumHash :: Hash ScriptData -> m (Maybe (HashableScriptData))
+  resolveDatumHash :: Hash ScriptData -> m (Maybe HashableScriptData)
 
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
@@ -255,7 +256,7 @@ data MonadBlockchainError e =
   MonadBlockchainError e
   | FailWith String
   deriving stock (Functor, Generic, Show)
-  deriving anyclass (ToJSON)
+  deriving anyclass (ToJSON, FromJSON)
 
 {- Note [MonadUtxoQuery design]
 

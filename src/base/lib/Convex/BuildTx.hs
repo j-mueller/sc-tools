@@ -21,6 +21,7 @@ module Convex.BuildTx(
   findIndexWithdrawal,
   buildTx,
   buildTxWith,
+  addBtx,
   -- * Effect
   MonadBuildTx(..),
   BuildTxT(..),

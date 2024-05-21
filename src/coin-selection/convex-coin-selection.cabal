@@ -40,13 +40,13 @@ library
       containers >= 0.6.5,
       exceptions,
       lens,
-      cardano-ledger-shelley,
       contra-tracer,
       convex-mockchain,
       convex-base,
       convex-node-client,
       convex-wallet,
       data-default,
+      QuickCheck,
       servant-client,
       text
 
@@ -54,6 +54,7 @@ library
     build-depends:
       cardano-api,
       cardano-ledger-core -any,
+      cardano-ledger-shelley,
       cardano-slotting,
       transformers,
       mtl,

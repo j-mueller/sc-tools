@@ -26,8 +26,8 @@ import qualified Control.Monad.Trans.State        as StrictState
 import qualified Control.Monad.Trans.State.Strict as LazyState
 import           Control.Tracer                   (Tracer, natTracer)
 import           Convex.Class                     (MonadBlockchain (..),
-                                                   MonadMockchain (..),
-                                                   MonadUtxoQuery (..))
+                                                   MonadMockchain (..))
+import           Convex.Query                     (MonadUtxoQuery(utxosByPaymentCredentials))
 import           Convex.CoinSelection             (BalanceTxError,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
