@@ -12,7 +12,7 @@ module Convex.NodeClient.WaitForTxnClient(
 ) where
 
 import           Cardano.Api                (BlockInMode, ChainPoint, Env,
-                                             LedgerState, LocalNodeConnectInfo,
+                                             LocalNodeConnectInfo,
                                              TxId)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
@@ -67,11 +67,11 @@ checkTxIds txi ((C.Block _ txns)) = any (checkTxId txi) txns
 checkTxId :: TxId -> C.Tx C.BabbageEra -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
-newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, LedgerState, Env) m a }
+newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail)
 
-runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> LedgerState -> Env -> MonadBlockchainWaitingT m a -> m a
-runMonadBlockchainWaitingT connectInfo initialLedgerState env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, initialLedgerState, env)
+runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT m a -> m a
+runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)
 
 instance MonadError e m => MonadError e (MonadBlockchainWaitingT m) where
   throwError = lift . throwError
@@ -88,7 +88,7 @@ instance (MonadLog m) => MonadLog (MonadBlockchainWaitingT m) where
 instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlockchainWaitingT m) where
   sendTx tx = MonadBlockchainWaitingT $ do
     let txi = C.getTxId (C.getTxBody tx)
-    (info, _ledgerState0, env) <- ask
+    (info, env) <- ask
     tmv <- liftIO (runWaitForTxn info env txi)
     k <- sendTx tx
     logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"

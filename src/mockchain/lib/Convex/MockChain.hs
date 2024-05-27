@@ -72,7 +72,7 @@ import           Cardano.Api.Shelley                   (AddressInEra,
                                                         ShelleyLedgerEra,
                                                         SlotNo, Tx,
                                                         TxBody (ShelleyTxBody))
-import qualified Cardano.Api.Shelley                   as Cardano.Api
+import qualified Cardano.Api.Shelley                   as C
 import           Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError,
                                                         collectPlutusScriptsWithContext,
                                                         evalPlutusScripts)
@@ -172,8 +172,8 @@ fullyAppliedScript params PlutusWithContext{pwcScript, pwcDatums} = do
   pure $ UPLC.Program () PLC.latestVersion appliedTerm
 
 data ExUnitsError =
-  Phase1Error (Cardano.Api.TransactionValidityError BabbageEra)
-  | Phase2Error Cardano.Api.ScriptExecutionError
+  Phase1Error (C.TransactionValidityError BabbageEra)
+  | Phase2Error C.ScriptExecutionError
   deriving (Show)
 
 makePrisms ''ExUnitsError
@@ -217,7 +217,7 @@ genesisUTxO utxos =
   UTxO $
     Map.fromList
       [ (txIn, txOut)
-        | (Cardano.Api.toShelleyAddr -> addr, amount) <- utxos,
+        | (C.toShelleyAddr -> addr, amount) <- utxos,
           let txIn = initialFundsPseudoTxIn addr
               txOut = Core.mkBasicTxOut addr (Val.inject amount)
       ]
@@ -231,7 +231,7 @@ initialStateFor ::
   InitialUTXOs -> -- List of UTXOs at each wallet's address. Can have multiple entries per wallet.
   MockChainState
 initialStateFor params@NodeParams{npNetworkId} utxos =
-  let utxo = genesisUTxO @ERA @Cardano.Api.BabbageEra (fmap (first (addressInEra npNetworkId)) utxos)
+  let utxo = genesisUTxO @ERA @C.BabbageEra (fmap (first (addressInEra npNetworkId)) utxos)
   in MockChainState
       { mcsEnv =
           LedgerEnv
@@ -257,18 +257,18 @@ utxoEnv params slotNo = UtxoEnv slotNo (Defaults.pParams params) def
 getTxExUnits ::
   NodeParams ->
   UTxO ERA ->
-  Cardano.Api.Tx Cardano.Api.BabbageEra ->
-  Either ExUnitsError (Map.Map Cardano.Api.ScriptWitnessIndex Cardano.Api.ExecutionUnits)
-getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo (Cardano.Api.getTxBody -> tx) =
-  case Cardano.Api.evaluateTransactionExecutionUnits Cardano.Api.BabbageEra npSystemStart (Cardano.Api.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxo) tx of
+  C.Tx C.BabbageEra ->
+  Either ExUnitsError (Map.Map C.ScriptWitnessIndex C.ExecutionUnits)
+getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo (C.getTxBody -> tx) =
+  case C.evaluateTransactionExecutionUnits C.BabbageEra npSystemStart (C.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO C.ShelleyBasedEraBabbage utxo) tx of
     Left e      -> Left (Phase1Error e)
     Right rdmrs -> traverse (either (Left . Phase2Error) Right) rdmrs
 
-applyTransaction :: NodeParams -> MockChainState -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError (MockChainState, Validated (Core.Tx ERA))
-applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
+applyTransaction :: NodeParams -> MockChainState -> C.Tx C.BabbageEra -> Either ValidationError (MockChainState, Validated (Core.Tx ERA))
+applyTransaction params state tx'@(C.ShelleyTx _era tx) = do
   let currentSlot = state ^. env . L.slot
       utxoState_ = state ^. poolState . L.utxoState
-      utxo = utxoState_ ^. L._UTxOState (Cardano.Api.unLedgerProtocolParameters $ npProtocolParameters params) . _1
+      utxo = utxoState_ ^. L._UTxOState (C.unLedgerProtocolParameters $ npProtocolParameters params) . _1
   (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
   result <- applyTx params state vtx scripts
 
@@ -279,8 +279,8 @@ applyTransaction params state tx'@(Cardano.Api.ShelleyTx _era tx) = do
 
 {-| Evaluate a transaction, returning all of its script contexts.
 -}
-evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> Cardano.Api.Tx Cardano.Api.BabbageEra -> Either ValidationError [PlutusWithContext StandardCrypto]
-evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
+evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> C.Tx C.BabbageEra -> Either ValidationError [PlutusWithContext StandardCrypto]
+evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
     (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
     _ <- applyTx params state vtx scripts
     pure scripts
@@ -288,7 +288,7 @@ evaluateTx params slotNo utxo (Cardano.Api.ShelleyTx _ tx) = do
     state =
       initialState params
         & env . L.slot .~ slotNo
-        & poolState . L.utxoState . L._UTxOState (Cardano.Api.unLedgerProtocolParameters $ npProtocolParameters params) . _1 .~ utxo
+        & poolState . L.utxoState . L._UTxOState (C.unLedgerProtocolParameters $ npProtocolParameters params) . _1 .~ utxo
 
 -- | Construct a 'ValidatedTx' from a 'Core.Tx' by setting the `IsValid`
 -- flag.
@@ -360,13 +360,13 @@ instance Monad m => MonadBlockchain (MockchainT m) where
         failedTransactions %= ((:) (tx, err))
         return $ Left $ SendTxFailed $ show err
       Right (st', _) ->
-        let Cardano.Api.Tx body _ = tx
-        in put st' >> return (Right $ Cardano.Api.getTxId body)
+        let C.Tx body _ = tx
+        in put st' >> return (Right $ C.getTxId body)
   utxoByTxIn txIns = MockchainT $ do
     nps <- ask
-    Cardano.Api.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage))
+    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.ShelleyBasedEraBabbage))
     let mp' = Map.restrictKeys mp txIns
-    pure (Cardano.Api.UTxO mp')
+    pure (C.UTxO mp')
   queryProtocolParameters = MockchainT (asks npProtocolParameters)
   queryStakeAddresses creds nid = MockchainT $ do
     dState <- gets (certDState . lsCertState . view poolState)
@@ -377,7 +377,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
         Map.fromList
           $ bimap
               fromLedgerStakeAddress
-              Cardano.Api.lovelaceToQuantity <$> Map.toList (rewardMap rewards')
+              C.lovelaceToQuantity <$> Map.toList (rewardMap rewards')
       poolMap =
         Map.fromList
           $ bimap
@@ -385,8 +385,8 @@ instance Monad m => MonadBlockchain (MockchainT m) where
               StakePoolKeyHash <$> Map.toList (sPoolMap rewards')
     pure (rewardsMap, poolMap)
     where
-      toLedgerStakeCredentials creds' = Set.fromList $ Cardano.Api.toShelleyStakeCredential <$> Set.toList creds'
-      fromLedgerStakeAddress = Cardano.Api.makeStakeAddress nid . Cardano.Api.fromShelleyStakeCredential
+      toLedgerStakeCredentials creds' = Set.fromList $ C.toShelleyStakeCredential <$> Set.toList creds'
+      fromLedgerStakeAddress = C.makeStakeAddress nid . C.fromShelleyStakeCredential
   queryStakePools = MockchainT (asks npStakePools)
   networkId = MockchainT (asks npNetworkId)
   querySystemStart = MockchainT (asks npSystemStart)
@@ -419,31 +419,31 @@ instance Monad m => MonadUtxoQuery (MockchainT m) where
 {-| Add all datums from the transaction to the map of known datums
 -}
 addDatumHashes :: MonadState MockChainState m => Tx BabbageEra -> m ()
-addDatumHashes (Cardano.Api.Tx (ShelleyTxBody Cardano.Api.ShelleyBasedEraBabbage txBody _scripts scriptData _auxData _) _witnesses) = do
-  let txOuts = Cardano.Api.fromLedgerTxOuts Cardano.Api.ShelleyBasedEraBabbage txBody scriptData
+addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraBabbage txBody _scripts scriptData _auxData _) _witnesses) = do
+  let txOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody scriptData
 
   let insertHashableScriptData hashableScriptData =
-        datums %= Map.insert (Cardano.Api.hashScriptDataBytes hashableScriptData) hashableScriptData
+        datums %= Map.insert (C.hashScriptDataBytes hashableScriptData) hashableScriptData
 
   for_ txOuts $ \(view (L._TxOut . _3) -> txDat) -> case txDat of
-    Cardano.Api.TxOutDatumInline _ dat -> insertHashableScriptData dat
+    C.TxOutDatumInline _ dat -> insertHashableScriptData dat
     _                                  -> pure ()
 
   case scriptData of
-    Cardano.Api.TxBodyScriptData _ (unTxDats -> txDats) _redeemers -> do
-      traverse_ (insertHashableScriptData . Cardano.Api.fromAlonzoData) txDats
+    C.TxBodyScriptData _ (unTxDats -> txDats) _redeemers -> do
+      traverse_ (insertHashableScriptData . C.fromAlonzoData) txDats
     _ -> pure ()
 
 {-| All transaction outputs
 -}
-utxoSet :: MonadMockchain m => m (UtxoSet Cardano.Api.CtxUTxO ())
+utxoSet :: MonadMockchain m => m (UtxoSet C.CtxUTxO ())
 utxoSet =
-  let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO Cardano.Api.ShelleyBasedEraBabbage utxos)
+  let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO C.ShelleyBasedEraBabbage utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain
 -}
-walletUtxo :: MonadMockchain m => Wallet -> m (UtxoSet Cardano.Api.CtxUTxO ())
+walletUtxo :: MonadMockchain m => Wallet -> m (UtxoSet C.CtxUTxO ())
 walletUtxo wallet = do
   fmap (onlyCredential (paymentCredential wallet)) utxoSet
 
@@ -516,12 +516,12 @@ execMockchain0IO dist action = execMockchainIO action Defaults.nodeParams (initi
 -- not exported by cardano-api 1.35.3 (though it seems like it's exported in 1.36)
 fromLedgerUTxO :: ShelleyLedgerEra era ~ ledgerera
                => EraCrypto ledgerera ~ StandardCrypto
-               => Cardano.Api.ShelleyBasedEra era
+               => C.ShelleyBasedEra era
                -> UTxO ledgerera
-               -> Cardano.Api.UTxO era
+               -> C.UTxO era
 fromLedgerUTxO era (UTxO utxo) =
-  Cardano.Api.UTxO
+  C.UTxO
   . Map.fromList
-  . map (bimap Cardano.Api.fromShelleyTxIn (Cardano.Api.fromShelleyTxOut era))
+  . map (bimap C.fromShelleyTxIn (C.fromShelleyTxOut era))
   . Map.toList
   $ utxo

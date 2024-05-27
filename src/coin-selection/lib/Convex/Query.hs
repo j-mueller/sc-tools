@@ -1,10 +1,8 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE NamedFieldPuns       #-}
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Custom class to encapsulate the general purpose
 queries that we need for building transactions
@@ -39,6 +37,7 @@ import           Control.Monad.Except               (MonadError)
 import           Control.Monad.IO.Class             (MonadIO (..))
 import           Control.Monad.Reader               (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Class          (MonadTrans (..))
+import Test.QuickCheck.Monadic (PropertyM)
 import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
 import           Control.Monad.Trans.Except.Result  (ResultT)
 import qualified Control.Monad.Trans.State          as StrictState
@@ -67,6 +66,8 @@ import           Data.Maybe                         (listToMaybe)
 import           Data.Set                           (Set)
 import qualified Data.Set                           as Set
 import           Servant.Client                     (ClientEnv)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 class Monad m => MonadUtxoQuery m where
   utxosByPaymentCredentials :: Set PaymentCredential -> m (UTxO BabbageEra)
@@ -98,12 +99,21 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) wh
 instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
+instance MonadUtxoQuery m => MonadUtxoQuery (PropertyM m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
 deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWaitingT m)
 
 {-| Balance the transaction body using the UTxOs locked by the payment credentials,
 returning any unused funds to the given return output
 |-}
-balanceTx :: (MonadBlockchain m, MonadUtxoQuery m) => Tracer m TxBalancingMessage -> [PaymentCredential] -> TxOut CtxTx BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
+balanceTx
+  :: (MonadBlockchain m, MonadUtxoQuery m)
+  => Tracer m TxBalancingMessage
+  -> [PaymentCredential]
+  -> TxOut CtxTx BabbageEra
+  -> TxBodyContent BuildTx BabbageEra
+  -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
 balanceTx dbg inputCredentials changeOutput txBody = do
   o <- fromApiUtxo <$> utxosByPaymentCredentials (Set.fromList inputCredentials)
   runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody)
@@ -169,4 +179,5 @@ selectOperatorUTxO operator = fmap (listToMaybe . Map.toList . C.unUTxO) (operat
 data BalanceAndSubmitError =
   BalanceError BalanceTxError
   | SubmitError String
-  deriving Show
+  deriving stock (Generic, Show)
+  deriving anyclass (ToJSON, FromJSON)

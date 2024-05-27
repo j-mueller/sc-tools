@@ -8,6 +8,7 @@ module Convex.Scripts(
   -- * FromData / ToData
   fromScriptData,
   toScriptData,
+  fromHashableScriptData,
   toHashableScriptData,
 
   -- * Translating between ledger and plutus representations
@@ -32,6 +33,9 @@ fromScriptData (C.toPlutusData -> d) = PV1.fromData d
 
 toScriptData :: PV1.ToData a => a -> C.ScriptData
 toScriptData = C.fromPlutusData . PV1.toData
+
+fromHashableScriptData :: PV1.FromData a => C.HashableScriptData -> Maybe a
+fromHashableScriptData (C.toPlutusData . C.getScriptData -> d) = PV1.fromData d
 
 toHashableScriptData :: PV1.ToData a => a -> C.HashableScriptData
 toHashableScriptData = C.fromAlonzoData @StandardBabbage . Data . PV1.toData

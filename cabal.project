@@ -19,6 +19,10 @@ index-state:
 
 with-compiler: ghc-9.6.4
 
+-- Always build tests and benchmarks.
+tests: true
+benchmarks: true
+
 -- NOTE (j-mueller, 2024-02-19): Change back to Plutonomicon/plutarch-plutus:master
 -- when plutus-1.21.0.0 is supported. Currently upstream is on 1.20.0.0
 source-repository-package
