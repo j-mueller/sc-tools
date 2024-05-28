@@ -151,7 +151,7 @@ txnUtxos :: Tx era -> [(TxIn, C.TxOut C.CtxTx era)]
 txnUtxos tx =
   let C.TxBody C.TxBodyContent{C.txOuts} = C.getTxBody tx
       txi  = C.getTxId (C.getTxBody tx)
-  in take (length txOuts) (zip (C.TxIn txi . C.TxIx <$> [0..]) txOuts)
+  in zip (C.TxIn txi . C.TxIx <$> [0..]) txOuts
 
 {-| Convert a slot number to UTC time
 -}
