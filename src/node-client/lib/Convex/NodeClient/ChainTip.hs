@@ -45,6 +45,18 @@ instance FromJSON JSONChainTip where
       <*> (obj .: "hash" >>= \(t :: Text) -> case deserialiseFromRawBytesHex (proxyToAsType $ Proxy @(Hash BlockHeader)) (Text.encodeUtf8 t) of { Left err -> fail (show err); Right x -> pure x})
       <*> fmap Consensus.BlockNo (obj .: "block")) y
 
+instance Semigroup JSONChainTip where
+  l <> JSONChainTip ChainTipAtGenesis = l
+  _ <> r                              = r
+
+instance Ord JSONChainTip where
+  JSONChainTip ChainTipAtGenesis <= _                              = True
+  _ <= JSONChainTip ChainTipAtGenesis                              = False
+  JSONChainTip (ChainTip _ _ lb) <= JSONChainTip (ChainTip _ _ rb) = lb <= rb
+
+instance Monoid JSONChainTip where
+  mempty = JSONChainTip ChainTipAtGenesis
+
 newtype JSONChainPoint = JSONChainPoint ChainPoint
   deriving newtype (Eq, Show)
 
@@ -57,6 +69,18 @@ instance FromJSON JSONChainPoint where
   parseJSON (Aeson.String "ChainPointAtGenesis") = pure (JSONChainPoint ChainPointAtGenesis)
   parseJSON x = withObject "JSONChainPoint" (\obj ->
     fmap JSONChainPoint (ChainPoint <$> obj .: "slot" <*> obj .: "block_header")) x
+
+instance Semigroup JSONChainPoint where
+  l <> JSONChainPoint ChainPointAtGenesis = l
+  _ <> r                                  = r
+
+instance Monoid JSONChainPoint where
+  mempty = JSONChainPoint ChainPointAtGenesis
+
+instance Ord JSONChainPoint where
+  JSONChainPoint ChainPointAtGenesis <= _ = True
+  _ <= JSONChainPoint ChainPointAtGenesis = False
+  JSONChainPoint (ChainPoint ls _) <= JSONChainPoint (ChainPoint rs _) = ls <= rs
 
 newtype JSONBlockNo = JSONBlockNo{unJSONBlockNo :: BlockNo }
   deriving newtype (Eq, Show)
