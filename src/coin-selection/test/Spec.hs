@@ -47,7 +47,8 @@ import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Utils         (mockchainSucceeds,
                                                  runMockchainProp)
-import           Convex.NodeParams              (maxTxSize, ledgerProtocolParameters)
+import           Convex.NodeParams              (ledgerProtocolParameters,
+                                                 maxTxSize)
 import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Utils                   (failOnError)
 import qualified Convex.Utxos                   as Utxos

@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Custom class to encapsulate the general purpose
@@ -37,7 +37,6 @@ import           Control.Monad.Except               (MonadError)
 import           Control.Monad.IO.Class             (MonadIO (..))
 import           Control.Monad.Reader               (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Class          (MonadTrans (..))
-import Test.QuickCheck.Monadic (PropertyM)
 import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
 import           Control.Monad.Trans.Except.Result  (ResultT)
 import qualified Control.Monad.Trans.State          as StrictState
@@ -60,14 +59,15 @@ import           Convex.Wallet.Operator             (Operator (..), Signing,
                                                      operatorPaymentCredential,
                                                      returnOutputFor,
                                                      signTxOperator)
+import           Data.Aeson                         (FromJSON, ToJSON)
 import           Data.Functor                       (($>))
 import qualified Data.Map                           as Map
 import           Data.Maybe                         (listToMaybe)
 import           Data.Set                           (Set)
 import qualified Data.Set                           as Set
+import           GHC.Generics                       (Generic)
 import           Servant.Client                     (ClientEnv)
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics (Generic)
+import           Test.QuickCheck.Monadic            (PropertyM)
 
 class Monad m => MonadUtxoQuery m where
   utxosByPaymentCredentials :: Set PaymentCredential -> m (UTxO BabbageEra)
