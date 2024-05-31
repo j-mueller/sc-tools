@@ -28,11 +28,13 @@
                   tools = {
                     cabal = "latest";
                     haskell-language-server = "latest";
+                    ghcide = "latest";
                   };
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };
                 sha256map = {
-                  "https://github.com/j-mueller/plutarch-plutus"."14a3aedc67de5fb0dde6b7bd62efa32feacee3da" = "sha256-K3/nFioOzHMR5fVyQ3L292qXx+//Xf7V+k/zNZbRD2k=";
+                  "https://github.com/albertodvp/plutarch-plutus"."1b2b5fb684e69e3d12319608278c1f6dea6e12af" = "sha256-xViZbZlq5Sw9rHakS9nwcQikCOfwZClSBL8UD+5eJJ4=";
+                  "https://github.com/albertodvp/xsy-liqwid-libs"."26b37079439445b815b4bce86d80cf5dbf971f60" = "sha256-dUaqSBHXJFpzHkG6FBE8RES6drMELbALwcVCdg5S4sI=";
                 };
               };
             })
