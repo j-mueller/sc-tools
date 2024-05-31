@@ -51,8 +51,9 @@ library
       text,
       exceptions,
       time,
-      either-result
-      
+      either-result,
+      QuickCheck
+
     build-depends:
       cardano-api == 8.45.0.0,
       cardano-ledger-core,
