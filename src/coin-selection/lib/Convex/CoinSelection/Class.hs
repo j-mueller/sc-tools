@@ -31,7 +31,7 @@ import           Convex.Query                     (MonadUtxoQuery(utxosByPayment
 import           Convex.CoinSelection             (BalanceTxError,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
-import           Convex.Lenses                    (emptyTxOut)
+import           Convex.CardanoApi.Lenses         (emptyTxOut)
 import           Convex.MonadLog                  (MonadLog, MonadLogIgnoreT)
 import           Convex.Utxos                     (BalanceChanges (..),
                                                    UtxoSet (..))

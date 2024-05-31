@@ -38,7 +38,7 @@ import           Cardano.Api         (BabbageEra, CtxTx, PaymentCredential,
                                       TxOut)
 import qualified Cardano.Api.Shelley as C
 import           Convex.Class        (MonadBlockchain (networkId))
-import           Convex.Lenses       (emptyTxOut)
+import           Convex.CardanoApi.Lenses (emptyTxOut)
 import           Convex.PlutusLedger (transPubKeyHash, transStakeKeyHash)
 import           Convex.Utils        (readSigningKeyFromFile,
                                       readStakingKeyFromFile,

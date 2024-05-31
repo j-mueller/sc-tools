@@ -39,7 +39,7 @@ import qualified Convex.CoinSelection            as CoinSelection
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries       as NodeQueries
 import           Convex.Devnet.Utils             (keysFor)
-import           Convex.Lenses                   (emptyTxOut)
+import           Convex.CardanoApi.Lenses        (emptyTxOut)
 import           Convex.MonadLog                 (MonadLog (..))
 import           Convex.Utils                    (failOnError)
 import           Convex.Utxos                    (UtxoSet)

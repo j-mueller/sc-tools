@@ -45,6 +45,7 @@ library
       containers,
       lens,
       convex-base,
+      convex-optics,
       convex-node-client,
       aeson,
       transformers,

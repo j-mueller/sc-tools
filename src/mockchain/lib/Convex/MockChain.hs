@@ -128,7 +128,7 @@ import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadUtxoQuery (..),
                                                         SendTxFailed (..))
 import           Convex.Constants                      (ERA)
-import qualified Convex.Lenses                         as L
+import qualified Convex.CardanoApi.Lenses              as L
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.MonadLog                       (MonadLog (..))

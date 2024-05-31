@@ -31,7 +31,6 @@ library
       Convex.BuildTx
       Convex.Class
       Convex.Constants
-      Convex.Lenses
       Convex.MonadLog
       Convex.NodeQueries
       Convex.PlutusLedger
@@ -54,6 +53,8 @@ library
       either-result
       
     build-depends:
+      convex-optics,
+
       cardano-api == 8.45.0.0,
       cardano-ledger-core,
       cardano-crypto-wrapper,

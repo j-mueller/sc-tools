@@ -24,7 +24,7 @@ import           Convex.Class              (MonadBlockchain (..),
                                             MonadMockchain, SendTxFailed (..))
 import           Convex.CoinSelection      (BalanceTxError, TxBalancingMessage)
 import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.Lenses             (emptyTxOut)
+import           Convex.CardanoApi.Lenses (emptyTxOut)
 import qualified Convex.MockChain          as MockChain
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)

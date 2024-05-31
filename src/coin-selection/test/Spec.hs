@@ -35,7 +35,7 @@ import           Convex.Class                   (MonadBlockchain (..),
                                                  setUtxo, singleUTxO)
 import           Convex.CoinSelection           (BalanceTxError, keyWitnesses,
                                                  publicKeyCredential)
-import qualified Convex.Lenses                  as L
+import qualified Convex.CardanoApi.Lenses                  as L
 import           Convex.MockChain               (ValidationError (..),
                                                  failedTransactions,
                                                  fromLedgerUTxO,

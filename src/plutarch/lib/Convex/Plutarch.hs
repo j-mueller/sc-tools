@@ -11,7 +11,7 @@ module Convex.Plutarch(
 import qualified Cardano.Api.Shelley    as C
 import           Data.Text              (Text)
 import           Plutarch               (pcon, popaque, (#))
-import           Plutarch.Api.V1        (PScriptContext)
+import           Plutarch.LedgerApi     (PScriptContext)
 import           Plutarch.Internal      (punsafeCoerce)
 import           Plutarch.Prelude       (PBool, PData, PIsData, POpaque,
                                          PUnit (..), Term, pfromData, pif, plam,

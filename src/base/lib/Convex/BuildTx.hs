@@ -117,7 +117,7 @@ import           Control.Monad.Writer.Class    (MonadWriter (..))
 import           Convex.Class                  (MonadBlockchain (..),
                                                 MonadBlockchainCardanoNodeT,
                                                 MonadMockchain (..))
-import qualified Convex.Lenses                 as L
+import qualified Convex.CardanoApi.Lenses      as L
 import           Convex.MonadLog               (MonadLog (..), MonadLogIgnoreT,
                                                 MonadLogKatipT)
 import           Convex.Scripts                (toHashableScriptData)
