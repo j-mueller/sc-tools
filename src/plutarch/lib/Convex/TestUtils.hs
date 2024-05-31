@@ -74,18 +74,15 @@ module Convex.TestUtils (
 ) where
 
 import Control.Arrow (Kleisli (Kleisli), runKleisli, (>>>))
-import Control.Monad ((>=>))
-import Control.Monad.Reader (Reader)
 import Data.Foldable (fold, foldl')
 import Data.List (intercalate)
-import Data.Monoid (Endo, First (First), appEndo, getFirst)
+import Data.Monoid (First (First), getFirst)
 import Data.Text (Text)
 import Plutarch (Script)
 import Plutarch.Evaluate (EvalError, evalScriptHuge)
 import Plutarch.Extra.Script (applyArguments)
 import PlutusCore.Data qualified as PLC
 import PlutusLedgerApi.V2 (Datum, ExBudget, Redeemer, ScriptContext, toData)
-import Prettyprinter (Pretty, pretty)
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit (assertFailure, testCase)
 import Text.RE.TDFA.Text (RE, countMatches, reSource, (*=~))
@@ -382,7 +379,7 @@ attackCaseRegexPostCondition ::
 attackCaseRegexPostCondition toErr expectedFailureRE =
   mkPostCondition $ \(TxFCEKOutput eitherErrorOrScript _ logs) ->
     case eitherErrorOrScript of
-      Left evalError ->
+      Left _evalError ->
         let
           numMatches = countMatches (fold logs *=~ expectedFailureRE)
          in
