@@ -7,7 +7,7 @@ A collection of libraries that are helpful for building Cardano apps with Haskel
 * `convex-wallet`: Minimal wallet implementation
 * `convex-coin-selection`: Coin selection and transaction balancing
 * `convex-mockchain`: Minimal mockchain for tests
-
+* `convex-optics`: Some optics for plutus-ledger-api and cardano-api
 The API documentation (Haddocks) is published [here](https://j-mueller.github.io/sc-tools/)
 
 ### Dependencies
@@ -27,7 +27,7 @@ Support for `ghc-8.10.7` and `cardano-node-1.35.4` will be maintained for a litt
 
 We use the `TxBodyContent BuildTx BabbageEra` type from `cardano-api` as the basic type for building transactions. The `MonadBuildTx` class from `Convex.BuildTx` is essentially a writer for `TxBodyContent` modifications. `Convex.BuildTx` defines a number of helper functions for common tasks such as spending and creating Plutus script outputs, minting native assets, setting collateral, etc.
 
-To `Convex.CardanoApi.Lenses` defines some lenses for adding content to transaction bodies. These can be used together with `MonadBuildTx.addBtx`.
+`Convex.CardanoApi.Lenses` defines some lenses for adding content to transaction bodies. These can be used together with `MonadBuildTx.addBtx`.
 
 ```haskell
 import qualified Cardano.API.Shelley as C

@@ -27,8 +27,8 @@ documentation: true
 
 source-repository-package
   type: git
-  -- This fork should be changed with the Plutonomicon staging branch as soon as
-  -- this PR is merged: https://github.com/Plutonomicon/plutarch-plutus/pull/672
+  -- This fork should be changed with the Plutonomicon/plutarch-plutus staging branch as soon as
+  -- this PR is merged: https://github.com/Plutonomicon/plutarch-plutus/pull/677
   location: https://github.com/albertodvp/plutarch-plutus
   tag: 1b2b5fb684e69e3d12319608278c1f6dea6e12af
   subdir:
@@ -38,9 +38,8 @@ source-repository-package
 
 source-repository-package
   type: git
-  -- This fork branch should be changed with some official branch in
-  -- input-output-hk/xsy-liqwid-libs as soons as the git workflow
-  -- is established there
+  -- This fork should be changed with the input-output-hk/xsy-liqwid-libs main  branch as soon as
+  -- this PR is merged: https://github.com/input-output-hk/xsy-liqwid-libs/pull/7
   location: https://github.com/albertodvp/xsy-liqwid-libs
   tag: 26b37079439445b815b4bce86d80cf5dbf971f60
   subdir:
