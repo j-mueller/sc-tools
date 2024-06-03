@@ -63,7 +63,7 @@ import           Convex.Devnet.Utils              (checkProcessHasNotDied,
                                                    readConfigFile, withLogFile)
 import           Convex.Wallet                    (Wallet, paymentCredential)
 import           Convex.BuildTx                   (payToAddress, addCertificate,
-                                                   execBuildTx')
+                                                   execBuildTx)
 import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
                                                    (.=))
 import qualified Data.Aeson                       as Aeson
@@ -563,16 +563,16 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     Right res -> pure res
 
   let
-    stakeCertTx = execBuildTx' $ do
+    stakeCertTx = execBuildTx $ do
       addCertificate stakeCert
 
-    poolCertTx = execBuildTx' $ do
+    poolCertTx = execBuildTx $ do
       let pledge = spnPledge params
       when (pledge > 0) $
         payToAddress paymentAddress (C.lovelaceToValue pledge)
       addCertificate poolCert
 
-    delegCertTx = execBuildTx' $ do
+    delegCertTx = execBuildTx $ do
       addCertificate delegationCert
 
   _ <- W.balanceAndSubmit mempty node wallet stakeCertTx [WitnessStakeKey stakeKey]

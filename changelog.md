@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Convex.BuildTx`: Added the option to look at all of a transaction's inputs when building a transaction
 * Improved the coin selection algorithm to correctly select mixed inputs for covering the transaction fees. Previously, only pure Ada inputs were considered for the fees.
 * `MonadMockchain.sendTx` returns `Either` to allow the caller to handle submission failures
+* Coin selection uses `TxBuilder` instead of `TxBodyContent`
 
 - Added a `Tracer m TxBalancingMessage` argument to the coin selection functions. This prints out useful information about decisions taken during coin selection and balancing. Instantiate with `mempty` to ignore the messages.
 - Changed the `protocolParameters`, `ledgerProtocolParameters` lenses in `Convex.NodeParams` to update the other field too (making sure they are always in sync)
