@@ -51,7 +51,7 @@ import           Control.Lens                     (over)
 import           Control.Monad                    (unless, when, (>=>))
 import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
-import           Convex.BuildTx                   (addCertificate, execBuildTx',
+import           Convex.BuildTx                   (addCertificate, execBuildTx,
                                                    payToAddress)
 import           Convex.Devnet.CardanoNode.Types  (GenesisConfigChanges (..),
                                                    Port, PortsConfig (..),
@@ -576,16 +576,16 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     Right res -> pure res
 
   let
-    stakeCertTx = execBuildTx' $ do
+    stakeCertTx = execBuildTx $ do
       addCertificate stakeCert
 
-    poolCertTx = execBuildTx' $ do
+    poolCertTx = execBuildTx $ do
       let pledge = spnPledge params
       when (pledge > 0) $
         payToAddress paymentAddress (C.lovelaceToValue pledge)
       addCertificate poolCert
 
-    delegCertTx = execBuildTx' $ do
+    delegCertTx = execBuildTx $ do
       addCertificate delegationCert
 
   _ <- W.balanceAndSubmit mempty node wallet stakeCertTx []

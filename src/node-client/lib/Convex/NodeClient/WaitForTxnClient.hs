@@ -12,8 +12,7 @@ module Convex.NodeClient.WaitForTxnClient(
 ) where
 
 import           Cardano.Api                (BlockInMode, ChainPoint, Env,
-                                             LocalNodeConnectInfo,
-                                             TxId)
+                                             LocalNodeConnectInfo, TxId)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
 import           Control.Concurrent.STM     (TMVar, atomically, newEmptyTMVar,
