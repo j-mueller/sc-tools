@@ -33,8 +33,8 @@
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };
                 sha256map = {
-                  "https://github.com/albertodvp/plutarch-plutus"."1b2b5fb684e69e3d12319608278c1f6dea6e12af" = "sha256-xViZbZlq5Sw9rHakS9nwcQikCOfwZClSBL8UD+5eJJ4=";
-                  "https://github.com/albertodvp/xsy-liqwid-libs"."26b37079439445b815b4bce86d80cf5dbf971f60" = "sha256-dUaqSBHXJFpzHkG6FBE8RES6drMELbALwcVCdg5S4sI=";
+                  "https://github.com/Plutonomicon/plutarch-plutus"."fcdd2209433d8b8979e820dc4fa9aad5f202216d" = "sha256-gQwaYGIds5owHivXi+ktH7CGeBqoLBykVxyHZZiDUM4=";
+                  "https://github.com/input-output-hk/xsy-liqwid-libs"."a799bcca72bcd133cc25a7b6841acb48b3885138" = "sha256-ibAtsyejc3SOUWKoyxSQ5r3jg9eOfyEHkpO+qTrwa2U=";
                 };
               };
             })

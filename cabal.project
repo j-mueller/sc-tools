@@ -27,10 +27,8 @@ documentation: true
 
 source-repository-package
   type: git
-  -- This fork should be changed with the Plutonomicon/plutarch-plutus staging branch as soon as
-  -- this PR is merged: https://github.com/Plutonomicon/plutarch-plutus/pull/677
-  location: https://github.com/albertodvp/plutarch-plutus
-  tag: 1b2b5fb684e69e3d12319608278c1f6dea6e12af
+  location: https://github.com/Plutonomicon/plutarch-plutus
+  tag: fcdd2209433d8b8979e820dc4fa9aad5f202216d
   subdir:
     .
     plutarch-ledger-api
@@ -38,10 +36,8 @@ source-repository-package
 
 source-repository-package
   type: git
-  -- This fork should be changed with the input-output-hk/xsy-liqwid-libs main  branch as soon as
-  -- this PR is merged: https://github.com/input-output-hk/xsy-liqwid-libs/pull/7
-  location: https://github.com/albertodvp/xsy-liqwid-libs
-  tag: 26b37079439445b815b4bce86d80cf5dbf971f60
+  location: https://github.com/input-output-hk/xsy-liqwid-libs
+  tag: a799bcca72bcd133cc25a7b6841acb48b3885138
   subdir:
     plutarch-context-builder
     plutarch-unit
