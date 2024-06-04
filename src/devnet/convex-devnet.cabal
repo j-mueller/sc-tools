@@ -111,7 +111,6 @@ test-suite convex-devnet-test
     , tasty-hunit
     , convex-devnet
     , convex-base
-    , convex-optics
     , cardano-api
     , cardano-ledger-core -any
     , mtl
