@@ -32,6 +32,7 @@ library
       Convex.MockChain.Gen
       Convex.MockChain.Utils
       Convex.MockChain
+      Convex.MockChain.Sketch
       Convex.NodeParams
     hs-source-dirs: lib
     build-depends:

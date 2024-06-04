@@ -26,3 +26,4 @@ result
 work/
 nohup.out
 haddocks/
+.nvimrc
