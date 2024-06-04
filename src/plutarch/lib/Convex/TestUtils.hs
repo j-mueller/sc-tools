@@ -90,7 +90,6 @@ import Data.Kind (Type)
 --------------------------------------------------------------------------------
 
 {- | PreProcessing -- could be used for normalization or attacks
-TODO: rewwrite as Kleisli?
 -}
 newtype PreProcessor err input
   = PreProcessor
@@ -134,7 +133,7 @@ checkPreConditions ::
   input ->
   Maybe err
 checkPreConditions pcs args =
-  getFirst (foldMap ((\x -> (x $ args)) . preCondition) pcs)
+  getFirst (foldMap ((\x -> (x args)) . preCondition) pcs)
 
 --------------------------------------------------------------------------------
 
@@ -160,7 +159,7 @@ checkPostConditions ::
   output ->
   Maybe err
 checkPostConditions pcs args =
-  getFirst (foldMap ((\x -> (x $ args)) . postCondition) pcs)
+  getFirst (foldMap ((\x -> (x args)) . postCondition) pcs)
 
 --------------------------------------------------------------------------------
 
