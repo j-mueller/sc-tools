@@ -68,7 +68,10 @@ module Convex.BuildTx(
 
   -- ** Staking
   addWithdrawal,
+  addWithdrawZeroPlutusV2InTransaction,
+  addWithdrawZeroPlutusV2Reference,
   addCertificate,
+  addStakeCredentialCertificate,
   addStakeWitness,
 
   -- ** Minting and burning tokens
@@ -529,12 +532,37 @@ addWithdrawal address amount witness =
   let withdrawal = (address, amount, C.BuildTxWith witness)
   in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
 
+{-| Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
+Includes the script in the transaction.
+-}
+addWithdrawZeroPlutusV2InTransaction :: (MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => PlutusScript PlutusScriptV2 -> redeemer -> m ()
+addWithdrawZeroPlutusV2InTransaction script redeemer = do
+  n <- networkId
+  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
+      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PScript script) C.NoScriptDatumForStake (toScriptData redeemer) (C.ExecutionUnits 0 0))
+  addWithdrawal addr 0 wit
+
+{-| Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
+The script is provided as a reference input.
+-}
+addWithdrawZeroPlutusV2Reference :: (MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> ScriptHash -> redeemer -> m ()
+addWithdrawZeroPlutusV2Reference refTxIn script redeemer = do
+  n <- networkId
+  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript script
+      wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr (C.PlutusScriptWitness C.PlutusScriptV2InBabbage C.PlutusScriptV2 (C.PReferenceScript refTxIn (Just script)) C.NoScriptDatumForStake (toScriptData redeemer) (C.ExecutionUnits 0 0))
+  addWithdrawal addr 0 wit
+
 {-| Add a certificate (stake delegation, stake pool registration, etc)
 to the transaction
 -}
 addCertificate :: MonadBuildTx m => C.Certificate -> m ()
 addCertificate cert =
   addBtx (over (L.txCertificates . L._TxCertificates . _1) ((:) cert))
+
+{-| Add a 'C.StakeCredential' as a stake address registration certificate to the transaction
+-}
+addStakeCredentialCertificate :: MonadBuildTx m => C.StakeCredential -> m ()
+addStakeCredentialCertificate = addCertificate . C.StakeAddressRegistrationCertificate
 
 {-| Add a stake witness to the transaction
 -}
