@@ -67,6 +67,7 @@ library
       , containers
       , convex-wallet
       , convex-base
+      , convex-optics
       , convex-coin-selection
       , lens
       , mtl

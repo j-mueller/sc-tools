@@ -29,11 +29,21 @@ library
     import: lang
     exposed-modules:
       Convex.Plutarch
+      Convex.TestUtils
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,
+      liqwid-plutarch-extra,
+      mtl,
       plutarch,
+      plutarch-ledger-api,
+      plutus-core,
+      prettyprinter,
+      regex,
+      tasty,
+      tasty-hunit,
       text
+
 
     -- cardano dependencies
     build-depends:
@@ -48,13 +58,13 @@ test-suite convex-plutarch-test
     Spec.hs
   build-depends:
     base >= 4.14.0,
-    tasty,
-    tasty-hunit,
-    convex-plutarch,
-    plutarch,
+    cardano-api,
+    convex-base,
     convex-coin-selection,
     convex-mockchain,
-    convex-base,
+    convex-plutarch,
     convex-wallet,
-    cardano-api,
+    plutarch,
+    tasty,
+    tasty-hunit,
     text

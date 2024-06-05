@@ -60,15 +60,6 @@ module Convex.PlutusLedger(
   -- * Scripts
   unTransPlutusScript,
 
-  -- * Intervals
-  _Interval,
-  _UpperBound,
-  _LowerBound,
-  _NegInf,
-  _PosInf,
-  _Finite,
-  _FiniteInterval
-
 ) where
 
 import qualified Cardano.Api.Shelley         as C
@@ -76,7 +67,6 @@ import           Cardano.Ledger.BaseTypes    (CertIx (..), TxIx (..))
 import           Cardano.Ledger.Credential   (Ptr (..))
 import qualified Cardano.Ledger.Mary.Value   as Mary (AssetName (..))
 import qualified Codec.Serialise             as Codec
-import           Control.Lens                (Iso', Prism', iso, prism')
 import qualified Data.ByteString.Lazy        as BSL
 import           Data.ByteString.Short       (fromShort)
 import qualified Data.ByteString.Short       as Short
@@ -84,9 +74,6 @@ import           Data.Functor                ((<&>))
 import           Data.Time.Clock.POSIX       (POSIXTime)
 import           PlutusLedgerApi.Common      (SerialisedScript)
 import qualified PlutusLedgerApi.V1          as PV1
-import           PlutusLedgerApi.V1.Interval (Closure, Extended (..),
-                                              Interval (..), LowerBound (..),
-                                              UpperBound (..))
 import qualified PlutusLedgerApi.V1.Scripts  as P
 import qualified PlutusLedgerApi.V1.Value    as Value
 import qualified PlutusTx.AssocMap           as Map
@@ -248,47 +235,3 @@ unTransScriptDataHash (P.DatumHash bs) =
 
 unTransTxOutDatumHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx C.BabbageEra)
 unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage <$> unTransScriptDataHash datumHash
-
-_Interval :: Iso' (Interval a) (LowerBound a, UpperBound a)
-_Interval = iso from to where
-  from Interval{ivFrom, ivTo} = (ivFrom, ivTo)
-  to (ivFrom, ivTo) = Interval{ivFrom, ivTo}
-
-_UpperBound :: Iso' (UpperBound a) (Extended a, Closure)
-_UpperBound = iso from to where
-  from (UpperBound a b) = (a, b)
-  to = uncurry UpperBound
-
-_LowerBound :: Iso' (LowerBound a) (Extended a, Closure)
-_LowerBound = iso from to where
-  from (LowerBound a b) = (a, b)
-  to = uncurry LowerBound
-
-_NegInf :: Prism' (Extended a) ()
-_NegInf = prism' from to where
-  from () = NegInf
-  to = \case
-    NegInf -> Just ()
-    _      -> Nothing
-
-_PosInf :: Prism' (Extended a) ()
-_PosInf = prism' from to where
-  from () = PosInf
-  to = \case
-    PosInf -> Just ()
-    _      -> Nothing
-
-_Finite :: Prism' (Extended a) a
-_Finite = prism' from to where
-  from = Finite
-  to = \case
-    Finite a -> Just a
-    _        -> Nothing
-
--- | Access a finite interval with the two boundaries and closures. This is
---   convenient if you want to change the length of the interval for example.
-_FiniteInterval :: Prism' (Interval a) ((a, a), (Closure, Closure))
-_FiniteInterval = prism' from to where
-  from ((l, u), (lc, uc)) = Interval (LowerBound (Finite l) lc) (UpperBound (Finite u) uc)
-  to (Interval (LowerBound (Finite l) lc) (UpperBound (Finite u) uc)) = Just ((l, u), (lc, uc))
-  to _ = Nothing

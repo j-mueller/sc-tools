@@ -68,7 +68,7 @@ import           Convex.BuildTx                (addCollateral, buildTxWith,
                                                 execBuildTx, setMinAdaDeposit,
                                                 spendPublicKeyOutput)
 import           Convex.Class                  (MonadBlockchain (..))
-import qualified Convex.Lenses                 as L
+import qualified Convex.CardanoApi.Lenses      as L
 import           Convex.Utils                  (mapError)
 import           Convex.UTxOCompatibility      (UTxOCompatibility,
                                                 compatibleWith, txCompatibility)

@@ -76,7 +76,7 @@ import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.TxIn           as CT
 import           Control.Lens                  (_1, _2, _3, makeLenses,
                                                 makePrisms, over, preview, view)
-import qualified Convex.Lenses                 as L
+import qualified Convex.CardanoApi.Lenses      as L
 import           Data.Aeson                    (FromJSON, ToJSON)
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.DList                    (DList)

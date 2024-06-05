@@ -13,8 +13,8 @@ import           Control.Monad                  (void)
 import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
-import           Convex.Lenses                  (emptyTx)
-import qualified Convex.Lenses                  as L
+import           Convex.CardanoApi.Lenses                  (emptyTx)
+import qualified Convex.CardanoApi.Lenses                  as L
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.MockChain.Utils         (mockchainSucceeds)

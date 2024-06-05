@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-| Lenses for @cardano-api@ types
 -}
-module Convex.Lenses(
+module Convex.CardanoApi.Lenses(
   -- * Tx body content lenses
   emptyTx,
   emptyTxOut,
@@ -18,7 +18,6 @@ module Convex.Lenses(
   txMintValue,
   txFee,
   txFee',
-  txValidityRange,
   txValidityLowerBound,
   txValidityUpperBound,
   txMetadata,
@@ -86,8 +85,16 @@ module Convex.Lenses(
   _TxOutDatumInline,
   _TxOutDatumInTx,
   _TxOutDatumHash,
-  _HashableScriptData,
-  _ScriptData
+  _ScriptData,
+
+  -- * Intervals
+  _Interval,
+  _UpperBound,
+  _LowerBound,
+  _NegInf,
+  _PosInf,
+  _Finite,
+  _FiniteInterval
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
@@ -122,7 +129,9 @@ import           Data.Word                          (Word64)
 import           PlutusLedgerApi.V1                 (PubKeyHash (..))
 import qualified PlutusLedgerApi.V1                 as PV1
 import qualified PlutusTx.Prelude                   as PlutusTx
-
+import           PlutusLedgerApi.V1.Interval (Closure, Extended (..),
+                                              Interval (..), LowerBound (..),
+                                              UpperBound (..))
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 -}
 emptyTx :: C.TxBodyContent C.BuildTx BabbageEra
@@ -178,20 +187,15 @@ txFee' = lens get set_ where
   get           = C.txFee
   set_ body fee = body{C.txFee = fee}
 
-txValidityRange :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e, C.TxValidityUpperBound e)
-txValidityRange = lens get set_ where
-  get txb = (C.txValidityLowerBound txb, C.txValidityUpperBound txb)
-  set_ body (lowerBound, upperBound) = body{C.txValidityLowerBound = lowerBound, C.txValidityUpperBound = upperBound}
+txValidityUpperBound :: Lens' (C.TxBodyContent v e) (C.TxValidityUpperBound e)
+txValidityUpperBound = lens get set_ where
+  get = C.txValidityUpperBound
+  set_ body range = body{C.txValidityUpperBound = range}
 
 txValidityLowerBound :: Lens' (C.TxBodyContent v e) (C.TxValidityLowerBound e)
 txValidityLowerBound = lens get set_ where
   get = C.txValidityLowerBound
-  set_ body lowerBound = body{C.txValidityLowerBound = lowerBound }
-
-txValidityUpperBound :: Lens' (C.TxBodyContent v e) (C.TxValidityUpperBound e)
-txValidityUpperBound = lens get set_ where
-  get = C.txValidityUpperBound
-  set_ body upperBound = body{C.txValidityUpperBound = upperBound}
+  set_ body range = body{C.txValidityLowerBound = range}
 
 txFee :: Lens' (C.TxBodyContent v BabbageEra) Coin
 txFee = lens get set_ where
@@ -502,14 +506,6 @@ _PaymentCredential = iso from to where
 
   to = C.fromShelleyPaymentCredential
 
-_HashableScriptData :: forall a. (PV1.FromData a, PV1.ToData a) => Prism' C.HashableScriptData a
-_HashableScriptData = prism' from to where
-  to :: C.HashableScriptData -> Maybe a
-  to = Scripts.fromHashableScriptData
-
-  from :: a -> C.HashableScriptData
-  from = Scripts.toHashableScriptData
-
 _ScriptData :: forall a. (PV1.FromData a, PV1.ToData a) => Prism' C.ScriptData a
 _ScriptData = prism' from to where
   to :: C.ScriptData -> Maybe a
@@ -565,3 +561,47 @@ _TxValidityFiniteRange = prism' from to where
   to = \case
     (C.TxValidityLowerBound _ l, C.TxValidityUpperBound _ (Just u)) -> Just (l, u)
     _                                                        -> Nothing
+
+_Interval :: Iso' (Interval a) (LowerBound a, UpperBound a)
+_Interval = iso from to where
+  from Interval{ivFrom, ivTo} = (ivFrom, ivTo)
+  to (ivFrom, ivTo) = Interval{ivFrom, ivTo}
+
+_UpperBound :: Iso' (UpperBound a) (Extended a, Closure)
+_UpperBound = iso from to where
+  from (UpperBound a b) = (a, b)
+  to = uncurry UpperBound
+
+_LowerBound :: Iso' (LowerBound a) (Extended a, Closure)
+_LowerBound = iso from to where
+  from (LowerBound a b) = (a, b)
+  to = uncurry LowerBound
+
+_NegInf :: Prism' (Extended a) ()
+_NegInf = prism' from to where
+  from () = NegInf
+  to = \case
+    NegInf -> Just ()
+    _      -> Nothing
+
+_PosInf :: Prism' (Extended a) ()
+_PosInf = prism' from to where
+  from () = PosInf
+  to = \case
+    PosInf -> Just ()
+    _      -> Nothing
+
+_Finite :: Prism' (Extended a) a
+_Finite = prism' from to where
+  from = Finite
+  to = \case
+    Finite a -> Just a
+    _        -> Nothing
+
+-- | Access a finite interval with the two boundaries and closures. This is
+--   convenient if you want to change the length of the interval for example.
+_FiniteInterval :: Prism' (Interval a) ((a, a), (Closure, Closure))
+_FiniteInterval = prism' from to where
+  from ((l, u), (lc, uc)) = Interval (LowerBound (Finite l) lc) (UpperBound (Finite u) uc)
+  to (Interval (LowerBound (Finite l) lc) (UpperBound (Finite u) uc)) = Just ((l, u), (lc, uc))
+  to _ = Nothing

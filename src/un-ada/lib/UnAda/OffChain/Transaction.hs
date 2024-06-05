@@ -17,7 +17,7 @@ import           Control.Lens           (_1, _2, _3, preview, set, to, view,
                                          (^.))
 import           Convex.BuildTx         (TxBuild, mintPlutusV2, payToPlutusV2,
                                          spendPlutusV2)
-import qualified Convex.Lenses          as L
+import qualified Convex.CardanoApi.Lenses          as L
 import           Convex.Scripts         (fromScriptData)
 import           Convex.Utils           (txnUtxos)
 import           Data.Maybe             (mapMaybe)
