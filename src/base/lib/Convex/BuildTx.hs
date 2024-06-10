@@ -115,7 +115,7 @@ import           Control.Monad.Trans.Except    (ExceptT)
 import           Control.Monad.Writer          (WriterT, execWriterT,
                                                 runWriterT)
 import           Control.Monad.Writer.Class    (MonadWriter (..))
-import           Convex.Class                  (MonadBlockchain (..),
+import           Convex.Class                  (MonadBlockchain (..), MonadDatumQuery(queryDatumFromHash),
                                                 MonadBlockchainCardanoNodeT,
                                                 MonadMockchain (..))
 import qualified Convex.CardanoApi.Lenses      as L
@@ -275,7 +275,9 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
 instance MonadMockchain m => MonadMockchain (BuildTxT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
+
+instance MonadDatumQuery m => MonadDatumQuery (BuildTxT m) where
+  queryDatumFromHash = lift . queryDatumFromHash
 
 instance MonadState s m => MonadState s (BuildTxT m) where
   state = lift . state

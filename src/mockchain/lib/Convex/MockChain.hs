@@ -126,6 +126,7 @@ import           Control.Monad.Trans.Class             (MonadTrans (..))
 import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadMockchain (..),
                                                         MonadUtxoQuery (..),
+                                                        MonadDatumQuery (..),
                                                         SendTxFailed (..))
 import           Convex.Constants                      (ERA)
 import qualified Convex.CardanoApi.Lenses              as L
@@ -410,11 +411,13 @@ instance Monad m => MonadMockchain (MockchainT m) where
     let (u', a) = f u
     modify (set (poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1) u')
     pure a
-  resolveDatumHash k = MockchainT (gets (Map.lookup k . view datums))
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
   utxosByPaymentCredentials cred =
     toApiUtxo . onlyCredentials cred <$> utxoSet
+
+instance Monad m => MonadDatumQuery (MockchainT m) where
+  queryDatumFromHash dh = MockchainT (gets (Map.lookup dh . view datums))
 
 {-| Add all datums from the transaction to the map of known datums
 -}
