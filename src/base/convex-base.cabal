@@ -34,7 +34,7 @@ library
       Convex.MonadLog
       Convex.NodeQueries
       Convex.PlutusLedger
-      Convex.Scripts
+      Convex.PlutusTx
       Convex.Utils
       Convex.Utxos
     hs-source-dirs: lib

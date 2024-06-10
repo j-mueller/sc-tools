@@ -39,5 +39,6 @@ library
       cardano-ledger-shelley,
       containers,
       lens,
+      ouroboros-consensus-cardano,
       plutus-ledger-api,
       plutus-tx
