@@ -46,7 +46,6 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     NetworkId,
                                                                     PaymentCredential,
                                                                     PoolId,
-                                                                    HashableScriptData,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
@@ -75,7 +74,8 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
-import           Data.Aeson                                        (ToJSON, FromJSON)
+import           Data.Aeson                                        (FromJSON,
+                                                                    ToJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
 import           Data.Map                                          (Map)
 import qualified Data.Map                                          as Map

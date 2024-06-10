@@ -427,7 +427,7 @@ addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraBabbage txBody _scripts scr
 
   for_ txOuts $ \(view (L._TxOut . _3) -> txDat) -> case txDat of
     C.TxOutDatumInline _ dat -> insertHashableScriptData dat
-    _                                  -> pure ()
+    _                        -> pure ()
 
   case scriptData of
     C.TxBodyScriptData _ (unTxDats -> txDats) _redeemers -> do

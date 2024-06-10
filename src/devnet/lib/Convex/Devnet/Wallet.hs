@@ -24,13 +24,13 @@ module Convex.Devnet.Wallet(
 ) where
 
 import           Cardano.Api                     (AddressInEra, BabbageEra,
-                                                  BuildTx, Quantity, Tx,
-                                                  TxBodyContent)
+                                                  Quantity, Tx)
 import qualified Cardano.Api                     as C
 import           Control.Monad                   (replicateM)
 import           Control.Monad.IO.Class          (MonadIO (..))
 import           Control.Monad.Reader            (ReaderT (..), ask, lift)
 import           Control.Tracer                  (Tracer, traceWith)
+import           Convex.BuildTx                  (TxBuilder)
 import qualified Convex.BuildTx                  as BuildTx
 import           Convex.Class                    (MonadBlockchain (networkId),
                                                   runMonadBlockchainCardanoNodeT,
@@ -67,7 +67,7 @@ walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
 sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Quantity -> IO (Tx BabbageEra)
 sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
-  balanceAndSubmit tracer node fct (BuildTx.execBuildTx' $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) []
+  balanceAndSubmit tracer node fct (BuildTx.execBuildTx $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) []
 
 {-| Create a new wallet and send @n@ times the given amount of lovelace to it. Returns when the seed txn has been registered
 on the chain.
@@ -95,7 +95,7 @@ runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
 balanceAndSubmit tracer node wallet tx keys = do
   n <- runningNodeBlockchain @String tracer node networkId
   let walletAddress = Wallet.addressInEra n wallet
@@ -104,7 +104,7 @@ balanceAndSubmit tracer node wallet tx keys = do
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
 balanceAndSubmitReturn tracer node wallet returnOutput tx keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do

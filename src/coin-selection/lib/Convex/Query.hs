@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Custom class to encapsulate the general purpose
@@ -28,21 +28,20 @@ module Convex.Query(
 ) where
 
 import           Cardano.Api                        (BabbageEra, BalancedTxBody,
-                                                     BuildTx, CtxTx,
+                                                     CtxTx,
                                                      PaymentCredential (..),
-                                                     TxBodyContent, TxOut,
-                                                     UTxO (..))
+                                                     TxOut, UTxO (..))
 import qualified Cardano.Api                        as C
 import           Control.Monad.Except               (MonadError)
 import           Control.Monad.IO.Class             (MonadIO (..))
 import           Control.Monad.Reader               (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Class          (MonadTrans (..))
-import Test.QuickCheck.Monadic (PropertyM)
 import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
 import           Control.Monad.Trans.Except.Result  (ResultT)
 import qualified Control.Monad.Trans.State          as StrictState
 import qualified Control.Monad.Trans.State.Strict   as LazyState
 import           Control.Tracer                     (Tracer, natTracer)
+import           Convex.BuildTx                     (TxBuilder)
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT)
 import           Convex.CoinSelection               (BalanceTxError,
@@ -60,14 +59,15 @@ import           Convex.Wallet.Operator             (Operator (..), Signing,
                                                      operatorPaymentCredential,
                                                      returnOutputFor,
                                                      signTxOperator)
+import           Data.Aeson                         (FromJSON, ToJSON)
 import           Data.Functor                       (($>))
 import qualified Data.Map                           as Map
 import           Data.Maybe                         (listToMaybe)
 import           Data.Set                           (Set)
 import qualified Data.Set                           as Set
+import           GHC.Generics                       (Generic)
 import           Servant.Client                     (ClientEnv)
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics (Generic)
+import           Test.QuickCheck.Monadic            (PropertyM)
 
 class Monad m => MonadUtxoQuery m where
   utxosByPaymentCredentials :: Set PaymentCredential -> m (UTxO BabbageEra)
@@ -112,7 +112,7 @@ balanceTx
   => Tracer m TxBalancingMessage
   -> [PaymentCredential]
   -> TxOut CtxTx BabbageEra
-  -> TxBodyContent BuildTx BabbageEra
+  -> TxBuilder
   -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
 balanceTx dbg inputCredentials changeOutput txBody = do
   o <- fromApiUtxo <$> utxosByPaymentCredentials (Set.fromList inputCredentials)
@@ -144,7 +144,7 @@ balancePaymentCredentials ::
   Tracer m TxBalancingMessage ->
   C.PaymentCredential -> -- ^ Primary payment credential, used for return output
   [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
-  Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+  Maybe (C.TxOut C.CtxTx C.BabbageEra) -> TxBuilder -> m (C.Tx C.BabbageEra)
 balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
   output <- maybe (returnOutputFor primaryCred) pure returnOutput
   (C.BalancedTxBody _ txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody)
@@ -152,11 +152,11 @@ balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
 
 {-| Balance a transaction body using the funds locked by the payment credential
 -}
-balancePaymentCredential :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Tracer m TxBalancingMessage -> C.PaymentCredential -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+balancePaymentCredential :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Tracer m TxBalancingMessage -> C.PaymentCredential -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> TxBuilder -> m (C.Tx C.BabbageEra)
 balancePaymentCredential dbg cred = balancePaymentCredentials dbg cred []
 
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
-balanceAndSubmitOperator :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Tracer m TxBalancingMessage -> Operator Signing -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Tx C.BabbageEra)
+balanceAndSubmitOperator :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) => Tracer m TxBalancingMessage -> Operator Signing -> Maybe (C.TxOut C.CtxTx C.BabbageEra) -> TxBuilder -> m (C.Tx C.BabbageEra)
 balanceAndSubmitOperator dbg op changeOut txBody = balancePaymentCredential dbg (operatorPaymentCredential op) changeOut txBody >>= signAndSubmitOperator op
 
 {-| Add the operator's signature to the transaction and send it to the blockchain
