@@ -26,7 +26,8 @@ import qualified Control.Monad.Trans.State.Strict as LazyState
 import           Control.Tracer                   (Tracer, natTracer)
 import           Convex.BuildTx                   (TxBuilder)
 import           Convex.Class                     (MonadBlockchain (..),
-                                                   MonadMockchain (..))
+                                                   MonadMockchain (..),
+                                                   MonadDatumQuery (queryDatumFromHash))
 import           Convex.CoinSelection             (BalanceTxError,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
@@ -94,10 +95,12 @@ instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
 instance MonadMockchain m => MonadMockchain (BalancingT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadUtxoQuery m => MonadUtxoQuery (BalancingT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadDatumQuery m => MonadDatumQuery (BalancingT m) where
+  queryDatumFromHash = lift . queryDatumFromHash
 
 {-| Implementation of @MonadBalance@ that uses the provided tracer for debugging output
 -}
@@ -117,10 +120,12 @@ instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
 instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadUtxoQuery m => MonadUtxoQuery (TracingBalancingT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
+instance MonadDatumQuery m => MonadDatumQuery (TracingBalancingT m) where
+  queryDatumFromHash = lift . queryDatumFromHash
 
 runTracingBalancingT :: Tracer m TxBalancingMessage -> TracingBalancingT m a -> m a
 runTracingBalancingT tracer (TracingBalancingT action) = runReaderT action tracer

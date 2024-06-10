@@ -30,7 +30,8 @@ import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
                                                  spendPlutusV2Ref)
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadMockchain (resolveDatumHash),
+                                                 MonadMockchain,
+                                                 MonadDatumQuery (queryDatumFromHash),
                                                  SendTxFailed (..), getUtxo,
                                                  setUtxo, singleUTxO)
 import           Convex.CoinSelection           (BalanceTxError, keyWitnesses,
@@ -99,7 +100,7 @@ tests = testGroup "unit tests"
     , testCase "mint a token with the matching index minting policy" (mockchainSucceeds $ failOnError matchingIndexMP)
     ]
   , testGroup "mockchain"
-    [ testCase "resolveDatumHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
+    [ testCase "queryDatumFromHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
     , testCase "large transactions" largeTransactionTest
     ]
   , testGroup "staking"
@@ -224,10 +225,10 @@ nativeAssetPaymentTo q wFrom wTo = do
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx
 
-checkResolveDatumHash :: (MonadMockchain m, MonadFail m, MonadError BalanceTxError m) => m ()
+checkResolveDatumHash :: (MonadMockchain m, MonadDatumQuery m, MonadFail m, MonadError BalanceTxError m) => m ()
 checkResolveDatumHash = do
   let addr = Wallet.addressInEra Defaults.networkId Wallet.w1
-      assertDatumPresent vl = resolveDatumHash (C.hashScriptDataBytes vl) >>= \case
+      assertDatumPresent vl = queryDatumFromHash (C.hashScriptDataBytes vl) >>= \case
         Nothing -> fail "Expected datum"
         Just x
           | x == vl -> pure ()

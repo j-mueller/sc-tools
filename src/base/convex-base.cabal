@@ -50,8 +50,9 @@ library
       text,
       exceptions,
       time,
-      either-result
-      
+      either-result,
+      QuickCheck
+
     build-depends:
       convex-optics,
 

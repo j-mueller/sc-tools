@@ -21,7 +21,7 @@ import           Control.Monad.Except       (MonadError (..))
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (MonadTrans, ReaderT (..), ask,
                                              lift)
-import           Convex.Class               (MonadBlockchain (..))
+import           Convex.Class               (MonadBlockchain (..), MonadDatumQuery)
 import           Convex.MonadLog            (MonadLog (..), logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..),
                                              LedgerStateArgs (..),
@@ -67,7 +67,7 @@ checkTxId :: TxId -> C.Tx C.BabbageEra -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
 newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail, MonadDatumQuery)
 
 runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT m a -> m a
 runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)
