@@ -35,49 +35,51 @@ import           Data.Functor              (($>))
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID
 -}
-balanceAndSubmit :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> TxBodyContent BuildTx BabbageEra -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
-balanceAndSubmit dbg wallet tx = do
+balanceAndSubmit :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+balanceAndSubmit dbg wallet tx keys = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = emptyTxOut walletAddress
-  balanceAndSubmitReturn dbg wallet txOut tx
+  balanceAndSubmitReturn dbg wallet txOut tx keys
 
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID. Fail if the
 transaction is not accepted by the node.
 -}
-tryBalanceAndSubmit :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> TxBodyContent BuildTx BabbageEra -> m (C.Tx CoinSelection.ERA)
-tryBalanceAndSubmit dbg wallet tx = do
+tryBalanceAndSubmit :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> m (C.Tx CoinSelection.ERA)
+tryBalanceAndSubmit dbg wallet tx keys = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = emptyTxOut walletAddress
-  balanceAndSubmitReturn dbg wallet txOut tx >>= either (fail . show) pure
+  balanceAndSubmitReturn dbg wallet txOut tx keys >>= either (fail . show) pure
 
 {-| Balance and submit a transaction using the given return output and the wallet's UTXOs
 on the mockchain, using the default network ID
 -}
-balanceAndSubmitReturn :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
-balanceAndSubmitReturn dbg wallet returnOutput tx = do
+balanceAndSubmitReturn :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx BabbageEra -> [C.ShelleyWitnessSigningKey] -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+balanceAndSubmitReturn dbg wallet returnOutput tx keys = do
   u <- MockChain.walletUtxo wallet
-  (tx', _) <- CoinSelection.balanceForWalletReturn dbg wallet u returnOutput tx
+  (C.Tx body wit, _) <- CoinSelection.balanceForWalletReturn dbg wallet u returnOutput tx
+  let wit' = (C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage body <$> keys) ++ wit
+      tx'  = C.makeSignedTransaction wit' body
   k <- sendTx tx'
   pure (k $> tx')
 
 {-| Pay ten Ada from one wallet to another
 -}
-paymentTo :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> Wallet -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+paymentTo :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Wallet -> Wallet -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
 paymentTo wFrom wTo = do
   let tx = buildTx $ execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000))
-  balanceAndSubmit mempty wFrom tx
+  balanceAndSubmit mempty wFrom tx []
 
 {-| Pay 100 Ada from one of the seed addresses to an @Operator@
 -}
-payToOperator :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> Operator k -> m (Either SendTxFailed (C.Tx C.BabbageEra))
+payToOperator :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> Operator k -> m (Either SendTxFailed (C.Tx C.BabbageEra))
 payToOperator dbg wFrom = payToOperator' dbg (C.lovelaceToValue 100_000_000) wFrom
 
 {-| Pay some Ada from one of the seed addresses to an @Operator@
 -}
-payToOperator' :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Value -> Wallet -> Operator k -> m (Either SendTxFailed (C.Tx C.BabbageEra))
+payToOperator' :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Value -> Wallet -> Operator k -> m (Either SendTxFailed (C.Tx C.BabbageEra))
 payToOperator' dbg value wFrom Operator{oPaymentKey} = do
   p <- queryProtocolParameters
   let addr =
@@ -85,4 +87,4 @@ payToOperator' dbg value wFrom Operator{oPaymentKey} = do
         (C.PaymentCredentialByKey $ C.verificationKeyHash $ verificationKey oPaymentKey)
         C.NoStakeAddress
       tx = execBuildTx' $ payToAddress addr value >> setMinAdaDepositAll p
-  balanceAndSubmit dbg wFrom tx
+  balanceAndSubmit dbg wFrom tx []
