@@ -65,7 +65,7 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
-import           Data.Aeson                                        (ToJSON)
+import           Data.Aeson                                        (ToJSON, FromJSON)
 import           Data.Map.Strict                                   (Map)
 import           Data.Set                                          (Set)
 import           Data.Time.Clock                                   (UTCTime)
@@ -236,7 +236,7 @@ data MonadBlockchainError e =
   MonadBlockchainError e
   | FailWith String
   deriving stock (Functor, Generic, Show)
-  deriving anyclass (ToJSON)
+  deriving anyclass (ToJSON, FromJSON)
 
 {- Note [sendTx Failure]
 
