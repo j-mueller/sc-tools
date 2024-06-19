@@ -100,10 +100,13 @@ instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlo
     (info, _ledgerState0, env) <- ask
     tmv <- liftIO (runWaitForTxn info env txi)
     k <- sendTx tx
-    logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"
-    _ <- liftIO (atomically $ takeTMVar tmv)
-    logInfoS $ "MonadBlockchainWaitingT.sendTx: Found " <> show txi
-    pure k
+    case k of
+      Left e -> pure $ Left e
+      Right x -> do
+        logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"
+        _ <- liftIO (atomically $ takeTMVar tmv)
+        logInfoS $ "MonadBlockchainWaitingT.sendTx: Found " <> show txi
+        pure $ Right x
 
   utxoByTxIn txIns = MonadBlockchainWaitingT (utxoByTxIn txIns)
 
