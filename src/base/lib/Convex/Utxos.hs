@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
@@ -62,12 +63,12 @@ import           Cardano.Api                   (AddressInEra, BabbageEra,
                                                 HashableScriptData,
                                                 PaymentCredential,
                                                 StakeCredential, Tx (..), TxId,
-                                                TxIn (..), TxIx (..), UTxO (..),
-                                                Value)
+                                                TxIn (..), TxIx (..), UTxO (..))
 import qualified Cardano.Api                   as C
 import           Cardano.Api.Shelley           (ExecutionUnits, TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
 import qualified Cardano.Ledger.Alonzo.Scripts as Scripts
+import Data.Aeson (object, (.=), Value(String), withObject, (.:))
 import           Cardano.Ledger.Alonzo.TxWits  (unRedeemers)
 import qualified Cardano.Ledger.Babbage.TxBody as Babbage.TxBody
 import qualified Cardano.Ledger.BaseTypes      as CT
@@ -100,7 +101,6 @@ type AddressCredential = Shelley.PaymentCredential StandardCrypto
 {-| A set of unspent transaction outputs
 -}
 newtype UtxoSet ctx a = UtxoSet{ _utxos :: Map C.TxIn (C.InAnyCardanoEra (C.TxOut ctx), a) }
-  -- deriving stock (Eq, Show, Functor)
   deriving stock (Functor)
   deriving newtype (Semigroup, Monoid)
 
@@ -120,6 +120,82 @@ instance ToJSON a => ToJSON (UtxoSet ctx a) where
   -- FIXME (koslambrou)
   toJSON = undefined
 
+-- FIXME (koslambrou) Remvoe those orpha instances and use custom type instead
+-- such as TxOutInAnyEra
+instance Show (C.InAnyCardanoEra (C.TxOut ctx)) where
+  show (C.InAnyCardanoEra _ txOut) = show txOut
+
+instance Eq (C.InAnyCardanoEra (C.TxOut ctx)) where
+  (C.InAnyCardanoEra C.ByronEra txOutL) == (C.InAnyCardanoEra C.ByronEra txOutR) = txOutL == txOutR
+  (C.InAnyCardanoEra C.ShelleyEra txOutL) == (C.InAnyCardanoEra C.ShelleyEra txOutR) = txOutL == txOutR
+  (C.InAnyCardanoEra C.AllegraEra txOutL) == (C.InAnyCardanoEra C.AllegraEra txOutR) = txOutL == txOutR
+  (C.InAnyCardanoEra C.MaryEra txOutL) == (C.InAnyCardanoEra C.MaryEra txOutR) = txOutL == txOutR
+  (C.InAnyCardanoEra C.AlonzoEra txOutL) == (C.InAnyCardanoEra C.AlonzoEra txOutR) = txOutL == txOutR
+  (C.InAnyCardanoEra C.BabbageEra txOutL) == (C.InAnyCardanoEra C.BabbageEra txOutR) = txOutL == txOutR
+  (C.InAnyCardanoEra C.ConwayEra txOutL) == (C.InAnyCardanoEra C.ConwayEra txOutR) = txOutL == txOutR
+  _ == _ = False
+
+instance ToJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
+  toJSON (C.InAnyCardanoEra C.ByronEra txOut) =
+    object
+      [ "tag" .= String "ByronTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+  toJSON (C.InAnyCardanoEra C.ShelleyEra txOut) =
+    object
+      [ "tag" .= String "ShelleyTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+  toJSON (C.InAnyCardanoEra C.AllegraEra txOut) =
+    object
+      [ "tag" .= String "AllegraTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+  toJSON (C.InAnyCardanoEra C.MaryEra txOut) =
+    object
+      [ "tag" .= String "MaryTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+  toJSON (C.InAnyCardanoEra C.AlonzoEra txOut) =
+    object
+      [ "tag" .= String "AlonzoTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+  toJSON (C.InAnyCardanoEra C.BabbageEra txOut) =
+    object
+      [ "tag" .= String "BabbageTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+  toJSON (C.InAnyCardanoEra C.ConwayEra txOut) =
+    object
+      [ "tag" .= String "ConwayTxOut"
+      , "txOut" .= toJSON txOut
+      ]
+
+-- FIXME (koslambou) Remove duplication with similar instance below
+instance FromJSON (C.InAnyCardanoEra (C.TxOut C.CtxTx)) where
+  parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxTx)" $ \o -> do
+    tag <- o .: "tag"
+    case tag :: Text of
+      "ShelleyTxOut" -> fmap (C.InAnyCardanoEra C.ShelleyEra) $ o .: "txOut"
+      "AllegraTxOut" -> fmap (C.InAnyCardanoEra C.AllegraEra) $ o .: "txOut"
+      "MaryTxOut" -> fmap (C.InAnyCardanoEra C.MaryEra) $ o .: "txOut"
+      "AlonzoTxOut" -> fmap (C.InAnyCardanoEra C.AlonzoEra) $ o .: "txOut"
+      "BabbageTxOut" -> fmap (C.InAnyCardanoEra C.BabbageEra) $ o .: "txOut"
+      "ConwayTxOut" -> fmap (C.InAnyCardanoEra C.ConwayEra) $ o .: "txOut"
+      _ -> fail "Expected tag to be ShelleyTxOut, AllegraTxOut, MaryTxOut, AlonzoTxOut, BabbageTxOut, ConwayTxOut"
+
+instance FromJSON (C.InAnyCardanoEra (C.TxOut C.CtxUTxO)) where
+  parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxUTxO)" $ \o -> do
+    tag <- o .: "tag"
+    case tag :: Text of
+      "ShelleyTxOut" -> fmap (C.InAnyCardanoEra C.ShelleyEra) $ o .: "txOut"
+      "AllegraTxOut" -> fmap (C.InAnyCardanoEra C.AllegraEra) $ o .: "txOut"
+      "MaryTxOut" -> fmap (C.InAnyCardanoEra C.MaryEra) $ o .: "txOut"
+      "AlonzoTxOut" -> fmap (C.InAnyCardanoEra C.AlonzoEra) $ o .: "txOut"
+      "BabbageTxOut" -> fmap (C.InAnyCardanoEra C.BabbageEra) $ o .: "txOut"
+      "ConwayTxOut" -> fmap (C.InAnyCardanoEra C.ConwayEra) $ o .: "txOut"
+      _ -> fail "Expected tag to be ShelleyTxOut, AllegraTxOut, MaryTxOut, AlonzoTxOut, BabbageTxOut, ConwayTxOut"
 
 -- deriving instance (FromJSON a, FromJSON (C.TxOut ctx C.BabbageEra)) => FromJSON (UtxoSet ctx a)
 -- deriving instance (ToJSON a, ToJSON (C.TxOut ctx C.BabbageEra)) => ToJSON (UtxoSet ctx a)
@@ -325,7 +401,7 @@ txId = either aueTxId rueTxId
 
 {-| A type capturing the effect a 'UtxoChange' has on the total balance of each address that it touches
 -}
-newtype BalanceChanges = BalanceChanges{tbBalances :: Map PaymentCredential Value }
+newtype BalanceChanges = BalanceChanges{tbBalances :: Map PaymentCredential C.Value }
   deriving stock (Eq, Show)
 
 prettyAda :: C.Quantity -> Doc ann

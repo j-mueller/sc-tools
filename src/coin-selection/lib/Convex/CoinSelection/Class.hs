@@ -58,7 +58,7 @@ class Monad m => MonadBalance m where
     AddressInEra BabbageEra ->
 
     -- | Set of UTxOs that can be used to supply missing funds
-    UtxoSet C.CtxUTxO a ->
+    UtxoSet C.CtxUTxO () ->
 
     -- | The unbalanced transaction body
     TxBuilder ->
