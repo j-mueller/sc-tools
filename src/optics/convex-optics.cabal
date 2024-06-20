@@ -37,6 +37,7 @@ library
       cardano-api == 8.45.0.0,
       cardano-ledger-core,
       cardano-ledger-shelley,
+      cardano-ledger-mary,
       containers,
       lens,
       ouroboros-consensus-cardano,

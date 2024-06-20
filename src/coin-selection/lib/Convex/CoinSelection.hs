@@ -812,7 +812,7 @@ data CertificateKeyWitness era =
   deriving stock (Eq, Ord)
 
 publicKeyCredential :: C.TxOut v C.BabbageEra -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
-publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddressInBabbageEra . _2 . L._ShelleyPaymentCredentialByKey)
+publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddress . _2 . L._ShelleyPaymentCredentialByKey)
 
 spendPubKeyTxIn :: C.TxIn -> (C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))
 -- TODO: consolidate with Convex.BuildTx.spendPublicKeyOutput
