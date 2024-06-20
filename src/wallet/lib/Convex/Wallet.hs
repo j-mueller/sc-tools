@@ -35,7 +35,7 @@ import qualified Cardano.Api               as C
 import qualified Cardano.Ledger.Credential as Shelley
 import           Cardano.Ledger.Crypto     (StandardCrypto)
 import           Control.Lens              (_2, preview, view)
-import qualified Convex.Lenses             as L
+import qualified Convex.CardanoApi.Lenses  as L
 import           Convex.Utxos              (UtxoSet (..), onlyAda)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
                                             withObject, (.:), (.=))

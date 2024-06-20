@@ -10,6 +10,7 @@
 module Convex.BuildTx(
   -- * Tx Builder
   TxBuilder(..),
+  liftTxBodyEndo,
   -- ** Looking at transaction inputs
   lookupIndexSpending,
   lookupIndexReference,
@@ -114,10 +115,10 @@ import           Control.Monad.Trans.Except    (ExceptT)
 import           Control.Monad.Writer          (WriterT, execWriterT,
                                                 runWriterT)
 import           Control.Monad.Writer.Class    (MonadWriter (..))
-import           Convex.Class                  (MonadBlockchain (..),
+import           Convex.Class                  (MonadBlockchain (..), MonadDatumQuery(queryDatumFromHash),
                                                 MonadBlockchainCardanoNodeT,
                                                 MonadMockchain (..))
-import qualified Convex.Lenses                 as L
+import qualified Convex.CardanoApi.Lenses      as L
 import           Convex.MonadLog               (MonadLog (..), MonadLogIgnoreT,
                                                 MonadLogKatipT)
 import           Convex.Scripts                (toHashableScriptData)
@@ -189,6 +190,10 @@ newtype TxBuilder = TxBuilder{ unTxBuilder :: TxBody -> TxBody -> TxBody }
 -}
 buildTx :: TxBuilder -> TxBody
 buildTx txb = buildTxWith txb L.emptyTx
+
+-- | The 'TxBuilder' that modifies the tx body without looking at the final result
+liftTxBodyEndo :: (TxBody -> TxBody) -> TxBuilder
+liftTxBodyEndo f = TxBuilder (const f)
 
 {-| Construct the final @TxBodyContent@ from the provided @TxBodyContent@
 -}
@@ -270,7 +275,9 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
 instance MonadMockchain m => MonadMockchain (BuildTxT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
+
+instance MonadDatumQuery m => MonadDatumQuery (BuildTxT m) where
+  queryDatumFromHash = lift . queryDatumFromHash
 
 instance MonadState s m => MonadState s (BuildTxT m) where
   state = lift . state

@@ -42,6 +42,7 @@ library
 
     build-depends:
       convex-base,
+      convex-optics,
       convex-coin-selection
 
     build-depends:

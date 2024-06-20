@@ -5,7 +5,7 @@ module Main where
 
 import qualified Cardano.Api.Shelley            as C
 import           Control.Monad                  (void)
-import           Convex.BuildTx                 (execBuildTx', payToPlutusV2,
+import           Convex.BuildTx                 (execBuildTx, payToPlutusV2,
                                                  spendPlutusV2)
 import           Convex.Class                   (MonadMockchain)
 import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
@@ -15,9 +15,9 @@ import           Convex.Plutarch                (plutarchScriptToCapiScript)
 import           Convex.Utils                   (failOnError)
 import qualified Convex.Wallet.MockWallet       as Wallet
 import qualified Data.Text                      as Text
-import           Plutarch                       (Config (..),
-                                                 TracingMode (NoTracing),
-                                                 compile)
+import           Plutarch                       (compile,
+                                                Config(NoTracing),
+                                                )
 import           Plutarch.Prelude               (PData, PUnit (..), Term,
                                                  pconstant, plam, type (:-->))
 import           Test.Tasty                     (TestTree, defaultMain,
@@ -37,7 +37,7 @@ tests = testGroup "plutarch"
 
 alwaysSucceeds :: (MonadFail m, MonadMockchain m) => m ()
 alwaysSucceeds = failOnError $ do
-  k <- either (fail . Text.unpack) (pure . plutarchScriptToCapiScript) (compile (Config NoTracing) alwaysSucceedsP)
-  ref <- fmap (C.getTxId . C.getTxBody) $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx' $ do
-          payToPlutusV2 Defaults.networkId k () C.NoStakeAddress (C.lovelaceToValue 10_000_000)) []
-  void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx' (spendPlutusV2 (C.TxIn ref (C.TxIx 0)) k () ())) []
+  k <- either (fail . Text.unpack) (pure . plutarchScriptToCapiScript) (compile NoTracing alwaysSucceedsP)
+  ref <- fmap (C.getTxId . C.getTxBody) $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx $ do
+          payToPlutusV2 Defaults.networkId k () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
+  void $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx (spendPlutusV2 (C.TxIn ref (C.TxIx 0)) k () ()) []

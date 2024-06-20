@@ -18,7 +18,7 @@ module Convex.UTxOCompatibility(
 import           Cardano.Api         (BabbageEra, UTxO (..))
 import qualified Cardano.Api.Shelley as C
 import qualified Control.Lens        as L
-import qualified Convex.Lenses       as L
+import qualified Convex.CardanoApi.Lenses as L
 import           Data.Aeson          (FromJSON, ToJSON)
 import qualified Data.Map            as Map
 import           Data.Maybe          (isJust)

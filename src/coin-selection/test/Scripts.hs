@@ -1,7 +1,9 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-} -- 1.1.0.0 will be enabled in conway
 {-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE TemplateHaskell  #-}
+
 -- | Scripts used for testing
 module Scripts(
   v2SpendingScriptSerialised,
@@ -17,8 +19,8 @@ import           Cardano.Api                   (TxIn)
 import qualified Cardano.Api.Shelley           as C
 import           Convex.BuildTx                (MonadBuildTx)
 import qualified Convex.BuildTx                as BuildTx
-import           Convex.Scripts                (compiledCodeToScript,
-                                                toHashableScriptData)
+import           Convex.PlutusTx               (compiledCodeToScript)
+import           Convex.Scripts                (toHashableScriptData)
 import           PlutusLedgerApi.Common        (SerialisedScript)
 import           PlutusLedgerApi.Test.Examples (alwaysSucceedingNAryFunction)
 import           PlutusTx                      (BuiltinData, CompiledCode)

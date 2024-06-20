@@ -26,3 +26,5 @@ result
 work/
 nohup.out
 haddocks/
+.direnv
+.envrc

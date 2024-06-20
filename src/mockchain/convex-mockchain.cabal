@@ -37,6 +37,7 @@ library
     build-depends:
       base >= 4.14.0,
       convex-base,
+      convex-optics,
       convex-wallet,
       lens,
       containers,

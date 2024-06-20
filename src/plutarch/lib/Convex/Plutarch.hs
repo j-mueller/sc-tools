@@ -11,11 +11,11 @@ module Convex.Plutarch(
 import qualified Cardano.Api.Shelley    as C
 import           Data.Text              (Text)
 import           Plutarch               (pcon, popaque, (#))
-import           Plutarch.Api.V1        (PScriptContext)
+import           Plutarch.LedgerApi     (PScriptContext)
 import           Plutarch.Internal      (punsafeCoerce)
 import           Plutarch.Prelude       (PBool, PData, PIsData, POpaque,
                                          PUnit (..), Term, pfromData, pif, plam,
-                                         ptraceError, type (:-->))
+                                         ptraceInfoError, type (:-->))
 import           Plutarch.Script        (Script (..))
 import           PlutusLedgerApi.Common (serialiseUPLC)
 
@@ -31,7 +31,7 @@ wrapValidator validator = plam $ \datum redeemer ctx ->
     let dt = pfromData $ punsafeCoerce datum
         rdmr = pfromData $ punsafeCoerce redeemer
         result = validator # dt # rdmr # ctx
-     in popaque $ pif result (pcon PUnit) (ptraceError "Validator reduced to False")
+     in popaque $ pif result (pcon PUnit) (ptraceInfoError "Validator reduced to False")
 
 plutarchScriptToCapiScript :: Script -> C.PlutusScript C.PlutusScriptV2
 plutarchScriptToCapiScript (Script k) = C.PlutusScriptSerialised $ serialiseUPLC k

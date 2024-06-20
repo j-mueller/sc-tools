@@ -31,12 +31,16 @@ module Convex.Class(
   MonadUtxoQuery(..),
   utxosByPaymentCredential,
 
+  -- * MonadDatumQuery
+  MonadDatumQuery(..),
+
   -- * Implementation
   MonadBlockchainCardanoNodeT(..),
   runMonadBlockchainCardanoNodeT
 ) where
 
 import qualified Cardano.Api                                       as C
+import           Test.QuickCheck.Monadic (PropertyM)
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     EraHistory (..),
                                                                     Hash,
@@ -46,7 +50,6 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     NetworkId,
                                                                     PaymentCredential,
                                                                     PoolId,
-                                                                    HashableScriptData,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
@@ -75,7 +78,8 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
-import           Data.Aeson                                        (ToJSON, FromJSON)
+import           Data.Aeson                                        (FromJSON,
+                                                                    ToJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
 import           Data.Map                                          (Map)
 import qualified Data.Map                                          as Map
@@ -182,37 +186,27 @@ class MonadBlockchain m => MonadMockchain m where
   modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
 
-  {-| Look up the datum of a script hash, taking into account
-  all datums that were part of transactions submitted with @sendTx@.
-  -}
-  resolveDatumHash :: Hash ScriptData -> m (Maybe HashableScriptData)
-
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
 instance MonadMockchain m => MonadMockchain (ResultT m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (ReaderT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (ExceptT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (StrictState.StateT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 instance MonadMockchain m => MonadMockchain (LazyState.StateT e m) where
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
-  resolveDatumHash = lift . resolveDatumHash
 
 {-| Get the current slot number
 -}
@@ -302,6 +296,39 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
 -- | Given a single payment credential, find the UTxOs with that credential
 utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (C.UTxO BabbageEra)
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
+
+{- Note [MonadDatumQuery design]
+
+Initially only part of MonadMockchain, but now as a separate typeclass.
+Useful for resolving datum hashes from Mockchain or a chain-indexer.
+-}
+
+class Monad m => MonadDatumQuery m where
+  queryDatumFromHash :: Hash ScriptData -> m (Maybe HashableScriptData)
+
+instance MonadDatumQuery m => MonadDatumQuery (ResultT m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (ExceptT e m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (ReaderT e m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (StrictState.StateT s m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (LazyState.StateT s m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (MonadBlockchainCardanoNodeT e m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (MonadLogIgnoreT m) where
+  queryDatumFromHash = lift . queryDatumFromHash
+
+instance MonadDatumQuery m => MonadDatumQuery (PropertyM m) where
+  queryDatumFromHash= lift . queryDatumFromHash
 
 {- Note [sendTx Failure]
 
