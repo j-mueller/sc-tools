@@ -273,6 +273,7 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
   networkId = lift networkId
 
 instance MonadMockchain m => MonadMockchain (BuildTxT m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 

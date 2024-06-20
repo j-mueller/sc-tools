@@ -104,8 +104,14 @@ import           Cardano.Ledger.Shelley.API            (AccountState (..),
 import qualified Cardano.Ledger.Shelley.API
 import           Cardano.Ledger.Shelley.LedgerState    (LedgerState (..),
                                                         UTxOState (..), rewards,
+                                                        lsCertStateL,
+                                                        certDStateL,
+                                                        dsUnifiedL,
                                                         smartUTxOState)
 import           Cardano.Ledger.UMap                   (rewardMap, sPoolMap,
+                                                        compactCoinOrError,
+                                                        adjust,
+                                                        RDPair (..),
                                                         (⋪))
 import qualified Cardano.Ledger.Val                    as Val
 import           Control.Lens                          (_1, _3, over, set, to,
@@ -400,6 +406,15 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     return (slotNo, npSlotLength, utime)
 
 instance Monad m => MonadMockchain (MockchainT m) where
+  setReward cred coin = MockchainT $ do
+    dState <- gets (view $ poolState . lsCertStateL . certDStateL)
+    let
+      umap =
+        adjust
+          (\rd -> rd {rdReward=compactCoinOrError coin})
+          (C.toShelleyStakeCredential cred)
+          (rewards dState)
+    modify (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap)
   modifySlot f = MockchainT $ do
     s <- gets (view $ env . L.slot)
     let (s', a) = f s
