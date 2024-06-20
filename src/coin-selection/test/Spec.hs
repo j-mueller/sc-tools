@@ -1,7 +1,6 @@
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
 module Main(main) where
 
@@ -44,6 +43,7 @@ import           Convex.MockChain               (ValidationError (..),
 import           Convex.MockChain.CoinSelection (balanceAndSubmit,
                                                  payToOperator', paymentTo,
                                                  tryBalanceAndSubmit)
+import           Convex.MockChain.Staking       (registerPool)
 import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Utils         (mockchainSucceeds,
@@ -65,7 +65,6 @@ import           Data.Foldable                  (traverse_)
 import           Data.List.NonEmpty             (NonEmpty (..))
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
-import           Data.Ratio                     ((%))
 import qualified PlutusLedgerApi.V2             as PV2
 import qualified Scripts
 import qualified Test.QuickCheck.Gen            as Gen
@@ -397,7 +396,8 @@ matchingIndexMP = do
   void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]) []
 
 queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
-queryStakeAddressesTest = withRegisteredPool Wallet.w2 $ \ poolId -> do
+queryStakeAddressesTest = do
+  poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
   let
     withdrawalAmount = 10_000_000
@@ -436,7 +436,8 @@ queryStakeAddressesTest = withRegisteredPool Wallet.w2 $ \ poolId -> do
   when (length delegations /= 1) $ fail "Expected 1 delegation"
 
 withdrawalTest :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
-withdrawalTest = withRegisteredPool Wallet.w1 $ \ poolId -> do
+withdrawalTest = do
+  poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
   let
     withdrawalAmount = 10_000_000
@@ -475,66 +476,3 @@ withdrawalTest = withRegisteredPool Wallet.w1 $ \ poolId -> do
 
   -- withdraw rewards
   void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx [C.WitnessStakeKey stakeKey]
-
-{-| Run the 'Mockchain' action with registered pool
--} 
-withRegisteredPool :: forall m a. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Wallet -> (C.PoolId -> m a) -> m a
-withRegisteredPool wallet f = do
-  stakeKey <- C.generateSigningKey C.AsStakeKey
-  vrfKey <- C.generateSigningKey C.AsVrfKey
-  stakePoolKey <- C.generateSigningKey C.AsStakePoolKey
-
-  let
-    vrfHash =
-      C.verificationKeyHash . C.getVerificationKey $ vrfKey
-
-    stakeHash =
-      C.verificationKeyHash . C.getVerificationKey $ stakeKey
-
-    stakeCred = C.StakeCredentialByKey stakeHash
-
-    stakeCert =
-      C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationPreConway C.ShelleyToBabbageEraBabbage
-      $ stakeCred
-    stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
-
-    stakePoolVerKey = C.getVerificationKey stakePoolKey
-    poolId = C.verificationKeyHash stakePoolVerKey
-
-    delegationCert =
-      C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
-
-    stakePoolParams =
-     C.StakePoolParameters
-       poolId
-       vrfHash
-       340_000_000 -- cost
-       (3 % 100) -- margin
-       stakeAddress
-       0 -- pledge
-       [stakeHash] -- owners
-       [] -- relays
-       Nothing
-
-    poolCert =
-      C.makeStakePoolRegistrationCertificate
-      . C.StakePoolRegistrationRequirementsPreConway C.ShelleyToBabbageEraBabbage
-      . C.toShelleyPoolParams
-      $ stakePoolParams
-  
-    stakeCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate stakeCert
-
-    poolCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate poolCert
-
-    delegCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate delegationCert
-
-  void $ tryBalanceAndSubmit mempty wallet stakeCertTx []
-  void $ tryBalanceAndSubmit mempty wallet poolCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
-  void $ tryBalanceAndSubmit mempty wallet delegCertTx [C.WitnessStakeKey stakeKey]
-
-  f poolId
