@@ -149,7 +149,7 @@ operatorReturnOutput = returnOutputFor . operatorPaymentCredential
 
 {- An empty output locked by the payment credential
 -}
-returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut CtxTx BabbageEra)
+returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut ctx BabbageEra)
 returnOutputFor cred = do
   addr <- C.makeShelleyAddress
     <$> networkId

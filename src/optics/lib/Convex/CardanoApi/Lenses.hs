@@ -161,7 +161,7 @@ emptyTx =
 
 {-| A transaction output with no value
 -}
-emptyTxOut :: AddressInEra BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
+emptyTxOut :: AddressInEra BabbageEra -> C.TxOut ctx C.BabbageEra
 emptyTxOut addr = C.TxOut addr (C.lovelaceToTxOutValue C.ShelleyBasedEraBabbage 0) C.TxOutDatumNone C.ReferenceScriptNone
 
 type TxIn v = (C.TxIn, BuildTxWith v (C.Witness C.WitCtxTxIn BabbageEra))

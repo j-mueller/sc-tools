@@ -34,7 +34,7 @@ import           Cardano.Api               (Address, AddressInEra,
 import qualified Cardano.Api               as C
 import qualified Cardano.Ledger.Credential as Shelley
 import           Cardano.Ledger.Crypto     (StandardCrypto)
-import           Control.Lens              (_2, preview, view)
+import           Control.Lens              (_2, preview)
 import qualified Convex.CardanoApi.Lenses  as L
 import           Convex.Utxos              (UtxoSet (..), onlyAda)
 import           Data.Aeson                (FromJSON (..), ToJSON (..), object,
@@ -134,11 +134,13 @@ selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSe
 -}
 selectAnyInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
 selectAnyInputsCovering UtxoSet{_utxos} (C.Quantity target) =
-  let append (C.Quantity total_, txIns) (txIn, C.lovelaceToQuantity . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) -> C.Quantity coin_) = (C.Quantity (total_ + coin_), txIn : txIns) in
-  find (\(C.Quantity c, _) -> c >= target)
-  $ scanl append (C.Quantity 0, [])
-  $ fmap (second fst)
-  $ Map.toAscList _utxos
+  let append (C.Quantity total_, txIns) (txIn, C.InAnyCardanoEra _ (C.TxOut _ (C.lovelaceToQuantity . C.selectLovelace . C.txOutValueToValue -> C.Quantity coin_) _ _)) =
+        (C.Quantity (total_ + coin_), txIn : txIns)
+   in
+     find (\(C.Quantity c, _) -> c >= target)
+     $ scanl append (C.Quantity 0, [])
+     $ fmap (second fst)
+     $ Map.toAscList _utxos
 
 {-| Select inputs that cover the given amount of non-Ada
 assets.
@@ -149,14 +151,14 @@ selectMixedInputsCovering UtxoSet{_utxos} xs =
       coversTarget (candidateVl, _txIns) =
         all (\(assetId, quantity) -> C.selectAsset candidateVl assetId >= quantity) xs
       requiredAssets = foldMap (\(a, _) -> Set.singleton a) xs
-      relevantValue (txIn, view (L._TxOut . _2 . L._TxOutValue) -> txOutValue) =
-        let providedAssets = foldMap (Set.singleton . fst) (C.valueToList txOutValue)
+      relevantValue (txIn, C.InAnyCardanoEra _ (C.TxOut _ (C.txOutValueToValue -> value) _ _)) =
+        let providedAssets = foldMap (Set.singleton . fst) (C.valueToList value)
         in if Set.null (Set.intersection requiredAssets providedAssets)
           then Nothing
-          else Just (txOutValue, txIn)
+          else Just (value, txIn)
   in
     find coversTarget
-    $ scanl append (mempty, mempty)
-    $ mapMaybe relevantValue
-    $ fmap (second fst)
-    $ Map.toAscList _utxos
+      $ scanl append (mempty, mempty)
+      $ mapMaybe relevantValue
+      $ fmap (second fst)
+      $ Map.toAscList _utxos

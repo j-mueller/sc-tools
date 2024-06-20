@@ -203,12 +203,12 @@ spendTokens2 txi = do
 spendSingletonOutput :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m ()
 spendSingletonOutput txi = do
   void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
-  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
   let k = Utxos.onlyCredential (Wallet.paymentCredential Wallet.w2) utxoSet
   let totalVal = Utxos.totalBalance k
       newOut = C.TxOut (Wallet.addressInEra Defaults.networkId Wallet.w2) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue totalVal) C.TxOutDatumNone C.ReferenceScriptNone
       utxoSetMinusW2 = Utxos.removeUtxos (Map.keysSet $ Utxos._utxos k) utxoSet
-      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newOut, ())
+      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (C.InAnyCardanoEra C.BabbageEra newOut, ())
 
   setUtxo (C.toLedgerUTxO C.ShelleyBasedEraBabbage $ Utxos.toApiUtxo utxoSetPlusSingleOutput)
   -- check that wallet 2 only
@@ -319,9 +319,9 @@ buildTxMixedInputs :: Assertion
 buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   testWallet <- liftIO Wallet.generateWallet
   -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
-  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
   let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
-      newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
+      newUTxO = C.InAnyCardanoEra C.BabbageEra $ C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
   setUtxo
     $ C.toLedgerUTxO C.ShelleyBasedEraBabbage

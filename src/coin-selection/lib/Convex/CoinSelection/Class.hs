@@ -90,7 +90,7 @@ instance MonadBalance m => MonadBalance (MonadLogIgnoreT m) where
   balanceTx addr utxos = lift . balanceTx addr utxos
 
 instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
-  balanceTx addr utxos txb = runExceptT (Convex.CoinSelection.balanceTx mempty (emptyTxOut addr) utxos txb)
+  balanceTx addr utxos txb = runExceptT (Convex.CoinSelection.balanceTx mempty (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb)
 
 instance MonadMockchain m => MonadMockchain (BalancingT m) where
   modifySlot = lift . modifySlot
@@ -115,7 +115,7 @@ deriving newtype instance MonadError e m => MonadError e (TracingBalancingT m)
 instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
   balanceTx addr utxos txb = TracingBalancingT $ do
     tr <- ask
-    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (emptyTxOut addr) utxos txb)
+    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb)
 
 instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
   modifySlot = lift . modifySlot

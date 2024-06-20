@@ -60,7 +60,7 @@ faucet = Wallet . snd <$> keysFor "faucet"
 -}
 walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO ())
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
-  Utxos.fromApiUtxo <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
+  Utxos.fromApiUtxo () <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}
@@ -104,11 +104,18 @@ balanceAndSubmit tracer node wallet tx keys = do
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmitReturn
+  :: Tracer IO WalletLog
+  -> RunningNode
+  -> Wallet
+  -> C.TxOut C.CtxUTxO C.BabbageEra
+  -> TxBuilder
+  -> [C.ShelleyWitnessSigningKey]
+  -> IO (Tx BabbageEra)
 balanceAndSubmitReturn tracer node wallet returnOutput tx keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx)
+    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos (C.InAnyCardanoEra C.BabbageEra returnOutput) tx)
 
     let wit' = (C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage body <$> keys) ++ wit
         tx'  = C.makeSignedTransaction wit' body

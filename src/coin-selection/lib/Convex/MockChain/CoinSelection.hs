@@ -34,28 +34,44 @@ import           Data.Functor              (($>))
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID
 -}
-balanceAndSubmit :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> TxBuilder -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+balanceAndSubmit
+  :: (MonadMockchain m, MonadError BalanceTxError m)
+  => Tracer m TxBalancingMessage
+  -> Wallet
+  -> TxBuilder
+  -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
 balanceAndSubmit dbg wallet tx = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
-      txOut = emptyTxOut walletAddress
+      txOut = C.InAnyCardanoEra C.BabbageEra $ emptyTxOut walletAddress
   balanceAndSubmitReturn dbg wallet txOut tx
 
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID. Fail if the
 transaction is not accepted by the node.
 -}
-tryBalanceAndSubmit :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Tracer m TxBalancingMessage -> Wallet -> TxBuilder -> m (C.Tx CoinSelection.ERA)
+tryBalanceAndSubmit
+  :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m)
+  => Tracer m TxBalancingMessage
+  -> Wallet
+  -> TxBuilder
+  -> m (C.Tx CoinSelection.ERA)
 tryBalanceAndSubmit dbg wallet tx = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
-      txOut = emptyTxOut walletAddress
+      txOut = C.InAnyCardanoEra C.BabbageEra $ emptyTxOut walletAddress
   balanceAndSubmitReturn dbg wallet txOut tx >>= either (fail . show) pure
 
 {-| Balance and submit a transaction using the given return output and the wallet's UTXOs
 on the mockchain, using the default network ID
 -}
-balanceAndSubmitReturn :: (MonadMockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+balanceAndSubmitReturn
+  :: (MonadMockchain m, MonadError BalanceTxError m)
+  => Tracer m TxBalancingMessage
+  -> Wallet
+  -> C.InAnyCardanoEra (C.TxOut C.CtxUTxO)
+  -> TxBuilder
+  -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
 balanceAndSubmitReturn dbg wallet returnOutput tx = do
   u <- MockChain.walletUtxo wallet
   (tx', _) <- CoinSelection.balanceForWalletReturn dbg wallet u returnOutput tx
