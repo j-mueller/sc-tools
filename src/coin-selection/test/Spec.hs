@@ -335,8 +335,7 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   -- so that there is enough Ada for the transaction fees.
   void
     $ balanceAndSubmit mempty testWallet
-    $ BuildTx.execBuildTx
-    $ payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal) []
+      (BuildTx.execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal)) []
 
 
 largeTransactionTest :: Assertion
