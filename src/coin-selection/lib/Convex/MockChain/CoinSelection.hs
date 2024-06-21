@@ -45,7 +45,7 @@ balanceAndSubmit dbg wallet keys tx = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = C.InAnyCardanoEra C.BabbageEra $ emptyTxOut walletAddress
-  balanceAndSubmitReturn dbg wallet txOut tx keys
+  balanceAndSubmitReturn dbg wallet txOut keys tx
 
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID. Fail if the
