@@ -38,6 +38,6 @@ tests = testGroup "plutarch"
 alwaysSucceeds :: (MonadFail m, MonadMockchain m) => m ()
 alwaysSucceeds = failOnError $ do
   k <- either (fail . Text.unpack) (pure . plutarchScriptToCapiScript) (compile NoTracing alwaysSucceedsP)
-  ref <- fmap (C.getTxId . C.getTxBody) $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx $ do
-          payToPlutusV2 Defaults.networkId k () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
-  void $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx (spendPlutusV2 (C.TxIn ref (C.TxIx 0)) k () ())
+  ref <- fmap (C.getTxId . C.getTxBody) $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ do
+          payToPlutusV2 Defaults.networkId k () C.NoStakeAddress (C.lovelaceToValue 10_000_000)) []
+  void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx (spendPlutusV2 (C.TxIn ref (C.TxIx 0)) k () ())) []

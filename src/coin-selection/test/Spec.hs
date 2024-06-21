@@ -1,7 +1,6 @@
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
 module Main(main) where
 
@@ -33,7 +32,7 @@ import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain,
                                                  MonadDatumQuery (queryDatumFromHash),
                                                  SendTxFailed (..), getUtxo,
-                                                 setUtxo, singleUTxO)
+                                                 setUtxo, singleUTxO, setReward)
 import           Convex.CoinSelection           (BalanceTxError, keyWitnesses,
                                                  publicKeyCredential)
 import qualified Convex.CardanoApi.Lenses                  as L
@@ -44,6 +43,7 @@ import           Convex.MockChain               (ValidationError (..),
 import           Convex.MockChain.CoinSelection (balanceAndSubmit,
                                                  payToOperator', paymentTo,
                                                  tryBalanceAndSubmit)
+import           Convex.MockChain.Staking       (registerPool)
 import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Utils         (mockchainSucceeds,
@@ -106,6 +106,8 @@ tests = testGroup "unit tests"
   , testGroup "staking"
     [ testCase "register a staking credential" (mockchainSucceeds $ failOnError registerStakingCredential)
     , testCase "zero withdrawal" (mockchainSucceeds $ failOnError $ registerStakingCredential >> withdrawZero)
+    , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
+    , testCase "withdrawal" (mockchainSucceeds $ failOnError withdrawalTest)
     ]
   ]
 
@@ -128,24 +130,24 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 payToPlutusScript :: (MonadFail m, MonadError BalanceTxError m, MonadMockchain m) => m C.TxIn
 payToPlutusScript = do
   let tx = execBuildTx (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-  i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
+  i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx []
   pure (C.TxIn i (C.TxIx 0))
 
 payToPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => m C.TxIn
 payToPlutusV2Script = do
   let tx = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-  i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
+  i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx []
   pure (C.TxIn i (C.TxIx 0))
 
 spendPlutusScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxIn -> m C.TxId
 spendPlutusScript ref = do
   let tx = execBuildTx (spendPlutusV1 ref txInscript () ())
-  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx []
 
 spendPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxIn -> m C.TxId
 spendPlutusV2Script ref = do
   let tx = execBuildTx (spendPlutusV2 ref Scripts.v2SpendingScript () ())
-  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx []
 
 putReferenceScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
@@ -154,7 +156,7 @@ putReferenceScript wallet = do
       tx = execBuildTx $
             payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
-  txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx
+  txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx []
   let outRef = C.TxIn txId (C.TxIx 0)
   C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
   case Map.lookup outRef utxo of
@@ -168,13 +170,13 @@ spendPlutusScriptReference :: (MonadFail m, MonadMockchain m, MonadError Balance
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = execBuildTx (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
-  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx []
 
 mintingPlutus :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => m C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
   let tx = execBuildTx (mintPlutusV1 mintingScript () "assetName" 100)
-  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
+  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx []
 
 spendTokens :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
 spendTokens _ = do
@@ -196,7 +198,7 @@ spendTokens2 txi = do
             mintPlutusV1 mintingScript () "assetName" (-2)
             setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
-  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx
+  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx []
 
 -- | Put all of the Wallet 2's funds into a single UTxO with mixed assets
 --   Then make a transaction that splits this output into two
@@ -223,7 +225,7 @@ nativeAssetPaymentTo q wFrom wTo = do
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
-  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx
+  C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx []
 
 checkResolveDatumHash :: (MonadMockchain m, MonadDatumQuery m, MonadFail m, MonadError BalanceTxError m) => m ()
 checkResolveDatumHash = do
@@ -270,7 +272,7 @@ checkResolveDatumHash = do
 execBuildTxWallet :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> BuildTxT m a -> m (Either SendTxFailed C.TxId)
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
-  fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet tx
+  fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet tx []
 
 {-| Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain. Fail if 'balanceAndSubmit' is not successful.
@@ -335,8 +337,7 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   -- so that there is enough Ada for the transaction fees.
   void
     $ balanceAndSubmit mempty testWallet
-    $ BuildTx.execBuildTx
-    $ payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal
+      (BuildTx.execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal)) []
 
 
 largeTransactionTest :: Assertion
@@ -363,13 +364,13 @@ largeTransactionTest = do
 matchingIndex :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
 matchingIndex = do
   let txBody = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.matchingIndexValidatorScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-      tx     = C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
+      tx     = C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody []) <*> pure (C.TxIx 0)
 
   -- create three separate tx outputs that are locked by the matching index script
   inputs <- replicateM 3 tx
 
   -- Spend the outputs in a single transaction
-  void (tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx $ traverse_ Scripts.spendMatchingIndex inputs)
+  void (tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ Scripts.spendMatchingIndex inputs) [])
 
 stakingCredential :: C.StakeCredential
 stakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
@@ -377,12 +378,12 @@ stakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.P
 registerStakingCredential :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m C.TxIn
 registerStakingCredential = do
   let txBody = execBuildTx (BuildTx.addStakeCredentialCertificate stakingCredential)
-  C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
+  C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody []) <*> pure (C.TxIx 0)
 
 withdrawZero :: (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
 withdrawZero = do
   txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
-  txI <- C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
+  txI <- C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody []) <*> pure (C.TxIx 0)
   singleUTxO txI >>= \case
     Nothing -> fail "txI not found"
     Just{} -> pure ()
@@ -392,4 +393,86 @@ matchingIndexMP = do
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
       runTx assetName = Scripts.mintMatchingIndex policyId assetName 100
-  void $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]
+  void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]) []
+
+queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+queryStakeAddressesTest = do
+  poolId <- registerPool Wallet.w1
+  stakeKey <- C.generateSigningKey C.AsStakeKey
+  let
+    withdrawalAmount = 10_000_000
+
+    stakeHash =
+      C.verificationKeyHash . C.getVerificationKey $ stakeKey
+
+    stakeCred = C.StakeCredentialByKey stakeHash
+
+    stakeCert =
+      C.makeStakeAddressRegistrationCertificate
+      . C.StakeAddrRegistrationPreConway C.ShelleyToBabbageEraBabbage
+      $ stakeCred
+
+    delegationCert =
+      C.makeStakeAddressDelegationCertificate
+      $ C.StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
+
+    stakeCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate stakeCert
+
+    delegCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate delegationCert
+
+  -- activate stake
+  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx []
+  -- delegate to pool 
+  void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx [C.WitnessStakeKey stakeKey]
+
+  -- modify the ledger state
+  setReward stakeCred (C.quantityToLovelace withdrawalAmount)
+
+  (rewards, delegations) <- queryStakeAddresses (Set.fromList [stakeCred]) Defaults.networkId
+
+  when (length rewards /= 1) $ fail "Expected 1 reward"
+  when (length delegations /= 1) $ fail "Expected 1 delegation"
+
+withdrawalTest :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+withdrawalTest = do
+  poolId <- registerPool Wallet.w1
+  stakeKey <- C.generateSigningKey C.AsStakeKey
+  let
+    withdrawalAmount = 10_000_000
+
+    stakeHash =
+      C.verificationKeyHash . C.getVerificationKey $ stakeKey
+
+    stakeCred = C.StakeCredentialByKey stakeHash
+
+    stakeCert =
+      C.makeStakeAddressRegistrationCertificate
+      . C.StakeAddrRegistrationPreConway C.ShelleyToBabbageEraBabbage
+      $ stakeCred
+    stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
+
+    delegationCert =
+      C.makeStakeAddressDelegationCertificate
+      $ C.StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
+
+    stakeCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate stakeCert
+
+    delegCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate delegationCert
+
+    withdrawalTx = execBuildTx $ do
+      BuildTx.addWithdrawal stakeAddress withdrawalAmount (C.KeyWitness C.KeyWitnessForStakeAddr)
+
+  -- activate stake
+  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx []
+  -- delegate to pool 
+  void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx [C.WitnessStakeKey stakeKey]
+
+  -- modify the ledger state
+  setReward stakeCred (C.quantityToLovelace withdrawalAmount)
+
+  -- withdraw rewards
+  void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx [C.WitnessStakeKey stakeKey]

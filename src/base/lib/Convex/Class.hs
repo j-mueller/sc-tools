@@ -40,7 +40,6 @@ module Convex.Class(
 ) where
 
 import qualified Cardano.Api                                       as C
-import           Test.QuickCheck.Monadic (PropertyM)
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     EraHistory (..),
                                                                     Hash,
@@ -53,8 +52,8 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
-import           Cardano.Ledger.Shelley.API                        (UTxO)
-import Convex.Utxos (UtxoSet)
+import           Cardano.Ledger.Shelley.API                        (Coin (..),
+                                                                    UTxO)
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
 import           Control.Lens                                      (_1, view)
@@ -79,6 +78,7 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
+import           Convex.Utxos                                      (UtxoSet)
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
@@ -95,6 +95,7 @@ import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult
 import qualified PlutusLedgerApi.V1                                as PV1
 import           Prettyprinter                                     (Pretty (..),
                                                                     (<+>))
+import           Test.QuickCheck.Monadic                           (PropertyM)
 
 {-| Send transactions and resolve tx inputs.
 -}
@@ -184,28 +185,34 @@ singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
 {-| Modify the mockchain internals
 -}
 class MonadBlockchain m => MonadMockchain m where
+  setReward :: C.StakeCredential -> Coin -> m ()
   modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
 
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
 instance MonadMockchain m => MonadMockchain (ResultT m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (ReaderT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (ExceptT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (StrictState.StateT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (LazyState.StateT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 

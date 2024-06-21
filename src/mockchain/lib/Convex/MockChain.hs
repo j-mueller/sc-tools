@@ -94,7 +94,6 @@ import           Cardano.Ledger.Plutus.Language        (Language (..),
 import qualified Cardano.Ledger.Plutus.Language        as Plutus.Language
 import           Cardano.Ledger.Shelley.API            (AccountState (..),
                                                         ApplyTxError,
-                                                        CertState (..),
                                                         Coin (..),
                                                         LedgerEnv (..),
                                                         MempoolEnv,
@@ -104,9 +103,16 @@ import           Cardano.Ledger.Shelley.API            (AccountState (..),
 import qualified Cardano.Ledger.Shelley.API
 import           Cardano.Ledger.Shelley.LedgerState    (LedgerState (..),
                                                         UTxOState (..), rewards,
+                                                        delegations,
+                                                        lsCertStateL,
+                                                        certDStateL,
+                                                        dsUnifiedL,
                                                         smartUTxOState)
-import           Cardano.Ledger.UMap                   (rewardMap, sPoolMap,
-                                                        (⋪))
+import           Cardano.Ledger.UMap                   (compactCoinOrError,
+                                                        domRestrictedMap,
+                                                        fromCompact,
+                                                        adjust,
+                                                        RDPair (..))
 import qualified Cardano.Ledger.Val                    as Val
 import           Control.Lens                          (_1, _3, over, set, to,
                                                         view, (%=), (&), (.~),
@@ -369,21 +375,22 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     pure (C.UTxO mp')
   queryProtocolParameters = MockchainT (asks npProtocolParameters)
   queryStakeAddresses creds nid = MockchainT $ do
-    dState <- gets (certDState . lsCertState . view poolState)
+    dState <- gets (view $ poolState . lsCertStateL . certDStateL)
     let
-      -- (Map (Credential 'Staking StandardCrypto) (UMElem StandardCrypto))
-      rewards' = toLedgerStakeCredentials creds ⋪ rewards dState
+      creds' = toLedgerStakeCredentials creds
+      rewards' = domRestrictedMap creds' (rewards dState)
+      delegations' = domRestrictedMap creds' (delegations dState)
       rewardsMap =
         Map.fromList
           $ bimap
               fromLedgerStakeAddress
-              C.lovelaceToQuantity <$> Map.toList (rewardMap rewards')
-      poolMap =
+              (C.lovelaceToQuantity . fromCompact . rdReward) <$> Map.toList rewards'
+      delegationsMap =
         Map.fromList
           $ bimap
               fromLedgerStakeAddress
-              StakePoolKeyHash <$> Map.toList (sPoolMap rewards')
-    pure (rewardsMap, poolMap)
+              StakePoolKeyHash <$> Map.toList delegations'
+    pure (rewardsMap, delegationsMap)
     where
       toLedgerStakeCredentials creds' = Set.fromList $ C.toShelleyStakeCredential <$> Set.toList creds'
       fromLedgerStakeAddress = C.makeStakeAddress nid . C.fromShelleyStakeCredential
@@ -399,6 +406,15 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     return (slotNo, npSlotLength, utime)
 
 instance Monad m => MonadMockchain (MockchainT m) where
+  setReward cred coin = MockchainT $ do
+    dState <- gets (view $ poolState . lsCertStateL . certDStateL)
+    let
+      umap =
+        adjust
+          (\rd -> rd {rdReward=compactCoinOrError coin})
+          (C.toShelleyStakeCredential cred)
+          (rewards dState)
+    modify (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap)
   modifySlot f = MockchainT $ do
     s <- gets (view $ env . L.slot)
     let (s', a) = f s

@@ -31,6 +31,7 @@ library
       Convex.CoinSelection
       Convex.CoinSelection.Class
       Convex.MockChain.CoinSelection
+      Convex.MockChain.Staking
       Convex.Query
       Convex.UTxOCompatibility
     hs-source-dirs: lib
