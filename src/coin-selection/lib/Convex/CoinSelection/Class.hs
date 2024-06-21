@@ -93,6 +93,7 @@ instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
   balanceTx addr utxos txb = runExceptT (Convex.CoinSelection.balanceTx mempty (emptyTxOut addr) utxos txb)
 
 instance MonadMockchain m => MonadMockchain (BalancingT m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
@@ -118,6 +119,7 @@ instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
     runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (emptyTxOut addr) utxos txb)
 
 instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 

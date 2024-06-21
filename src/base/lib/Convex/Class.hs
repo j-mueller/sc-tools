@@ -53,7 +53,7 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
-import           Cardano.Ledger.Shelley.API                        (UTxO)
+import           Cardano.Ledger.Shelley.API                        (UTxO, Coin (..))
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
 import           Control.Lens                                      (_1, view)
@@ -183,28 +183,34 @@ singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
 {-| Modify the mockchain internals
 -}
 class MonadBlockchain m => MonadMockchain m where
+  setReward :: C.StakeCredential -> Coin -> m ()
   modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
   modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
 
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
 instance MonadMockchain m => MonadMockchain (ResultT m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (ReaderT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (ExceptT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (StrictState.StateT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
 instance MonadMockchain m => MonadMockchain (LazyState.StateT e m) where
+  setReward cred = lift . setReward cred
   modifySlot = lift . modifySlot
   modifyUtxo = lift . modifyUtxo
 
