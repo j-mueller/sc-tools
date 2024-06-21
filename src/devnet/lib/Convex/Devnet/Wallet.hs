@@ -108,7 +108,7 @@ balanceAndSubmitReturn
   :: Tracer IO WalletLog
   -> RunningNode
   -> Wallet
-  -> C.TxOut C.CtxUTxO C.BabbageEra
+  -> C.TxOut C.CtxTx C.BabbageEra
   -> TxBuilder
   -> [C.ShelleyWitnessSigningKey]
   -> IO (Tx BabbageEra)
