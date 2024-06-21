@@ -19,6 +19,7 @@ module Convex.CardanoApi.Lenses(
   TxIn,
   txIns,
   txInsReference,
+  txInsReferenceTxIns,
   txOuts,
   txMintValue,
   txFee,
@@ -28,6 +29,7 @@ module Convex.CardanoApi.Lenses(
   txMetadata,
   txProtocolParams,
   txInsCollateral,
+  txInsCollateralTxIns,
   txScriptValidity,
   txAuxScripts,
   txExtraKeyWits,
@@ -38,7 +40,7 @@ module Convex.CardanoApi.Lenses(
 
   -- * Prisms and Isos
   _TxMintValue,
-  _TxInsReference,
+  _TxInsReferenceIso,
   _Value,
   _AssetId,
   _TxOut,
@@ -48,7 +50,7 @@ module Convex.CardanoApi.Lenses(
   _ShelleyPaymentCredentialByKey,
   _PaymentCredentialByScript,
   _ShelleyPaymentCredentialByScript,
-  _TxInsCollateral,
+  _TxInsCollateralIso,
   _TxMetadata,
   _TxAuxScripts,
   _TxExtraKeyWitnesses,
@@ -124,7 +126,8 @@ import           Cardano.Ledger.Shelley.API         (Coin, LedgerEnv (..), UTxO,
 import           Cardano.Ledger.Shelley.Governance  (GovState)
 import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
                                                      updateStakeDistribution)
-import           Control.Lens                       (Iso', Lens', Prism', iso,
+import           Control.Lens                       qualified as L
+import           Control.Lens                       (Getter, Iso', Lens', Prism', iso,
                                                      lens, prism')
 import qualified Convex.Scripts                     as Scripts
 import           Data.Map.Strict                    (Map)
@@ -247,6 +250,12 @@ txInsReference = lens get set_ where
   get = C.txInsReference
   set_ body txInsRef' = body{C.txInsReference = txInsRef'}
 
+txInsReferenceTxIns :: Getter (C.TxInsReference ctx era) [C.TxIn]
+txInsReferenceTxIns = L.to get_ where
+  get_ = \case
+    C.TxInsReferenceNone  -> []
+    C.TxInsReference _ xs -> xs
+
 -- Lenses for working with cardano-api transactions
 txOuts :: Lens' (C.TxBodyContent v era) [TxOut CtxTx era]
 txOuts = lens get set_ where
@@ -293,6 +302,12 @@ txInsCollateral :: Lens' (C.TxBodyContent v era) (C.TxInsCollateral era)
 txInsCollateral = lens get set_ where
   get = C.txInsCollateral
   set_ body col = body{C.txInsCollateral = col}
+
+txInsCollateralTxIns :: Getter (C.TxInsCollateral era) [C.TxIn]
+txInsCollateralTxIns = L.to get_ where
+  get_ = \case
+    C.TxInsCollateralNone  -> []
+    C.TxInsCollateral _ xs -> xs
 
 txMetadata :: Lens' (C.TxBodyContent v era) (C.TxMetadataInEra era)
 txMetadata = lens get set_ where
@@ -377,8 +392,8 @@ _TxMetadata = iso from to where
   to m | Map.null m = C.TxMetadataNone
        | otherwise  = C.TxMetadataInEra C.shelleyBasedEra (C.TxMetadata m)
 
-_TxInsCollateral :: IsAlonzoEraOnwards era => Iso' (C.TxInsCollateral era) [C.TxIn]
-_TxInsCollateral = iso from to where
+_TxInsCollateralIso :: IsAlonzoEraOnwards era => Iso' (C.TxInsCollateral era) [C.TxIn]
+_TxInsCollateralIso = iso from to where
   from :: C.TxInsCollateral era -> [C.TxIn]
   from = \case
     C.TxInsCollateralNone  -> []
@@ -397,8 +412,8 @@ _TxMintValue = iso from to where
     | Map.null mp && vl == mempty = C.TxMintNone
     | otherwise                   = C.TxMintValue maryEraOnwards vl (C.BuildTxWith mp)
 
-_TxInsReference :: IsBabbageEraOnwards era => Iso' (C.TxInsReference build era) [C.TxIn]
-_TxInsReference = iso from to where
+_TxInsReferenceIso :: IsBabbageEraOnwards era => Iso' (C.TxInsReference build era) [C.TxIn]
+_TxInsReferenceIso = iso from to where
   from :: C.TxInsReference build era -> [C.TxIn]
   from = \case
     C.TxInsReferenceNone   -> []

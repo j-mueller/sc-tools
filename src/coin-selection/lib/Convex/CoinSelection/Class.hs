@@ -64,7 +64,7 @@ class Monad m => MonadBalance m where
     TxBuilder ->
 
     -- | The balanced transaction body and the balance changes (per address)
-    m (Either BalanceTxError (C.BalancedTxBody BabbageEra, BalanceChanges))
+    m (Either (BalanceTxError C.BabbageEra) (C.BalancedTxBody BabbageEra, BalanceChanges))
 
 newtype BalancingT m a = BalancingT{runBalancingT :: m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, MonadBlockchain)

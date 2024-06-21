@@ -9,6 +9,10 @@
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
+
+-- FIXME (koslambrou) Remove once we have the newtype for 'AnyCardanoEra TxOut'.
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Convex.Utxos(
   -- * Utxo sets
   UtxoSet(..),
@@ -20,13 +24,15 @@ module Convex.Utxos(
   partition,
   onlyAda,
   onlyPubKey,
-  -- onlyAddress,
+  onlyAddress,
   onlyCredential,
   onlyCredentials,
   onlyStakeCredential,
   removeUtxos,
   fromApiUtxo,
   toApiUtxo,
+  txOutToLatestEra,
+  utxoToLatestEra,
   selectUtxo,
 
   -- * Events based on transactions
@@ -75,7 +81,7 @@ import qualified Cardano.Ledger.BaseTypes      as CT
 import qualified Cardano.Ledger.Credential     as Shelley
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.TxIn           as CT
-import           Control.Lens                  (_1, _2, _3, makeLenses,
+import           Control.Lens                  (_2, makeLenses,
                                                 makePrisms, over, preview, view)
 import qualified Convex.CardanoApi.Lenses      as L
 import           Data.Aeson                    (FromJSON, ToJSON, parseJSON, toJSON)
@@ -105,23 +111,17 @@ newtype UtxoSet ctx a = UtxoSet{ _utxos :: Map C.TxIn (C.InAnyCardanoEra (C.TxOu
   deriving newtype (Semigroup, Monoid)
 
 instance Show a => Show (UtxoSet ctx a) where
-  -- FIXME (koslambrou)
-  show (UtxoSet set1) = undefined
+  show (UtxoSet set1) = show set1
 
 instance Eq a => Eq (UtxoSet ctx a) where
-  -- FIXME (koslambrou)
-  (UtxoSet set1) == (UtxoSet set2) = undefined -- set1 == set2
+  (UtxoSet set1) == (UtxoSet set2) = set1 == set2
 
-instance FromJSON a => FromJSON (UtxoSet ctx a) where
-  -- FIXME (koslambrou)
-  parseJSON = undefined
+deriving instance FromJSON a => FromJSON (UtxoSet C.CtxTx a)
+deriving instance FromJSON a => FromJSON (UtxoSet C.CtxUTxO a)
+deriving instance ToJSON a => ToJSON (UtxoSet C.CtxTx a)
+deriving instance ToJSON a => ToJSON (UtxoSet C.CtxUTxO a)
 
-instance ToJSON a => ToJSON (UtxoSet ctx a) where
-  -- FIXME (koslambrou)
-  toJSON = undefined
-
--- FIXME (koslambrou) Remvoe those orpha instances and use custom type instead
--- such as TxOutInAnyEra
+-- FIXME (koslambrou) Remove those orphan instances and use custom type instead such as TxOutInAnyEra
 instance Show (C.InAnyCardanoEra (C.TxOut ctx)) where
   show (C.InAnyCardanoEra _ txOut) = show txOut
 
@@ -218,18 +218,68 @@ makePrisms ''UtxoSet
 {-| Convert a @cardano-api@ 'UTxO BabbageEra' to a utxo set
 -}
 fromApiUtxo :: C.IsCardanoEra era => a -> UTxO era -> UtxoSet C.CtxUTxO a
-fromApiUtxo v (UTxO x) = UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) x)
+fromApiUtxo v (UTxO utxoSet) = UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
 
 {-| Convert a utxo set to a @cardano-api@ 'UTxO BabbageEra'
 -}
-toApiUtxo :: UtxoSet C.CtxUTxO a -> UTxO era
+toApiUtxo :: UtxoSet C.CtxUTxO a -> UTxO C.BabbageEra
 toApiUtxo (UtxoSet utxos) =
-  -- FIXME (koslambrou)
-  undefined
-  -- UTxO (fmap (toTxOut . fst) utxos)
- -- where
-  -- toTxOut :: C.InAnyCardanoEra (C.TxOut C.CtxUTxO) -> C.TxOut C.CtxUTxO era
-  -- toTxOut (C.InAnyCardanoEra era txOut) = txOut
+  UTxO (fmap (toTxOut . fst) utxos)
+ where
+  toTxOut :: C.InAnyCardanoEra (C.TxOut C.CtxUTxO) -> C.TxOut C.CtxUTxO C.BabbageEra
+  toTxOut (C.InAnyCardanoEra _era txOut) = utxoToLatestEra txOut
+
+-- FIXME (koslambrou) Move to proper package
+txOutToLatestEra :: C.TxOut C.CtxTx era -> C.TxOut C.CtxTx C.BabbageEra
+txOutToLatestEra (C.TxOut addrInEra txOutValue txOutDatum ref) =
+  C.TxOut
+    (convertAddrToLatestEra addrInEra)
+    (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $
+      C.toLedgerValue C.MaryEraOnwardsBabbage $ C.txOutValueToValue txOutValue)
+    (convertDatumToLatestEra txOutDatum)
+    (convertRefScriptToLatestEra ref)
+ where
+  convertAddrToLatestEra :: C.AddressInEra era -> C.AddressInEra C.BabbageEra
+  convertAddrToLatestEra (C.AddressInEra C.ByronAddressInAnyEra addr) =
+    C.AddressInEra C.ByronAddressInAnyEra addr
+  convertAddrToLatestEra (C.AddressInEra (C.ShelleyAddressInEra _) addr) =
+    C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
+
+  convertDatumToLatestEra :: C.TxOutDatum C.CtxTx era -> C.TxOutDatum C.CtxTx C.BabbageEra
+  convertDatumToLatestEra C.TxOutDatumNone = C.TxOutDatumNone
+  convertDatumToLatestEra (C.TxOutDatumHash _ h) = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage h
+  convertDatumToLatestEra (C.TxOutDatumInTx _ d) = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage d
+  convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.BabbageEraOnwardsBabbage d
+
+  convertRefScriptToLatestEra :: CS.ReferenceScript era -> CS.ReferenceScript CS.BabbageEra
+  convertRefScriptToLatestEra CS.ReferenceScriptNone = CS.ReferenceScriptNone
+  convertRefScriptToLatestEra (CS.ReferenceScript _ script) = CS.ReferenceScript CS.BabbageEraOnwardsBabbage script
+
+-- FIXME (koslambrou) Move to proper package
+utxoToLatestEra :: C.TxOut C.CtxUTxO era -> C.TxOut C.CtxUTxO C.BabbageEra
+utxoToLatestEra (C.TxOut addrInEra txOutValue txOutDatum ref) =
+  C.TxOut
+    (convertAddrToLatestEra addrInEra)
+    (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $
+      C.toLedgerValue C.MaryEraOnwardsBabbage $ C.txOutValueToValue txOutValue)
+    (convertDatumToLatestEra txOutDatum)
+    (convertRefScriptToLatestEra ref)
+ where
+  convertAddrToLatestEra :: C.AddressInEra era -> C.AddressInEra C.BabbageEra
+  convertAddrToLatestEra (C.AddressInEra C.ByronAddressInAnyEra addr) =
+    C.AddressInEra C.ByronAddressInAnyEra addr
+  convertAddrToLatestEra (C.AddressInEra (C.ShelleyAddressInEra _) addr) =
+    C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
+
+  convertDatumToLatestEra :: C.TxOutDatum C.CtxUTxO era -> C.TxOutDatum C.CtxUTxO C.BabbageEra
+  convertDatumToLatestEra C.TxOutDatumNone = C.TxOutDatumNone
+  convertDatumToLatestEra (C.TxOutDatumHash _ h) = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage h
+  convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.BabbageEraOnwardsBabbage d
+
+  convertRefScriptToLatestEra :: CS.ReferenceScript era -> CS.ReferenceScript CS.BabbageEra
+  convertRefScriptToLatestEra CS.ReferenceScriptNone = CS.ReferenceScriptNone
+  convertRefScriptToLatestEra (CS.ReferenceScript _ script) = CS.ReferenceScript CS.BabbageEraOnwardsBabbage script
+
 
 {-| Pick an unspent output from the 'UtxoSet', if there is one.
 -}
@@ -256,14 +306,14 @@ partition p (UtxoSet s) =
 
 {-| Restrict the 'UtxoSet' to outputs at the address
 -}
--- FIXME (koslambrou) Not used anywhere yet
--- onlyAddress :: C.AddressAny -> UtxoSet ctx a -> UtxoSet ctx a
--- onlyAddress expectedAddr =
---   let txOutHasAddr :: (C.InAnyCardanoEra (C.TxOut ctx), a) -> Bool
---       txOutHasAddr (C.InAnyCardanoEra _ txOut, _) =
---         let (C.AddressInEra _ addr) = view (L._TxOut . _1) txOut
---          in expectedAddr == C.toAddressAny addr
---   in fst . partition txOutHasAddr
+onlyAddress :: C.AddressAny -> UtxoSet ctx a -> UtxoSet ctx a
+onlyAddress expectedAddr =
+  let txOutHasAddr :: (C.InAnyCardanoEra (C.TxOut ctx), a) -> Bool
+      txOutHasAddr (C.InAnyCardanoEra _ (C.TxOut addrInEra _ _ _), _) =
+        case addrInEra of
+          C.AddressInEra C.ByronAddressInAnyEra addr -> expectedAddr == C.toAddressAny addr
+          C.AddressInEra (C.ShelleyAddressInEra _) addr -> expectedAddr == C.toAddressAny addr
+  in fst . partition txOutHasAddr
 
 {-| Restrict the utxo set to outputs with the given payment credential
 -}
@@ -315,7 +365,7 @@ onlyPubKey =
 -}
 totalBalance :: UtxoSet ctx a -> C.Value
 totalBalance =
-  foldMap (\(C.InAnyCardanoEra era (C.TxOut _ txOutValue _ _), _) -> C.txOutValueToValue txOutValue) . _utxos
+  foldMap (\(C.InAnyCardanoEra _era (C.TxOut _ txOutValue _ _), _) -> C.txOutValueToValue txOutValue) . _utxos
 
 {-| Delete some outputs from the 'UtxoSet'
 -}
@@ -510,8 +560,8 @@ inv (UtxoChange added removed) = UtxoChange removed added
 -}
 extract :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a) -> Maybe AddressCredential -> UtxoSet C.CtxTx a -> BlockInMode -> [UtxoChangeEvent a]
 extract ex cred state = DList.toList . \case
-  -- FIXME (koslambrou) why is this only extract from babbage?
-  BlockInMode C.BabbageEra block -> undefined -- extractBabbage ex state cred block
+  -- FIXME (koslambrou) why is this only extracting from babbage?
+  BlockInMode C.BabbageEra block -> extractBabbage ex state cred block
   _                              -> mempty
 
 {-| Extract from a block the UTXO changes at the given address
@@ -561,9 +611,8 @@ extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
         pure (o, redeemer)
 
       checkOutput :: TxIx -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe (TxIn, (C.InAnyCardanoEra (C.TxOut C.CtxTx), a))
-      checkOutput txIx_ (C.InAnyCardanoEra era txOut@(C.TxOut (C.AddressInEra C.ByronAddressInAnyEra _) _ _ _)) = Nothing
+      checkOutput _ (C.InAnyCardanoEra _era (C.TxOut (C.AddressInEra C.ByronAddressInAnyEra _) _ _ _)) = Nothing
       checkOutput txIx_ (C.InAnyCardanoEra era txOut@(C.TxOut (C.AddressInEra (C.ShelleyAddressInEra _era) (CS.ShelleyAddress _ outputCred _)) _ _ _))
-        -- FIXME (koslambrou)
         | isNothing cred || Just outputCred == cred =
             let txi = TxIn txid txIx_
             in fmap (\a -> (txi, (C.InAnyCardanoEra era txOut, a))) (ex txi $ C.InAnyCardanoEra era txOut)

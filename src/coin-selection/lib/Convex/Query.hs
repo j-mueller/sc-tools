@@ -28,9 +28,7 @@ module Convex.Query(
 ) where
 
 import           Cardano.Api                        (BabbageEra, BalancedTxBody,
-                                                     CtxTx,
-                                                     PaymentCredential (..),
-                                                     TxOut, UTxO (..))
+                                                     PaymentCredential (..))
 import qualified Cardano.Api                        as C
 import           Control.Monad.Except               (MonadError)
 import           Control.Monad.IO.Class             (MonadIO (..))
@@ -52,8 +50,8 @@ import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
 import           Convex.NodeClient.WaitForTxnClient (MonadBlockchainWaitingT (..))
 import           Convex.Utils                       (liftEither, liftResult)
 import           Convex.Utxos                       (BalanceChanges,
-                                                     fromApiUtxo, fromUtxoTx,
-                                                     onlyCredentials, toApiUtxo)
+                                                     fromUtxoTx,
+                                                     onlyCredentials)
 import qualified Convex.Wallet.API                  as Wallet.API
 import           Convex.Wallet.Operator             (Operator (..), Signing,
                                                      operatorPaymentCredential,
@@ -77,8 +75,7 @@ utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet 
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
-  -- FIXME (koslambrou)
-  utxosByPaymentCredentials cred = undefined -- toApiUtxo . onlyCredentials cred <$> utxoSet
+  utxosByPaymentCredentials cred = onlyCredentials cred <$> utxoSet
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -113,9 +110,9 @@ balanceTx
   :: (MonadBlockchain m, MonadUtxoQuery m)
   => Tracer m TxBalancingMessage
   -> [PaymentCredential]
-  -> C.InAnyCardanoEra (C.TxOut C.CtxUTxO)
+  -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
   -> TxBuilder
-  -> m (Either BalanceTxError (BalancedTxBody BabbageEra, BalanceChanges))
+  -> m (Either (BalanceTxError C.BabbageEra) (BalancedTxBody BabbageEra, BalanceChanges))
 balanceTx dbg inputCredentials changeOutput txBody = do
   o <- utxosByPaymentCredentials (Set.fromList inputCredentials)
   runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody)
@@ -142,11 +139,11 @@ deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 {-| Balance a transaction body using the funds locked by one of a list of payment credentials
 -}
 balancePaymentCredentials ::
-  (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m) =>
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m) =>
   Tracer m TxBalancingMessage ->
   C.PaymentCredential -> -- ^ Primary payment credential, used for return output
   [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
-  Maybe (C.TxOut C.CtxUTxO C.BabbageEra) ->
+  Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
   TxBuilder ->
   m (C.Tx C.BabbageEra)
 balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
@@ -157,20 +154,20 @@ balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
 {-| Balance a transaction body using the funds locked by the payment credential
 -}
 balancePaymentCredential
-  :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m)
+  :: (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m)
   => Tracer m TxBalancingMessage
   -> C.PaymentCredential
-  -> Maybe (C.TxOut C.CtxUTxO C.BabbageEra)
+  -> Maybe (C.TxOut C.CtxTx C.BabbageEra)
   -> TxBuilder
   -> m (C.Tx C.BabbageEra)
 balancePaymentCredential dbg cred = balancePaymentCredentials dbg cred []
 
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
 balanceAndSubmitOperator
-  :: (MonadBlockchain m, MonadUtxoQuery m, MonadError BalanceAndSubmitError m)
+  :: (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m)
   => Tracer m TxBalancingMessage
   -> Operator Signing
-  -> Maybe (C.TxOut C.CtxUTxO C.BabbageEra)
+  -> Maybe (C.TxOut C.CtxTx C.BabbageEra)
   -> TxBuilder
   -> m (C.Tx C.BabbageEra)
 balanceAndSubmitOperator dbg op changeOut txBody = balancePaymentCredential dbg (operatorPaymentCredential op) changeOut txBody >>= signAndSubmitOperator op
@@ -178,7 +175,7 @@ balanceAndSubmitOperator dbg op changeOut txBody = balancePaymentCredential dbg 
 {-| Add the operator's signature to the transaction and send it to the blockchain
 -}
 signAndSubmitOperator
-  :: (MonadBlockchain m, MonadError BalanceAndSubmitError m)
+  :: (MonadBlockchain m, MonadError (BalanceAndSubmitError C.BabbageEra) m)
   => Operator Signing
   -> C.Tx C.BabbageEra
   -> m (C.Tx C.BabbageEra)
@@ -196,8 +193,8 @@ selectOperatorUTxO :: MonadUtxoQuery m => Operator k -> m (Maybe (C.TxIn, C.InAn
 selectOperatorUTxO operator = fmap listToMaybe (operatorUtxos operator)
 
 -- | Failures during txn balancing and submission
-data BalanceAndSubmitError =
-  BalanceError BalanceTxError
+data BalanceAndSubmitError era =
+  BalanceError (BalanceTxError era)
   | SubmitError String
   deriving stock (Generic, Show)
   deriving anyclass (ToJSON, FromJSON)

@@ -56,6 +56,7 @@ library
       cardano-api,
       cardano-ledger-core -any,
       cardano-ledger-shelley,
+      cardano-ledger-mary,
       cardano-slotting,
       transformers,
       mtl,
