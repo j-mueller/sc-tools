@@ -14,7 +14,7 @@ import           Control.Monad.IO.Class         (MonadIO (..))
 import           Control.Monad.State.Strict     (execStateT, modify)
 import           Control.Monad.Trans.Class      (MonadTrans (..))
 import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
-                                                 assetValue, execBuildTx',
+                                                 assetValue, execBuildTx,
                                                  execBuildTxT, mintPlutusV1,
                                                  payToAddress,
                                                  payToAddressTxOut,
@@ -115,26 +115,26 @@ mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
 payToPlutusScript :: (MonadFail m, MonadError BalanceTxError m, MonadMockchain m) => m C.TxIn
 payToPlutusScript = do
-  let tx = execBuildTx' (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+  let tx = execBuildTx (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 payToPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => m C.TxIn
 payToPlutusV2Script = do
-  let tx = execBuildTx' (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+  let tx = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
   pure (C.TxIn i (C.TxIx 0))
 
 spendPlutusScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxIn -> m C.TxId
 spendPlutusScript ref = do
-  let tx = execBuildTx' (spendPlutusV1 ref txInscript () ())
+  let tx = execBuildTx (spendPlutusV1 ref txInscript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
 
 putReferenceScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
       addr = C.makeShelleyAddressInEra Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
-  let tx = execBuildTx' $
+  let tx = execBuildTx $
             payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.ledgerProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx
@@ -150,13 +150,13 @@ putReferenceScript wallet = do
 spendPlutusScriptReference :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) =>  C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
-  let tx = execBuildTx' (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
+  let tx = execBuildTx (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
 
 mintingPlutus :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => m C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
-  let tx = execBuildTx' (mintPlutusV1 mintingScript () "assetName" 100)
+  let tx = execBuildTx (mintPlutusV1 mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx
 
 spendTokens :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => C.TxId -> m C.TxId
@@ -173,7 +173,7 @@ spendTokens2 txi = do
       wTo = Wallet.w2
       wFrom = Wallet.w1
       vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
-      tx = execBuildTx' $ do
+      tx = execBuildTx $ do
             payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
             BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
             mintPlutusV1 mintingScript () "assetName" (-2)
@@ -200,7 +200,7 @@ spendSingletonOutput txi = do
 nativeAssetPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
-      tx = execBuildTx' $
+      tx = execBuildTx $
             payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
             >> setMinAdaDepositAll Defaults.ledgerProtocolParameters
   -- create a public key output for the sender to make
@@ -253,7 +253,7 @@ checkResolveDatumHash = do
 execBuildTxWallet :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> BuildTxT m a -> m (Either SendTxFailed C.TxId)
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.ledgerProtocolParameters)
-  fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet (BuildTx.buildTx tx)
+  fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet tx
 
 {-| Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain. Fail if 'balanceAndSubmit' is not successful.
@@ -282,7 +282,7 @@ balanceMultiAddress = do
 
               -- send the entire amount back to Wallet.w2
               walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
-              let tx = execBuildTx' $ do
+              let tx = execBuildTx $ do
                         payToAddress walletAddr $ C.lovelaceToValue nAmount
                         traverse_ addRequiredSignature (fmap (C.verificationKeyHash . verificationKey . oPaymentKey) requiredSignatures)
                         setMinAdaDepositAll Defaults.ledgerProtocolParameters
@@ -317,7 +317,6 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   -- so that there is enough Ada for the transaction fees.
   void
     $ balanceAndSubmit mempty testWallet
-    $ BuildTx.buildTx
     $ BuildTx.execBuildTx
     $ payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal
 
@@ -345,18 +344,18 @@ largeTransactionTest = do
 
 matchingIndex :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
 matchingIndex = do
-  let txBody = execBuildTx' (payToPlutusV2 Defaults.networkId Scripts.matchingIndexValidatorScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+  let txBody = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.matchingIndexValidatorScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
       tx     = C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody) <*> pure (C.TxIx 0)
 
   -- create three separate tx outputs that are locked by the matching index script
   inputs <- replicateM 3 tx
 
   -- Spend the outputs in a single transaction
-  void (tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx' $ traverse_ Scripts.spendMatchingIndex inputs)
+  void (tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx $ traverse_ Scripts.spendMatchingIndex inputs)
 
 matchingIndexMP ::  (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
 matchingIndexMP = do
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
       runTx assetName = Scripts.mintMatchingIndex policyId assetName 100
-  void $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx' $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]
+  void $ tryBalanceAndSubmit mempty Wallet.w1 $ execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]

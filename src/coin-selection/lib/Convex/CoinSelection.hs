@@ -4,6 +4,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE MultiWayIf         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RankNTypes         #-}
@@ -43,8 +44,9 @@ module Convex.CoinSelection(
   ) where
 
 import           Cardano.Api.Shelley       (BabbageEra, BuildTx, CardanoMode,
-                                            EraHistory, PoolId, TxBodyContent,
-                                            TxOut, UTxO (..), StakePoolParameters (..))
+                                            EraHistory, PoolId,
+                                            StakePoolParameters (..),
+                                            TxBodyContent, TxOut, UTxO (..))
 import qualified Cardano.Api.Shelley       as C
 import qualified Cardano.Ledger.Core       as Core
 import           Cardano.Ledger.Crypto     (StandardCrypto)
@@ -52,15 +54,16 @@ import qualified Cardano.Ledger.Keys       as Keys
 import           Cardano.Slotting.Time     (SystemStart)
 import           Control.Lens              (_1, _2, _3, at, makeLensesFor, over,
                                             preview, set, to, traversed, view,
-                                            (%~), (&), (.~), (<>~), (?~), (^.),
-                                            (^..), (|>))
+                                            (%~), (&), (<>~), (?~), (^.), (^..),
+                                            (|>))
 import           Control.Monad             (when)
 import           Control.Monad.Except      (MonadError (..))
 import           Control.Monad.Trans.Class (MonadTrans (..))
 import           Control.Tracer            (Tracer, natTracer, traceWith)
-import           Convex.BuildTx            (addCollateral, buildTxWith,
+import           Convex.BuildTx            (TxBuilder, addCollateral,
                                             execBuildTx, setMinAdaDeposit,
                                             spendPublicKeyOutput)
+import qualified Convex.BuildTx            as BuildTx
 import qualified Convex.CardanoApi         as CC
 import           Convex.Class              (MonadBlockchain (..))
 import qualified Convex.Era                as Ledger.Era
@@ -491,7 +494,7 @@ balanceTx ::
   UtxoSet C.CtxUTxO a ->
 
   -- | The unbalanced transaction body
-  TxBodyContent BuildTx ERA ->
+  TxBuilder ->
 
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
@@ -500,9 +503,9 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
   -- compatibility level
-  let txb0 = txb & L.txProtocolParams .~ C.BuildTxWith (Just params)
+  let txb0 = txb <> (BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just params))))
   -- TODO: Better error handling (better than 'fail')
-  otherInputs <- lookupTxIns (requiredTxIns txb)
+  otherInputs <- lookupTxIns (requiredTxIns $ BuildTx.buildTx txb)
   let combinedTxIns =
         let UTxO w = availableUTxOs
             UTxO o = otherInputs
@@ -520,8 +523,8 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
 
 -- | Check the compatibility level of the transaction body
 --   and remove any incompatible UTxOs from the UTxO set.
-checkCompatibilityLevel :: Monad m => Tracer m TxBalancingMessage -> TxBodyContent BuildTx ERA -> UtxoSet C.CtxUTxO a -> m (UTxO BabbageEra)
-checkCompatibilityLevel tr txB (UtxoSet w) = do
+checkCompatibilityLevel :: Monad m => Tracer m TxBalancingMessage -> TxBuilder -> UtxoSet C.CtxUTxO a -> m (UTxO BabbageEra)
+checkCompatibilityLevel tr (BuildTx.buildTx -> txB) (UtxoSet w) = do
   let compatibility = txCompatibility txB
       utxoIn = UTxO (fmap fst w)
       UTxO utxoOut = compatibleWith compatibility utxoIn
@@ -531,7 +534,7 @@ checkCompatibilityLevel tr txB (UtxoSet w) = do
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBuilder -> m (C.Tx ERA, BalanceChanges)
 balanceForWallet dbg wallet walletUtxo txb = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
@@ -540,7 +543,7 @@ balanceForWallet dbg wallet walletUtxo txb = do
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBodyContent BuildTx ERA -> m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> m (C.Tx ERA, BalanceChanges)
 balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
   first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
 
@@ -555,29 +558,32 @@ signForWallet wallet (C.BalancedTxBody txbody _changeOutput _fee) =
 --   (we have to do this because 'C.evaluateTransactionBalance' fails on a tx body with
 --    no inputs)
 --   Throws an error if the transaction body has no inputs and the wallet UTxO set is empty.
-addOwnInput :: MonadError CoinSelectionError m => TxBodyContent BuildTx ERA -> UtxoSet ctx a -> m (TxBodyContent BuildTx ERA)
-addOwnInput body (Utxos.removeUtxos (spentTxIns body) -> UtxoSet{_utxos})
-  | not (List.null $ view L.txIns body) = pure body
-  | not (Map.null _utxos) =
-      -- Select ada-only outputs if possible
-      let availableUTxOs = List.sortOn (length . view (L._TxOut . _2 . L._TxOutValue . to C.valueToList) . fst . snd) (Map.toList _utxos)
-      in pure $ buildTxWith (execBuildTx (spendPublicKeyOutput (fst $ head availableUTxOs))) body
-  | otherwise = throwError NoWalletUTxOs
+addOwnInput :: MonadError CoinSelectionError m => TxBuilder -> UtxoSet ctx a -> m TxBuilder
+addOwnInput builder allUtxos =
+  let body = BuildTx.buildTx builder
+      UtxoSet{_utxos} = Utxos.removeUtxos (spentTxIns body) allUtxos
+  in  if | not (List.null $ view L.txIns body) -> pure builder
+         | not (Map.null _utxos) ->
+              -- Select ada-only outputs if possible
+              let availableUTxOs = List.sortOn (length . view (L._TxOut . _2 . L._TxOutValue . to C.valueToList) . fst . snd) (Map.toList _utxos)
+              in pure $ builder <> execBuildTx (spendPublicKeyOutput (fst $ head availableUTxOs))
+         | otherwise -> throwError NoWalletUTxOs
 
 -- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
 --   but no suitable input is provided in the wallet UTxO set.
-setCollateral :: MonadError CoinSelectionError m => TxBodyContent BuildTx ERA -> UtxoSet ctx a -> m (TxBodyContent BuildTx ERA)
-setCollateral body (Utxos.onlyAda -> UtxoSet{_utxos}) =
-  let noScripts = not (runsScripts body)
+setCollateral :: MonadError CoinSelectionError m => TxBuilder -> UtxoSet ctx a -> m TxBuilder
+setCollateral builder (Utxos.onlyAda -> UtxoSet{_utxos}) =
+  let body = BuildTx.buildTx builder
+      noScripts = not (runsScripts body)
       hasCollateral = not (view (L.txInsCollateral . L._TxInsCollateral . to List.null) body)
   in
     if noScripts || hasCollateral
-      then pure body -- no script witnesses in inputs.
+      then pure builder -- no script witnesses in inputs.
       else
         -- select the output with the largest amount of Ada
         case listToMaybe $ List.sortOn (Down . C.selectLovelace . view (L._TxOut . _2 . L._TxOutValue) . fst . snd) $ Map.toList _utxos of
           Nothing     -> throwError NoAdaOnlyUTxOsForCollateral
-          Just (k, _) -> pure $ buildTxWith (execBuildTx (addCollateral k)) body
+          Just (k, _) -> pure $ builder <> execBuildTx (addCollateral k)
 
 {-| Whether the transaction runs any plutus scripts
 -}
@@ -593,8 +599,9 @@ runsScripts body =
 * The amount of Ada provided by the transaction's inputs minus (the amount of Ada produced by the transaction's outputs plus the change output) is greater than zero
 * For all native tokens @t@, the amount of @t@ provided by the transaction's inputs minus (the amount of @t@ produced by the transaction's outputs plus the change output plus the delta of @t@ minted / burned) is equal to zero
 -}
-balancePositive :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> Core.PParams Ledger.Era.ERA -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBodyContent BuildTx ERA -> m (TxBodyContent BuildTx ERA, C.TxOut C.CtxTx C.BabbageEra)
-balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent0 = do
+balancePositive :: MonadError CoinSelectionError m => Tracer m TxBalancingMessage -> Set PoolId -> Core.PParams Ledger.Era.ERA -> C.UTxO ERA -> C.TxOut C.CtxTx C.BabbageEra -> UtxoSet ctx a -> TxBuilder -> m (TxBuilder, C.TxOut C.CtxTx C.BabbageEra)
+balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBuilder0 = do
+  let txBodyContent0 = BuildTx.buildTx txBuilder0
   txb <- either (throwError . bodyError) pure (C.makeTransactionBody txBodyContent0)
   let bal = CC.evaluateTransactionBalance ledgerPPs poolIds utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
@@ -610,12 +617,12 @@ balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBodyContent
     { availableBalance   = Utxos.totalBalance available
     , transactionBalance = balance
     }
-  (txBodyContent1, additionalBalance) <- addInputsForAssets dbg balance available txBodyContent0
+  (txBuilder1, additionalBalance) <- addInputsForAssets dbg balance available txBuilder0
 
   let bal0 = balance <> additionalBalance
   let (returnUTxO1, _deposit) = addOutputForNonAdaAssets ledgerPPs returnUTxO0 bal0
 
-  pure (txBodyContent1, returnUTxO1)
+  pure (txBuilder1, returnUTxO1)
 
 {-| Examine the negative part of the transaction balance and select inputs from
 the wallet's UTXO set to cover the assets required by it. If there are no
@@ -626,18 +633,18 @@ addInputsForAssets ::
   => Tracer m TxBalancingMessage
   -> C.Value -- ^ The balance of the transaction
   -> UtxoSet ctx a -- ^ UTxOs that we can spend to cover the negative part of the balance
-  -> TxBodyContent BuildTx ERA -- ^ Transaction body
-  -> m (TxBodyContent BuildTx ERA, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
-addInputsForAssets dbg txBal availableUtxo txBodyContent
+  -> TxBuilder -- ^ Transaction body
+  -> m (TxBuilder, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
+addInputsForAssets dbg txBal availableUtxo txBuilder
   | null (fst $ splitValue txBal) = do
       traceWith dbg NoAssetsMissing
-      return (txBodyContent, mempty)
+      return (txBuilder, mempty)
   | otherwise = do
       let missingAssets = fmap (second abs) $ fst $ splitValue txBal
       traceWith dbg (MissingAssets $ C.valueFromList missingAssets)
       case Wallet.selectMixedInputsCovering availableUtxo missingAssets of
         Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance availableUtxo) txBal)
-        Just (total, ins) -> pure (txBodyContent & over L.txIns (<> fmap spendPubKeyTxIn ins), total)
+        Just (total, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total)
 
 {-| Examine the positive part of the transaction balance and add any non-Ada assets it contains
 to the provided change output. If the positive part only contains Ada then the
@@ -671,9 +678,9 @@ prepCSInputs ::
   => TransactionSignatureCount
   -> C.TxOut C.CtxTx C.BabbageEra -- ^ Change address
   -> C.UTxO ERA -- ^ UTxOs that may be used for balancing
-  -> C.TxBodyContent C.BuildTx C.BabbageEra -- ^ Unbalanced transaction body
+  -> TxBuilder -- ^ Unbalanced transaction body
   -> m CSInputs -- ^ Inputs for coin balancing
-prepCSInputs sigCount csiChangeAddress csiUtxo csiTxBody = do
+prepCSInputs sigCount csiChangeAddress csiUtxo (BuildTx.buildTx -> csiTxBody) = do
   CSInputs
     <$> pure csiUtxo
     <*> pure csiTxBody
@@ -702,8 +709,9 @@ keyWitnesses (requiredTxIns -> inputs) = do
 -- | The number of signatures required to spend the transaction's inputs
 --   and to satisfy the "extra key witnesses" constraint
 --   and required for certification.
-requiredSignatureCount :: MonadBlockchain m => C.TxBodyContent C.BuildTx C.BabbageEra -> m TransactionSignatureCount
-requiredSignatureCount content = do
+requiredSignatureCount :: MonadBlockchain m => TxBuilder -> m TransactionSignatureCount
+requiredSignatureCount txBuilder = do
+  let content = BuildTx.buildTx txBuilder
   keyWits <- keyWitnesses content
   let hsh (C.PaymentKeyHash h) = h
       extraSigs = view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) content
@@ -711,7 +719,7 @@ requiredSignatureCount content = do
 
       certKeyWits = case view L.txCertificates content of
         C.TxCertificates _ cs _ -> mconcat $ getCertKeyWits <$> cs
-        C.TxCertificatesNone -> Set.empty
+        C.TxCertificatesNone    -> Set.empty
 
       getCertKeyWits :: C.Certificate -> Set CertificateKeyWitness
       getCertKeyWits (C.StakeAddressRegistrationCertificate (C.StakeCredentialByKey hash)) =
@@ -720,7 +728,7 @@ requiredSignatureCount content = do
         Set.empty
       getCertKeyWits (C.StakeAddressDeregistrationCertificate (C.StakeCredentialByKey hash)) =
         Set.singleton $ CertificateStakeKey hash
-      getCertKeyWits (C.StakeAddressDeregistrationCertificate _) = 
+      getCertKeyWits (C.StakeAddressDeregistrationCertificate _) =
         Set.empty
       getCertKeyWits (C.StakeAddressDelegationCertificate (C.StakeCredentialByKey hash) poolHash) =
         Set.fromList [CertificateStakeKey hash, CertificateStakePoolKey poolHash]

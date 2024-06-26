@@ -10,6 +10,7 @@
 module Convex.BuildTx(
   -- * Tx Builder
   TxBuilder(..),
+  liftTxBodyEndo,
   -- ** Looking at transaction inputs
   lookupIndexSpending,
   lookupIndexReference,
@@ -182,6 +183,10 @@ newtype TxBuilder = TxBuilder{ unTxBuilder :: TxBody -> TxBody -> TxBody }
 -}
 buildTx :: TxBuilder -> TxBody
 buildTx txb = buildTxWith txb L.emptyTx
+
+-- | The 'TxBuilder' that modifies the tx body without looking at the final result
+liftTxBodyEndo :: (TxBody -> TxBody) -> TxBuilder
+liftTxBodyEndo f = TxBuilder (const f)
 
 {-| Construct the final @TxBodyContent@ from the provided @TxBodyContent@
 -}

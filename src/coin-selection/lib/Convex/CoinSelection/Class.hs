@@ -12,8 +12,7 @@ module Convex.CoinSelection.Class(
   runTracingBalancingT
 ) where
 
-import           Cardano.Api.Shelley              (AddressInEra, BabbageEra,
-                                                   BuildTx, TxBodyContent)
+import           Cardano.Api.Shelley              (AddressInEra, BabbageEra)
 import qualified Cardano.Api.Shelley              as C
 import           Control.Monad.Catch              (MonadCatch, MonadMask,
                                                    MonadThrow)
@@ -25,6 +24,7 @@ import           Control.Monad.Trans.Class        (MonadTrans (..))
 import qualified Control.Monad.Trans.State        as StrictState
 import qualified Control.Monad.Trans.State.Strict as LazyState
 import           Control.Tracer                   (Tracer, natTracer)
+import           Convex.BuildTx                   (TxBuilder)
 import           Convex.Class                     (MonadBlockchain (..),
                                                    MonadMockchain (..))
 import           Convex.CoinSelection             (BalanceTxError,
@@ -59,7 +59,7 @@ class Monad m => MonadBalance m where
     UtxoSet C.CtxUTxO a ->
 
     -- | The unbalanced transaction body
-    TxBodyContent BuildTx BabbageEra ->
+    TxBuilder ->
 
     -- | The balanced transaction body and the balance changes (per address)
     m (Either BalanceTxError (C.BalancedTxBody BabbageEra, BalanceChanges))

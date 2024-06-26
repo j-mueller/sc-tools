@@ -10,7 +10,7 @@ tests
 import qualified Cardano.Api.Shelley            as C
 import           Control.Monad                  (void)
 import           Control.Monad.Except           (MonadError)
-import           Convex.BuildTx                 (execBuildTx', payToAddress,
+import           Convex.BuildTx                 (execBuildTx, payToAddress,
                                                  setMinAdaDepositAll)
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
@@ -55,7 +55,7 @@ canMintUnAda = mockchainSucceeds (failOnError mintSomeUnAda)
 
 mintSomeUnAda :: (MonadFail m, MonadError BalanceTxError m, MonadMockchain m) => m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
 mintSomeUnAda = do
-  let tx = execBuildTx' (mintUnAda Defaults.networkId 1 10_000_000)
+  let tx = execBuildTx (mintUnAda Defaults.networkId 1 10_000_000)
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   mintingTx <- tryBalanceAndSubmit mempty Wallet.w1 tx
   _ <- unAdaPaymentTo 5_000_000 Wallet.w1 Wallet.w2
@@ -66,7 +66,7 @@ canBurnUnAda :: Assertion
 canBurnUnAda = mockchainSucceeds $ failOnError $ do
   (txi, (txo, st)) <- mintSomeUnAda
 
-  let tx' = execBuildTx' (burnUnAda Defaults.networkId 0 txi txo st 3_000_000)
+  let tx' = execBuildTx (burnUnAda Defaults.networkId 0 txi txo st 3_000_000)
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
   tryBalanceAndSubmit mempty Wallet.w1 tx' >>= getUnAdaOutput
@@ -74,7 +74,7 @@ canBurnUnAda = mockchainSucceeds $ failOnError $ do
 unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
   let vl = unLovelaceValue q
-      tx = execBuildTx'
+      tx = execBuildTx
             $ payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
             >> setMinAdaDepositAll Defaults.ledgerProtocolParameters
   -- create a public key output for the sender to make
