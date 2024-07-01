@@ -25,25 +25,6 @@ benchmarks: true
 -- Always build documentation
 documentation: true
 
-source-repository-package
-  type: git
-  location: https://github.com/Plutonomicon/plutarch-plutus
-  tag: fcdd2209433d8b8979e820dc4fa9aad5f202216d
-  subdir:
-    .
-    plutarch-ledger-api
-    plutarch-extra
-
-source-repository-package
-  type: git
-  location: https://github.com/input-output-hk/xsy-liqwid-libs
-  tag: a799bcca72bcd133cc25a7b6841acb48b3885138
-  subdir:
-    plutarch-context-builder
-    plutarch-unit
-    plutarch-quickcheck
-    liqwid-plutarch-extra
-
 packages:
   src/base
   src/coin-selection
@@ -51,6 +32,5 @@ packages:
   src/mockchain
   src/node-client
   src/optics
-  src/plutarch
   src/wallet
 

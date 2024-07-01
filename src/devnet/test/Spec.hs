@@ -7,8 +7,10 @@ module Main where
 
 import qualified Cardano.Api                     as C
 import qualified Cardano.Api.Shelley             as C
+import           Cardano.Ledger.Api.PParams      (ppMaxTxSizeL)
 import           Cardano.Ledger.Slot             (EpochSize (..))
 import           Control.Concurrent              (threadDelay)
+import           Control.Lens                    (view)
 import           Control.Monad                   (unless)
 import           Control.Monad.Except            (runExceptT)
 import           Convex.Devnet.CardanoNode       (NodeLog (..),
@@ -186,7 +188,7 @@ runWalletServer =
 
 changeMaxTxSize :: IO ()
 changeMaxTxSize =
-  let getMaxTxSize = fmap (C.protocolParamMaxTxSize . C.fromLedgerPParams C.ShelleyBasedEraBabbage) . queryProtocolParameters . fst . rnConnectInfo in
+  let getMaxTxSize = fmap (view ppMaxTxSizeL) . queryProtocolParameters . fst . rnConnectInfo in
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize
