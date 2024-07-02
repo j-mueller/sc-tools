@@ -208,12 +208,13 @@ balanceTransactionBody
                 csiUtxo
                 txbody0
 
-  traceWith tracer $ ExUnitsMap $ fmap (second (first (C.docToString . C.prettyError))) $ Map.toList exUnitsMap
+  traceWith tracer $ ExUnitsMap $ fmap (second (first (C.docToString . C.prettyError) . fmap snd)) $ Map.toList exUnitsMap
 
   exUnitsMap' <- balancingError $
     case Map.mapEither id exUnitsMap of
       (failures, exUnitsMap') ->
-        handleExUnitsErrors C.ScriptValid failures exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
+        handleExUnitsErrors C.ScriptValid failures 
+        $ fmap snd exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
 
   txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody
   let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)

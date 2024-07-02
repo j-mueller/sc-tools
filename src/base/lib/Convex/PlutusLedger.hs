@@ -219,7 +219,7 @@ transValue =
   let t (assetId, C.Quantity quantity) =
         let Value.AssetClass (sym, tn) = transAssetId assetId
         in (sym, Map.singleton tn quantity)
-  in PV1.Value . Map.fromList . fmap t . C.valueToList
+  in PV1.Value . Map.safeFromList . fmap t . C.valueToList
 
 unTransPlutusScript
     :: C.SerialiseAsRawBytes plutusScript

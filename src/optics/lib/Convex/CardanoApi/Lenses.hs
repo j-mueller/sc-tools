@@ -37,6 +37,8 @@ module Convex.CardanoApi.Lenses(
   txCertificates,
   txProposalProcedures,
   txVotingProcedures,
+  txCurrentTreasuryValue,
+  txTreasuryDonation,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -137,10 +139,11 @@ import           Data.Word                          (Word64)
 import           PlutusLedgerApi.V1                 (PubKeyHash (..))
 import           Cardano.Ledger.Mary.Value (MaryValue (..))
 import qualified PlutusLedgerApi.V1                 as PV1
+import           PlutusLedgerApi.V1.Interval        (Closure, Extended (..),
+                                                     Interval (..),
+                                                     LowerBound (..),
+                                                     UpperBound (..))
 import qualified PlutusTx.Prelude                   as PlutusTx
-import           PlutusLedgerApi.V1.Interval (Closure, Extended (..),
-                                              Interval (..), LowerBound (..),
-                                              UpperBound (..))
 
 -- | The class of eras that are after Allegra.
 -- TODO Move to cardano-api
@@ -231,6 +234,8 @@ emptyTx =
     , C.txScriptValidity = C.TxScriptValidityNone
     , C.txProposalProcedures = Nothing
     , C.txVotingProcedures = Nothing
+    , C.txCurrentTreasuryValue = Nothing
+    , C.txTreasuryDonation = Nothing
     }
 
 {-| A transaction output with no value
@@ -328,6 +333,16 @@ txCertificates :: Lens' (C.TxBodyContent v era) (C.TxCertificates v era)
 txCertificates = lens get set_ where
   get = C.txCertificates
   set_ body k = body{C.txCertificates = k}
+
+txCurrentTreasuryValue :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era Coin))
+txCurrentTreasuryValue = lens get set_ where
+  get = C.txCurrentTreasuryValue
+  set_ body k = body{C.txCurrentTreasuryValue = k}
+
+txTreasuryDonation :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era Coin))
+txTreasuryDonation = lens get set_ where
+  get = C.txCurrentTreasuryValue
+  set_ body k = body{C.txTreasuryDonation = k}
 
 txProposalProcedures :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures v era)))
 txProposalProcedures = lens get set_ where
