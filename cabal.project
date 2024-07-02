@@ -15,8 +15,8 @@ repository cardano-haskell-packages
 
 with-compiler: ghc-9.6.4
 index-state:
-  , hackage.haskell.org 2024-04-16T12:16:29Z
-  , cardano-haskell-packages 2024-04-15T08:36:34Z
+  , hackage.haskell.org 2024-06-21T12:16:29Z
+  , cardano-haskell-packages 2024-06-21T08:36:34Z
 
 -- Always build tests and benchmarks.
 tests: true
@@ -25,25 +25,6 @@ benchmarks: true
 -- Always build documentation
 documentation: true
 
-source-repository-package
-  type: git
-  location: https://github.com/Plutonomicon/plutarch-plutus
-  tag: fcdd2209433d8b8979e820dc4fa9aad5f202216d
-  subdir:
-    .
-    plutarch-ledger-api
-    plutarch-extra
-
-source-repository-package
-  type: git
-  location: https://github.com/input-output-hk/xsy-liqwid-libs
-  tag: a799bcca72bcd133cc25a7b6841acb48b3885138
-  subdir:
-    plutarch-context-builder
-    plutarch-unit
-    plutarch-quickcheck
-    liqwid-plutarch-extra
-
 packages:
   src/base
   src/coin-selection
@@ -51,6 +32,5 @@ packages:
   src/mockchain
   src/node-client
   src/optics
-  src/plutarch
   src/wallet
 

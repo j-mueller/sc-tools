@@ -58,13 +58,13 @@ class Monad m => MonadBalance m where
     AddressInEra BabbageEra ->
 
     -- | Set of UTxOs that can be used to supply missing funds
-    UtxoSet C.CtxUTxO a ->
+    UtxoSet C.CtxUTxO () ->
 
     -- | The unbalanced transaction body
     TxBuilder ->
 
     -- | The balanced transaction body and the balance changes (per address)
-    m (Either BalanceTxError (C.BalancedTxBody BabbageEra, BalanceChanges))
+    m (Either (BalanceTxError C.BabbageEra) (C.BalancedTxBody BabbageEra, BalanceChanges))
 
 newtype BalancingT m a = BalancingT{runBalancingT :: m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, MonadBlockchain)
@@ -90,7 +90,7 @@ instance MonadBalance m => MonadBalance (MonadLogIgnoreT m) where
   balanceTx addr utxos = lift . balanceTx addr utxos
 
 instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
-  balanceTx addr utxos txb = runExceptT (Convex.CoinSelection.balanceTx mempty (emptyTxOut addr) utxos txb)
+  balanceTx addr utxos txb = runExceptT (Convex.CoinSelection.balanceTx mempty (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb)
 
 instance MonadMockchain m => MonadMockchain (BalancingT m) where
   setReward cred = lift . setReward cred
@@ -116,7 +116,7 @@ deriving newtype instance MonadError e m => MonadError e (TracingBalancingT m)
 instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
   balanceTx addr utxos txb = TracingBalancingT $ do
     tr <- ask
-    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (emptyTxOut addr) utxos txb)
+    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb)
 
 instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
   setReward cred = lift . setReward cred

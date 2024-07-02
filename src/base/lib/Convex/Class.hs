@@ -40,7 +40,6 @@ module Convex.Class(
 ) where
 
 import qualified Cardano.Api                                       as C
-import           Test.QuickCheck.Monadic (PropertyM)
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     EraHistory (..),
                                                                     Hash,
@@ -53,7 +52,8 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
-import           Cardano.Ledger.Shelley.API                        (UTxO, Coin (..))
+import           Cardano.Ledger.Shelley.API                        (Coin (..),
+                                                                    UTxO)
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
 import           Control.Lens                                      (_1, view)
@@ -78,6 +78,7 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
+import           Convex.Utxos                                      (UtxoSet)
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
@@ -94,6 +95,7 @@ import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult
 import qualified PlutusLedgerApi.V1                                as PV1
 import           Prettyprinter                                     (Pretty (..),
                                                                     (<+>))
+import           Test.QuickCheck.Monadic                           (PropertyM)
 
 {-| Send transactions and resolve tx inputs.
 -}
@@ -276,7 +278,7 @@ control over the capabilities they require.
 class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain state.
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (C.UTxO BabbageEra)
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO ())
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -300,7 +302,7 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (C.UTxO BabbageEra)
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO ())
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]

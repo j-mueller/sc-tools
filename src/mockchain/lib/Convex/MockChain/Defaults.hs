@@ -59,6 +59,7 @@ import           Data.SOP.NonEmpty                    (nonEmptyHead)
 import           Data.SOP.Strict                      (NP (..))
 import           Data.Time.Calendar                   (fromGregorian)
 import           Data.Time.Clock                      (UTCTime (..))
+import qualified Ouroboros.Consensus.Block.Abstract   as Ouroboros
 import qualified Ouroboros.Consensus.HardFork.History as Ouroboros
 import           Ouroboros.Consensus.Shelley.Eras     (StandardBabbage)
 
@@ -77,8 +78,11 @@ eraHistory :: EraHistory
 eraHistory =
   EraHistory (Ouroboros.mkInterpreter $ Ouroboros.summaryWithExactly list) -- $ Ouroboros.summaryWithExactly list)
     where
-      one = nonEmptyHead $ Ouroboros.getSummary $ Ouroboros.neverForksSummary epochSize slotLength
+      one = nonEmptyHead $ Ouroboros.getSummary $ Ouroboros.neverForksSummary epochSize slotLength window
       list = Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
+
+      -- NB: Not sure what to put here. Looks like this is usually 2 * max-rollbacks.
+      window = Ouroboros.GenesisWindow (2 * 2160)
 
 -- | A sensible default 'EpochSize' value for the emulator
 epochSize :: EpochSize

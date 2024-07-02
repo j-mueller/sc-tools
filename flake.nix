@@ -29,6 +29,7 @@
                     cabal = "latest";
                     haskell-language-server = "latest";
                     ghcide = "latest";
+                    ghcid = "latest";
                   };
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };

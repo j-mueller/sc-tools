@@ -112,7 +112,9 @@ test-suite convex-devnet-test
     , convex-devnet
     , convex-base
     , cardano-api
+    , cardano-ledger-api
     , cardano-ledger-core -any
+    , lens
     , mtl
     , aeson
     , containers
