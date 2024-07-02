@@ -30,6 +30,8 @@ module Convex.CardanoApi.Lenses(
   txCertificates,
   txProposalProcedures,
   txVotingProcedures,
+  txCurrentTreasuryValue,
+  txTreasuryDonation,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -128,10 +130,11 @@ import           Data.Proxy                         (Proxy (..))
 import           Data.Word                          (Word64)
 import           PlutusLedgerApi.V1                 (PubKeyHash (..))
 import qualified PlutusLedgerApi.V1                 as PV1
+import           PlutusLedgerApi.V1.Interval        (Closure, Extended (..),
+                                                     Interval (..),
+                                                     LowerBound (..),
+                                                     UpperBound (..))
 import qualified PlutusTx.Prelude                   as PlutusTx
-import           PlutusLedgerApi.V1.Interval (Closure, Extended (..),
-                                              Interval (..), LowerBound (..),
-                                              UpperBound (..))
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 -}
 emptyTx :: C.TxBodyContent C.BuildTx BabbageEra
@@ -157,6 +160,8 @@ emptyTx =
     , C.txScriptValidity = C.TxScriptValidityNone
     , C.txProposalProcedures = Nothing
     , C.txVotingProcedures = Nothing
+    , C.txCurrentTreasuryValue = Nothing
+    , C.txTreasuryDonation = Nothing
     }
 
 {-| A transaction output with no value
@@ -242,6 +247,16 @@ txCertificates :: Lens' (C.TxBodyContent v BabbageEra) (C.TxCertificates v Babba
 txCertificates = lens get set_ where
   get = C.txCertificates
   set_ body k = body{C.txCertificates = k}
+
+txCurrentTreasuryValue :: Lens' (C.TxBodyContent v BabbageEra) (Maybe (C.Featured C.ConwayEraOnwards BabbageEra Coin))
+txCurrentTreasuryValue = lens get set_ where
+  get = C.txCurrentTreasuryValue
+  set_ body k = body{C.txCurrentTreasuryValue = k}
+
+txTreasuryDonation :: Lens' (C.TxBodyContent v BabbageEra) (Maybe (C.Featured C.ConwayEraOnwards BabbageEra Coin))
+txTreasuryDonation = lens get set_ where
+  get = C.txCurrentTreasuryValue
+  set_ body k = body{C.txTreasuryDonation = k}
 
 txProposalProcedures :: Lens' (C.TxBodyContent v BabbageEra) (Maybe (C.Featured C.ConwayEraOnwards BabbageEra (C.TxProposalProcedures v BabbageEra)))
 txProposalProcedures = lens get set_ where
