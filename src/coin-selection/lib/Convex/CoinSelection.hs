@@ -568,18 +568,33 @@ checkCompatibilityLevel tr (BuildTx.buildTx -> txB) (UtxoSet w) = do
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBuilder -> m (C.Tx ERA, BalanceChanges)
-balanceForWallet dbg wallet walletUtxo txb = do
+balanceForWallet ::
+  (MonadBlockchain m, MonadError BalanceTxError m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  UtxoSet C.CtxUTxO a ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  m (C.Tx ERA, BalanceChanges)
+balanceForWallet dbg wallet walletUtxo txb changePosition = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = L.emptyTxOut walletAddress
-  balanceForWalletReturn dbg wallet walletUtxo txOut txb
+  balanceForWalletReturn dbg wallet walletUtxo txOut txb changePosition
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> m (C.Tx ERA, BalanceChanges)
-balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
-  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
+balanceForWalletReturn ::
+  (MonadBlockchain m, MonadError BalanceTxError m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  UtxoSet C.CtxUTxO a ->
+  C.TxOut C.CtxTx C.BabbageEra ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn dbg wallet walletUtxo returnOutput txb changePosition = do
+  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb changePosition
 
 {-| Sign a transaction with the wallet's key
 -}
