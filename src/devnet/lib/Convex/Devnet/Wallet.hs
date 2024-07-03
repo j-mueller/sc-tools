@@ -35,7 +35,7 @@ import qualified Convex.BuildTx                  as BuildTx
 import           Convex.Class                    (MonadBlockchain (networkId),
                                                   runMonadBlockchainCardanoNodeT,
                                                   sendTx)
-import           Convex.CoinSelection            (ChangeOutputPosition)
+import           Convex.CoinSelection            (ChangeOutputPosition (TrailingChange))
 import qualified Convex.CoinSelection            as CoinSelection
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries       as NodeQueries
@@ -68,7 +68,7 @@ walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
 sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Quantity -> IO (Tx BabbageEra)
 sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
-  balanceAndSubmit tracer node fct (BuildTx.execBuildTx $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) []
+  balanceAndSubmit tracer node fct (BuildTx.execBuildTx $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) TrailingChange []
 
 {-| Create a new wallet and send @n@ times the given amount of lovelace to it. Returns when the seed txn has been registered
 on the chain.
