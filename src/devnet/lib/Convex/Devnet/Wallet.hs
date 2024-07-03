@@ -35,6 +35,7 @@ import qualified Convex.BuildTx                  as BuildTx
 import           Convex.Class                    (MonadBlockchain (networkId),
                                                   runMonadBlockchainCardanoNodeT,
                                                   sendTx)
+import           Convex.CoinSelection            (ChangeOutputPosition)
 import qualified Convex.CoinSelection            as CoinSelection
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries       as NodeQueries
@@ -104,11 +105,11 @@ balanceAndSubmit tracer node wallet tx keys = do
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
-balanceAndSubmitReturn tracer node wallet returnOutput tx keys = do
+balanceAndSubmitReturn :: Tracer IO WalletLog -> RunningNode -> Wallet -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmitReturn tracer node wallet returnOutput tx changePosition keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx)
+    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos returnOutput tx changePosition)
 
     let wit' = (C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage body <$> keys) ++ wit
         tx'  = C.makeSignedTransaction wit' body
