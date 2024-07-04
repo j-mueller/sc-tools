@@ -34,3 +34,15 @@ packages:
   src/optics
   src/wallet
 
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/io-sim
+  tag: a22dced7d012d10227ab0fe370889665c064caf9
+  subdir:
+    io-sim
+    io-classes
+    io-classes-mtl
+    si-timers
+    strict-stm
+    strict-mvar
+  --sha256: U8DERJj4t1h8kVwv9NovfKuxfTgb1E15q2EAhAT6Zes=
