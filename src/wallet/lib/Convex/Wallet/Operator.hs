@@ -14,12 +14,14 @@ module Convex.Wallet.Operator(
   Signing,
   Verification,
   toVerification,
+  toShelleyWitnessSigningKey,
   verificationKey,
   signTx,
   signTxOperator,
   Operator(..),
   operatorAddress,
   operatorPaymentCredential,
+  operatorShelleyWitnessSigningKey,
   operatorWalletID,
   operatorReturnOutput,
   generateOperator,
@@ -78,6 +80,11 @@ verificationKey = \case
   PESigningEx k    -> C.castVerificationKey $ C.getVerificationKey k
   PESigning k      -> C.getVerificationKey k
   PEVerification k -> k
+
+toShelleyWitnessSigningKey :: PaymentExtendedKey Signing -> C.ShelleyWitnessSigningKey
+toShelleyWitnessSigningKey = \case
+  PESigningEx k -> C.WitnessPaymentExtendedKey k
+  PESigning   k -> C.WitnessPaymentKey k
 
 toVerification :: PaymentExtendedKey Signing -> PaymentExtendedKey Verification
 toVerification = PEVerification . verificationKey
@@ -141,6 +148,10 @@ operatorWalletID Operator{oPaymentKey, oStakeKey} =
   ( transPubKeyHash $ C.verificationKeyHash $ verificationKey oPaymentKey
   , fmap (transStakeKeyHash . C.verificationKeyHash) oStakeKey
   )
+
+operatorShelleyWitnessSigningKey :: Operator Signing -> C.ShelleyWitnessSigningKey
+operatorShelleyWitnessSigningKey Operator { oPaymentKey } =
+  toShelleyWitnessSigningKey oPaymentKey
 
 {-| An empty output locked by the operator's payment credential
 -}
