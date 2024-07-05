@@ -28,6 +28,7 @@ module Convex.CoinSelection(
   BalanceTxError(..),
   BalancingError(..),
   TxBalancingMessage(..),
+  ChangeOutputPosition(..),
   balanceTransactionBody,
   balanceForWallet,
   balanceForWalletReturn,
@@ -170,19 +171,43 @@ data TxBalancingMessage =
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON)
 
-{-| Perform transaction balancing
+data ChangeOutputPosition
+  = LeadingChange
+  | TrailingChange
+
+{-| Perform transaction balancing with configurable change output position
 -}
-balanceTransactionBody :: (MonadError BalancingError m) => Tracer m TxBalancingMessage -> SystemStart -> EraHistory -> C.LedgerProtocolParameters BabbageEra -> Set PoolId -> CSInputs -> m (C.BalancedTxBody ERA, BalanceChanges)
-balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools CSInputs{csiUtxo, csiTxBody, csiChangeOutput, csiNumWitnesses=TransactionSignatureCount numWits} = do
+balanceTransactionBody ::
+  (MonadError BalancingError m) =>
+  Tracer m TxBalancingMessage ->
+  SystemStart ->
+  EraHistory ->
+  C.LedgerProtocolParameters BabbageEra ->
+  Set PoolId ->
+  CSInputs ->
+  ChangeOutputPosition ->
+  m (C.BalancedTxBody ERA, BalanceChanges)
+balanceTransactionBody
+  tracer
+  systemStart
+  eraHistory
+  protocolParams
+  stakePools
+  CSInputs{csiUtxo, csiTxBody, csiChangeOutput, csiNumWitnesses=TransactionSignatureCount numWits}
+  changePosition = do
   let mkChangeOutputFor i = csiChangeOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId ?~ i
       changeOutputSmall = mkChangeOutputFor 1
       changeOutputLarge = mkChangeOutputFor ((2^(64 :: Integer)) - 1)
 
   traceWith tracer StartBalancing{numInputs = csiTxBody ^. L.txIns . to length, numOutputs = csiTxBody ^. L.txOuts . to length}
 
-  -- append output instead of prepending
+  -- Function to add change output based on position
+  let addChangeOutput change txb = case changePosition of
+        LeadingChange  -> txb & prependTxOut change
+        TrailingChange -> txb & appendTxOut change
+
   txbody0 <-
-    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage $ csiTxBody & appendTxOut changeOutputSmall
+    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage $ csiTxBody & addChangeOutput changeOutputSmall
 
   exUnitsMap <- balancingError . first C.TxBodyErrorValidityInterval $
                 C.evaluateTransactionExecutionUnits C.BabbageEra
@@ -233,7 +258,7 @@ balanceTransactionBody tracer systemStart eraHistory protocolParams stakePools C
   let finalBodyContent =
         txbodycontent1
           & set L.txFee t_fee
-          & appendTxOut changeOutputBalance
+          & addChangeOutput changeOutputBalance
 
   txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage finalBodyContent
 
@@ -252,6 +277,9 @@ checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
   if C.txOutValueToLovelace v >= minUTxO
   then pure ()
   else throwError (CheckMinUtxoValueError txout $ C.lovelaceToQuantity minUTxO)
+
+prependTxOut :: C.TxOut C.CtxTx C.BabbageEra -> C.TxBodyContent C.BuildTx ERA -> C.TxBodyContent C.BuildTx ERA
+prependTxOut out = over L.txOuts (out :)
 
 appendTxOut :: C.TxOut C.CtxTx C.BabbageEra -> C.TxBodyContent C.BuildTx ERA -> C.TxBodyContent C.BuildTx ERA
 appendTxOut out = over L.txOuts (|> out)
@@ -499,9 +527,12 @@ balanceTx ::
   -- | The unbalanced transaction body
   TxBuilder ->
 
+  -- | The return output position
+  ChangeOutputPosition ->
+
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
-balanceTx dbg returnUTxO0 walletUtxo txb = do
+balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
   params <- queryProtocolParameters
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
@@ -522,7 +553,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb = do
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
   hist <- queryEraHistory
-  mapError ABalancingError (balanceTransactionBody (natTracer lift dbg) start hist params pools csi)
+  mapError ABalancingError (balanceTransactionBody (natTracer lift dbg) start hist params pools csi changePosition)
 
 -- | Check the compatibility level of the transaction body
 --   and remove any incompatible UTxOs from the UTxO set.
@@ -537,18 +568,33 @@ checkCompatibilityLevel tr (BuildTx.buildTx -> txB) (UtxoSet w) = do
 
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
-balanceForWallet :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> TxBuilder -> m (C.Tx ERA, BalanceChanges)
-balanceForWallet dbg wallet walletUtxo txb = do
+balanceForWallet ::
+  (MonadBlockchain m, MonadError BalanceTxError m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  UtxoSet C.CtxUTxO a ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  m (C.Tx ERA, BalanceChanges)
+balanceForWallet dbg wallet walletUtxo txb changePosition = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = L.emptyTxOut walletAddress
-  balanceForWalletReturn dbg wallet walletUtxo txOut txb
+  balanceForWalletReturn dbg wallet walletUtxo txOut txb changePosition
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
-balanceForWalletReturn :: (MonadBlockchain m, MonadError BalanceTxError m) => Tracer m TxBalancingMessage -> Wallet -> UtxoSet C.CtxUTxO a -> C.TxOut C.CtxTx C.BabbageEra -> TxBuilder -> m (C.Tx ERA, BalanceChanges)
-balanceForWalletReturn dbg wallet walletUtxo returnOutput txb = do
-  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb
+balanceForWalletReturn ::
+  (MonadBlockchain m, MonadError BalanceTxError m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  UtxoSet C.CtxUTxO a ->
+  C.TxOut C.CtxTx C.BabbageEra ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  m (C.Tx ERA, BalanceChanges)
+balanceForWalletReturn dbg wallet walletUtxo returnOutput txb changePosition = do
+  first (signForWallet wallet) <$> balanceTx dbg returnOutput walletUtxo txb changePosition
 
 {-| Sign a transaction with the wallet's key
 -}

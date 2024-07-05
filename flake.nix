@@ -32,10 +32,6 @@
                   };
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };
-                sha256map = {
-                  "https://github.com/Plutonomicon/plutarch-plutus"."fcdd2209433d8b8979e820dc4fa9aad5f202216d" = "sha256-gQwaYGIds5owHivXi+ktH7CGeBqoLBykVxyHZZiDUM4=";
-                  "https://github.com/input-output-hk/xsy-liqwid-libs"."a799bcca72bcd133cc25a7b6841acb48b3885138" = "sha256-ibAtsyejc3SOUWKoyxSQ5r3jg9eOfyEHkpO+qTrwa2U=";
-                };
               };
             })
           ];

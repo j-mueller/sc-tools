@@ -15,6 +15,7 @@ import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
 import           Convex.CardanoApi.Lenses                  (emptyTx)
 import qualified Convex.CardanoApi.Lenses                  as L
+import           Convex.CoinSelection           (ChangeOutputPosition (TrailingChange))
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.MockChain.Utils         (mockchainSucceeds)
@@ -57,7 +58,7 @@ mintSomeUnAda :: (MonadFail m, MonadError BalanceTxError m, MonadMockchain m) =>
 mintSomeUnAda = do
   let tx = emptyTx & mintUnAda Defaults.networkId 1 10_000_000
   _ <- Wallet.w2 `paymentTo` Wallet.w1
-  mintingTx <- balanceAndSubmit Wallet.w1 tx
+  mintingTx <- balanceAndSubmit Wallet.w1 tx TrailingChange
   _ <- unAdaPaymentTo 5_000_000 Wallet.w1 Wallet.w2
 
   getUnAdaOutput mintingTx
@@ -69,7 +70,7 @@ canBurnUnAda = mockchainSucceeds $ failOnError $ do
   let tx' = emptyTx & burnUnAda Defaults.networkId 0 txi txo st 3_000_000
   _ <- Wallet.w3 `paymentTo` Wallet.w1
   _ <- Wallet.w2 `paymentTo` Wallet.w1
-  balanceAndSubmit Wallet.w1 tx' >>= getUnAdaOutput
+  balanceAndSubmit Wallet.w1 tx' TrailingChange >>= getUnAdaOutput
 
 unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadError BalanceTxError m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
@@ -80,7 +81,7 @@ unAdaPaymentTo q wFrom wTo = do
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
-  balanceAndSubmit wFrom tx
+  balanceAndSubmit wFrom tx TrailingChange
 
 {-| Get exactly 1 un-Ada output from the transaction. Fails if there are 0 or more than one
 un-Ada outputs.
