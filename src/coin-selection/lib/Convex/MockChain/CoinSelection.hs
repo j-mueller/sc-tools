@@ -19,11 +19,13 @@ import           Control.Monad.Except      (MonadError)
 import           Control.Tracer            (Tracer)
 import           Convex.BuildTx            (TxBuilder, execBuildTx,
                                             payToAddress, setMinAdaDepositAll)
+import           Convex.CardanoApi.Lenses  (emptyTxOut)
 import           Convex.Class              (MonadBlockchain (..),
                                             MonadMockchain, SendTxFailed (..))
-import           Convex.CoinSelection      (BalanceTxError, TxBalancingMessage)
+import           Convex.CoinSelection      (BalanceTxError,
+                                            ChangeOutputPosition (TrailingChange),
+                                            TxBalancingMessage)
 import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.CardanoApi.Lenses (emptyTxOut)
 import qualified Convex.MockChain          as MockChain
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)
@@ -34,50 +36,53 @@ import           Data.Functor              (($>))
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID
 -}
-balanceAndSubmit
-  :: (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m)
-  => Tracer m TxBalancingMessage
-  -> Wallet
-  -> TxBuilder
-  -> [C.ShelleyWitnessSigningKey]
-  -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
-balanceAndSubmit dbg wallet keys tx = do
+balanceAndSubmit ::
+  (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  [C.ShelleyWitnessSigningKey] ->
+  m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+balanceAndSubmit dbg wallet tx changePosition keys = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = C.InAnyCardanoEra C.BabbageEra $ emptyTxOut walletAddress
-  balanceAndSubmitReturn dbg wallet txOut keys tx
+  balanceAndSubmitReturn dbg wallet txOut tx changePosition keys
 
 {-| Balance and submit a transaction using the wallet's UTXOs
 on the mockchain, using the default network ID. Fail if the
 transaction is not accepted by the node.
 -}
-tryBalanceAndSubmit
-  :: (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m, MonadFail m)
-  => Tracer m TxBalancingMessage
-  -> Wallet
-  -> TxBuilder
-  -> [C.ShelleyWitnessSigningKey]
-  -> m (C.Tx CoinSelection.ERA)
-tryBalanceAndSubmit dbg wallet tx keys = do
+tryBalanceAndSubmit ::
+  (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m, MonadFail m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  [C.ShelleyWitnessSigningKey] ->
+  m (C.Tx CoinSelection.ERA)
+tryBalanceAndSubmit dbg wallet tx changePosition keys = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = C.InAnyCardanoEra C.BabbageEra $ emptyTxOut walletAddress
-  balanceAndSubmitReturn dbg wallet txOut tx keys >>= either (fail . show) pure
+  balanceAndSubmitReturn dbg wallet txOut tx changePosition keys >>= either (fail . show) pure
 
 {-| Balance and submit a transaction using the given return output and the wallet's UTXOs
 on the mockchain, using the default network ID
 -}
-balanceAndSubmitReturn
-  :: (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m)
-  => Tracer m TxBalancingMessage
-  -> Wallet
-  -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
-  -> TxBuilder
-  -> [C.ShelleyWitnessSigningKey]
-  -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
-balanceAndSubmitReturn dbg wallet returnOutput tx keys = do
+balanceAndSubmitReturn ::
+  (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m) =>
+  Tracer m TxBalancingMessage ->
+  Wallet ->
+  C.InAnyCardanoEra (C.TxOut C.CtxTx) ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  [C.ShelleyWitnessSigningKey] ->
+  m (Either SendTxFailed (C.Tx CoinSelection.ERA))
+balanceAndSubmitReturn dbg wallet returnOutput tx changePosition keys = do
   u <- MockChain.walletUtxo wallet
-  (tx', _) <- CoinSelection.balanceForWalletReturn dbg wallet u returnOutput tx
+  (tx', _) <- CoinSelection.balanceForWalletReturn dbg wallet u returnOutput tx changePosition
   let
     appendKeys (C.Tx body wit) =
       C.makeSignedTransaction
@@ -92,7 +97,7 @@ balanceAndSubmitReturn dbg wallet returnOutput tx keys = do
 paymentTo :: (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m) => Wallet -> Wallet -> m (Either SendTxFailed (C.Tx CoinSelection.ERA))
 paymentTo wFrom wTo = do
   let tx = execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId wTo) (C.lovelaceToValue 10_000_000))
-  balanceAndSubmit mempty wFrom tx []
+  balanceAndSubmit mempty wFrom tx TrailingChange []
 
 {-| Pay 100 Ada from one of the seed addresses to an @Operator@
 -}
@@ -109,4 +114,4 @@ payToOperator' dbg value wFrom Operator{oPaymentKey} = do
         (C.PaymentCredentialByKey $ C.verificationKeyHash $ verificationKey oPaymentKey)
         C.NoStakeAddress
       tx = execBuildTx (payToAddress addr value >> setMinAdaDepositAll p)
-  balanceAndSubmit dbg wFrom tx []
+  balanceAndSubmit dbg wFrom tx TrailingChange []

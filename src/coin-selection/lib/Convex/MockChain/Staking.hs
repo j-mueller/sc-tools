@@ -7,14 +7,16 @@ import           Control.Monad.Except           (MonadError)
 import           Control.Monad.IO.Class         (MonadIO (..))
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadMockchain)
-import           Convex.CoinSelection           (BalanceTxError, ERA)
+import           Convex.CoinSelection           (BalanceTxError,
+                                                 ChangeOutputPosition (TrailingChange),
+                                                 ERA)
 import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.Wallet                  (Wallet)
 import           Data.Ratio                     ((%))
 
 {-| Run the 'Mockchain' action with registered pool
--} 
+-}
 registerPool :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError Convex.CoinSelection.ERA) m, MonadFail m) => Wallet -> m C.PoolId
 registerPool wallet = do
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -60,7 +62,7 @@ registerPool wallet = do
       . C.StakePoolRegistrationRequirementsPreConway C.ShelleyToBabbageEraBabbage
       . C.toShelleyPoolParams
       $ stakePoolParams
-  
+
     stakeCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate stakeCert
 
@@ -70,8 +72,8 @@ registerPool wallet = do
     delegCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate delegationCert
 
-  void $ tryBalanceAndSubmit mempty wallet stakeCertTx []
-  void $ tryBalanceAndSubmit mempty wallet poolCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
-  void $ tryBalanceAndSubmit mempty wallet delegCertTx [C.WitnessStakeKey stakeKey]
+  void $ tryBalanceAndSubmit mempty wallet stakeCertTx TrailingChange []
+  void $ tryBalanceAndSubmit mempty wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+  void $ tryBalanceAndSubmit mempty wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 
   pure poolId

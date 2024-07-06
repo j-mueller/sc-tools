@@ -42,7 +42,7 @@ import           Control.Tracer                     (Tracer, natTracer)
 import           Convex.BuildTx                     (TxBuilder)
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT)
-import           Convex.CoinSelection               (BalanceTxError,
+import           Convex.CoinSelection               (BalanceTxError, ChangeOutputPosition,
                                                      TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MockChain                   (MockchainT, utxoSet)
@@ -112,10 +112,11 @@ balanceTx
   -> [PaymentCredential]
   -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
   -> TxBuilder
+  -> ChangeOutputPosition
   -> m (Either (BalanceTxError C.BabbageEra) (BalancedTxBody BabbageEra, BalanceChanges))
-balanceTx dbg inputCredentials changeOutput txBody = do
+balanceTx dbg inputCredentials changeOutput txBody changePosition = do
   o <- utxosByPaymentCredentials (Set.fromList inputCredentials)
-  runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody)
+  runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody changePosition)
 
 newtype WalletAPIQueryT m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog)
@@ -145,32 +146,37 @@ balancePaymentCredentials ::
   [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
   Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
   TxBuilder ->
+  ChangeOutputPosition ->
   m (C.Tx C.BabbageEra)
-balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody = do
+balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody changePosition = do
   output <- fmap (C.InAnyCardanoEra C.BabbageEra) $ maybe (returnOutputFor primaryCred) pure returnOutput
-  (C.BalancedTxBody _ txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody)
+  (C.BalancedTxBody _ txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody changePosition)
   pure (C.makeSignedTransaction [] txbody)
 
 {-| Balance a transaction body using the funds locked by the payment credential
 -}
-balancePaymentCredential
-  :: (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m)
-  => Tracer m TxBalancingMessage
-  -> C.PaymentCredential
-  -> Maybe (C.TxOut C.CtxTx C.BabbageEra)
-  -> TxBuilder
-  -> m (C.Tx C.BabbageEra)
+balancePaymentCredential ::
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m) =>
+  Tracer m TxBalancingMessage ->
+  C.PaymentCredential ->
+  Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  m (C.Tx C.BabbageEra)
 balancePaymentCredential dbg cred = balancePaymentCredentials dbg cred []
 
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
-balanceAndSubmitOperator
-  :: (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m)
-  => Tracer m TxBalancingMessage
-  -> Operator Signing
-  -> Maybe (C.TxOut C.CtxTx C.BabbageEra)
-  -> TxBuilder
-  -> m (C.Tx C.BabbageEra)
-balanceAndSubmitOperator dbg op changeOut txBody = balancePaymentCredential dbg (operatorPaymentCredential op) changeOut txBody >>= signAndSubmitOperator op
+balanceAndSubmitOperator ::
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m) =>
+  Tracer m TxBalancingMessage ->
+  Operator Signing ->
+  Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
+  TxBuilder ->
+  ChangeOutputPosition ->
+  m (C.Tx C.BabbageEra)
+balanceAndSubmitOperator dbg op changeOut txBody changePosition =
+  balancePaymentCredential dbg (operatorPaymentCredential op) changeOut txBody changePosition
+    >>= signAndSubmitOperator op
 
 {-| Add the operator's signature to the transaction and send it to the blockchain
 -}
