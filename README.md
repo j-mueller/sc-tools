@@ -16,9 +16,9 @@ The `main` branch uses the following versions of its major dependencies:
 
 |Name|Version|
 |--|--|
-|`cardano-node`|[8.12.0](https://chap.intersectmbo.org/package/cardano-node-8.12.0/)|
-|`cardano-api`|[8.48.0.1](https://chap.intersectmbo.org/package/cardano-api-8.48.0.1/)|
-|`ghc`|9.6.4|
+|`cardano-node`|[9.0.0](https://chap.intersectmbo.org/package/cardano-node-9.0.0/)|
+|`cardano-api`|[9.0.0](https://chap.intersectmbo.org/package/cardano-api-9.0.0.0/)|
+|`ghc`|9.6.5|
 |`cabal`|3.10.1.0|
 
 Support for `ghc-8.10.7` and `cardano-node-1.35.4` will be maintained for a little while in the [`node-1.35.4`](https://github.com/j-mueller/sc-tools/tree/node-1.35.4) branch.
