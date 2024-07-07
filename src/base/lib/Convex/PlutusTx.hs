@@ -1,15 +1,14 @@
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ViewPatterns     #-}
 {-| Functions for dealing with @plutus-tx@ scripts
 -}
 module Convex.PlutusTx(
   compiledCodeToScript
 ) where
 
-import           Cardano.Api                      (PlutusScript)
-import qualified Cardano.Api.Shelley              as C
-import           PlutusLedgerApi.Common           (serialiseCompiledCode)
-import           PlutusTx.Code                    (CompiledCode)
+import           Cardano.Api            (PlutusScript)
+import qualified Cardano.Api.Shelley    as C
+import           PlutusLedgerApi.Common (serialiseCompiledCode)
+import           PlutusTx.Code          (CompiledCode)
 
 {-| Get the 'PlutusScript' of a 'CompiledCode'
 -}

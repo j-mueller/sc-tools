@@ -23,7 +23,7 @@ jobs:
       - uses: haskell-actions/setup@v2
         id: cabal-setup
         with:
-          ghc-version: '9.6.4'
+          ghc-version: '9.6.5'
           cabal-version: '3.10.1.0'
 
       - uses: actions/checkout@v4

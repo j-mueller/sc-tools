@@ -19,12 +19,13 @@ import           Control.Monad.Except      (MonadError)
 import           Control.Tracer            (Tracer)
 import           Convex.BuildTx            (TxBuilder, execBuildTx,
                                             payToAddress, setMinAdaDepositAll)
+import           Convex.CardanoApi.Lenses  (emptyTxOut)
 import           Convex.Class              (MonadBlockchain (..),
                                             MonadMockchain, SendTxFailed (..))
-import           Convex.CoinSelection      (BalanceTxError, ChangeOutputPosition(TrailingChange),
+import           Convex.CoinSelection      (BalanceTxError,
+                                            ChangeOutputPosition (TrailingChange),
                                             TxBalancingMessage)
 import qualified Convex.CoinSelection      as CoinSelection
-import           Convex.CardanoApi.Lenses (emptyTxOut)
 import qualified Convex.MockChain          as MockChain
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)

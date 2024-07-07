@@ -1,5 +1,5 @@
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell        #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 {- | Module: Cardano.Djed.Test.TransactionFamilies.Optics
@@ -24,26 +24,14 @@ module Convex.PlutusLedgerApi.Optics (
   AsOutputDatum (..),
 ) where
 
-import Control.Lens (
-  Lens',
-  lens,
-  makeClassyFor,
-  makeClassyPrisms,
- )
-import PlutusLedgerApi.V2 (
-  Address,
-  Credential,
-  DCert,
-  OutputDatum,
-  ScriptContext (scriptContextTxInfo),
-  ScriptPurpose,
-  StakingCredential,
-  TxId,
-  TxInInfo (txInInfoResolved),
-  TxInfo (txInfoId),
-  TxOut (txOutAddress),
-  TxOutRef (txOutRefId),
- )
+import           Control.Lens       (Lens', lens, makeClassyFor,
+                                     makeClassyPrisms)
+import           PlutusLedgerApi.V2 (Address, Credential, DCert, OutputDatum,
+                                     ScriptContext (scriptContextTxInfo),
+                                     ScriptPurpose, StakingCredential, TxId,
+                                     TxInInfo (txInInfoResolved),
+                                     TxInfo (txInfoId), TxOut (txOutAddress),
+                                     TxOutRef (txOutRefId))
 
 -- Note: the TxInfo field is missing from here because
 -- we manually define "HasTxInfo ScriptContext" below to avoid

@@ -115,10 +115,11 @@ import           Control.Monad.Trans.Except    (ExceptT)
 import           Control.Monad.Writer          (WriterT, execWriterT,
                                                 runWriterT)
 import           Control.Monad.Writer.Class    (MonadWriter (..))
-import           Convex.Class                  (MonadBlockchain (..), MonadDatumQuery(queryDatumFromHash),
-                                                MonadBlockchainCardanoNodeT,
-                                                MonadMockchain (..))
 import qualified Convex.CardanoApi.Lenses      as L
+import           Convex.Class                  (MonadBlockchain (..),
+                                                MonadBlockchainCardanoNodeT,
+                                                MonadDatumQuery (queryDatumFromHash),
+                                                MonadMockchain (..))
 import           Convex.MonadLog               (MonadLog (..), MonadLogIgnoreT,
                                                 MonadLogKatipT)
 import           Convex.Scripts                (toHashableScriptData)

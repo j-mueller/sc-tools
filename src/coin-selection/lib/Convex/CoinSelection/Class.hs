@@ -25,13 +25,14 @@ import qualified Control.Monad.Trans.State        as StrictState
 import qualified Control.Monad.Trans.State.Strict as LazyState
 import           Control.Tracer                   (Tracer, natTracer)
 import           Convex.BuildTx                   (TxBuilder)
+import           Convex.CardanoApi.Lenses         (emptyTxOut)
 import           Convex.Class                     (MonadBlockchain (..),
-                                                   MonadMockchain (..),
-                                                   MonadDatumQuery (queryDatumFromHash))
-import           Convex.CoinSelection             (BalanceTxError, ChangeOutputPosition,
+                                                   MonadDatumQuery (queryDatumFromHash),
+                                                   MonadMockchain (..))
+import           Convex.CoinSelection             (BalanceTxError,
+                                                   ChangeOutputPosition,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
-import           Convex.CardanoApi.Lenses         (emptyTxOut)
 import           Convex.MonadLog                  (MonadLog, MonadLogIgnoreT)
 import           Convex.Query                     (MonadUtxoQuery (utxosByPaymentCredentials))
 import           Convex.Utxos                     (BalanceChanges (..),

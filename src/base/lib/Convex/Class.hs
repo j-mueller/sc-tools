@@ -40,7 +40,6 @@ module Convex.Class(
 ) where
 
 import qualified Cardano.Api                                       as C
-import           Test.QuickCheck.Monadic (PropertyM)
 import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     EraHistory (..),
                                                                     Hash,
@@ -53,7 +52,8 @@ import           Cardano.Api.Shelley                               (BabbageEra,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
-import           Cardano.Ledger.Shelley.API                        (UTxO, Coin (..))
+import           Cardano.Ledger.Shelley.API                        (Coin (..),
+                                                                    UTxO)
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
 import           Control.Lens                                      (_1, view)
@@ -94,6 +94,7 @@ import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult
 import qualified PlutusLedgerApi.V1                                as PV1
 import           Prettyprinter                                     (Pretty (..),
                                                                     (<+>))
+import           Test.QuickCheck.Monadic                           (PropertyM)
 
 {-| Send transactions and resolve tx inputs.
 -}
@@ -367,7 +368,7 @@ runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runEx
 runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT e m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
-  result <- liftIO (C.queryNodeLocalState info T.VolatileTip qry)
+  result <- liftIO (runExceptT $ C.queryNodeLocalState info T.VolatileTip qry)
   case result of
     Left err -> do
       let msg = "runQuery: Query failed: " <> show err

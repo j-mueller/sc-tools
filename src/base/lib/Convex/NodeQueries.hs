@@ -123,7 +123,7 @@ queryStakeAddresses info creds nid = do
 -- | Run a local state query on the local cardano node, using the volatile tip
 queryLocalState :: CAPI.QueryInMode b -> LocalNodeConnectInfo -> IO b
 queryLocalState query connectInfo = do
-  CAPI.queryNodeLocalState connectInfo T.VolatileTip query >>= \case
+  runExceptT (CAPI.queryNodeLocalState connectInfo T.VolatileTip query) >>= \case
     Left err -> do
       fail ("queryLocalState: Failed with " <> show err)
     Right result -> pure result
