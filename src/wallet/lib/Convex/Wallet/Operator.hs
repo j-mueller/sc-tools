@@ -34,20 +34,20 @@ module Convex.Wallet.Operator(
   loadOperatorFilesVerification
 ) where
 
-import           Cardano.Api         (BabbageEra, CtxTx, PaymentCredential,
-                                      TxOut)
-import qualified Cardano.Api.Shelley as C
-import           Convex.Class        (MonadBlockchain (networkId))
+import           Cardano.Api              (BabbageEra, CtxTx, PaymentCredential,
+                                           TxOut)
+import qualified Cardano.Api.Shelley      as C
 import           Convex.CardanoApi.Lenses (emptyTxOut)
-import           Convex.PlutusLedger (transPubKeyHash, transStakeKeyHash)
-import           Convex.Utils        (readSigningKeyFromFile,
-                                      readStakingKeyFromFile,
-                                      readVerificationKeyFromFile)
-import           Convex.Wallet       (addSignature, addSignatureExtended)
-import           Data.Function       (on)
-import           Options.Applicative (Parser, help, long, metavar, optional,
-                                      strOption)
-import           PlutusLedgerApi.V1  (PubKeyHash)
+import           Convex.Class             (MonadBlockchain (networkId))
+import           Convex.PlutusLedger      (transPubKeyHash, transStakeKeyHash)
+import           Convex.Utils             (readSigningKeyFromFile,
+                                           readStakingKeyFromFile,
+                                           readVerificationKeyFromFile)
+import           Convex.Wallet            (addSignature, addSignatureExtended)
+import           Data.Function            (on)
+import           Options.Applicative      (Parser, help, long, metavar,
+                                           optional, strOption)
+import           PlutusLedgerApi.V1       (PubKeyHash)
 
 data Signing
 

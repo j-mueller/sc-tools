@@ -28,14 +28,16 @@ import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
                                                  spendPlutusV1, spendPlutusV2,
                                                  spendPlutusV2Ref)
 import qualified Convex.BuildTx                 as BuildTx
+import qualified Convex.CardanoApi.Lenses       as L
 import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadMockchain,
                                                  MonadDatumQuery (queryDatumFromHash),
+                                                 MonadMockchain,
                                                  SendTxFailed (..), getUtxo,
-                                                 setUtxo, singleUTxO, setReward)
-import           Convex.CoinSelection           (BalanceTxError, ChangeOutputPosition (TrailingChange),
-                                                 keyWitnesses, publicKeyCredential)
-import qualified Convex.CardanoApi.Lenses                  as L
+                                                 setReward, setUtxo, singleUTxO)
+import           Convex.CoinSelection           (BalanceTxError,
+                                                 ChangeOutputPosition (TrailingChange),
+                                                 keyWitnesses,
+                                                 publicKeyCredential)
 import           Convex.MockChain               (ValidationError (..),
                                                  failedTransactions,
                                                  fromLedgerUTxO,
@@ -43,9 +45,9 @@ import           Convex.MockChain               (ValidationError (..),
 import           Convex.MockChain.CoinSelection (balanceAndSubmit,
                                                  payToOperator', paymentTo,
                                                  tryBalanceAndSubmit)
-import           Convex.MockChain.Staking       (registerPool)
 import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
+import           Convex.MockChain.Staking       (registerPool)
 import           Convex.MockChain.Utils         (mockchainSucceeds,
                                                  runMockchainProp)
 import           Convex.NodeParams              (ledgerProtocolParameters,

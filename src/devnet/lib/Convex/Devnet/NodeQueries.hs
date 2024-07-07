@@ -41,6 +41,7 @@ import           Control.Exception                                  (Exception,
 import           Control.Monad                                      (unless,
                                                                      when)
 import           Control.Monad.Catch                                (MonadThrow)
+import           Control.Monad.Except                               (runExceptT)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Convex.Devnet.Utils                                (failure)
 import           Convex.NodeQueries                                 (loadConnectInfo)
@@ -81,7 +82,7 @@ queryEraHistory = queryLocalState C.QueryEraHistory
 
 queryLocalState :: QueryInMode b -> NetworkId -> FilePath -> IO b
 queryLocalState query networkId socket = do
-  C.queryNodeLocalState (localNodeConnectInfo networkId socket) T.VolatileTip query >>= \case
+  runExceptT (C.queryNodeLocalState (localNodeConnectInfo networkId socket) T.VolatileTip query) >>= \case
     Left err -> do
       failure $ "querySystemStart: Failed with " <> show err
     Right result -> pure result

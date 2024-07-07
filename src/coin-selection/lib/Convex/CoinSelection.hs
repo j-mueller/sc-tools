@@ -69,8 +69,8 @@ import           Convex.BuildTx                (TxBuilder, addCollateral,
                                                 execBuildTx, setMinAdaDeposit,
                                                 spendPublicKeyOutput)
 import qualified Convex.BuildTx                as BuildTx
-import           Convex.Class                  (MonadBlockchain (..))
 import qualified Convex.CardanoApi.Lenses      as L
+import           Convex.Class                  (MonadBlockchain (..))
 import           Convex.Utils                  (mapError)
 import           Convex.UTxOCompatibility      (UTxOCompatibility,
                                                 compatibleWith, txCompatibility)
@@ -221,7 +221,7 @@ balanceTransactionBody
   exUnitsMap' <- balancingError $
     case Map.mapEither id exUnitsMap of
       (failures, exUnitsMap') ->
-        handleExUnitsErrors C.ScriptValid failures 
+        handleExUnitsErrors C.ScriptValid failures
         $ fmap snd exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
 
   txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody

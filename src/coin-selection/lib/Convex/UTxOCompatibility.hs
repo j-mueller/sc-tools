@@ -15,14 +15,14 @@ module Convex.UTxOCompatibility(
   txCompatibility
 ) where
 
-import           Cardano.Api         (BabbageEra, UTxO (..))
-import qualified Cardano.Api.Shelley as C
-import qualified Control.Lens        as L
+import           Cardano.Api              (BabbageEra, UTxO (..))
+import qualified Cardano.Api.Shelley      as C
+import qualified Control.Lens             as L
 import qualified Convex.CardanoApi.Lenses as L
-import           Data.Aeson          (FromJSON, ToJSON)
-import qualified Data.Map            as Map
-import           Data.Maybe          (isJust)
-import           GHC.Generics        (Generic)
+import           Data.Aeson               (FromJSON, ToJSON)
+import qualified Data.Map                 as Map
+import           Data.Maybe               (isJust)
+import           GHC.Generics             (Generic)
 
 -- | Compatibility setting for coin selection.
 --   Used to filter out incompatible UTxOs for

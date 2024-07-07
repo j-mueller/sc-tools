@@ -21,7 +21,8 @@ import           Control.Monad.Except       (MonadError (..))
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (MonadTrans, ReaderT (..), ask,
                                              lift)
-import           Convex.Class               (MonadBlockchain (..), MonadDatumQuery)
+import           Convex.Class               (MonadBlockchain (..),
+                                             MonadDatumQuery)
 import           Convex.MonadLog            (MonadLog (..), logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..),
                                              LedgerStateArgs (..),

@@ -44,7 +44,8 @@ import           Control.Tracer                     (Tracer, natTracer)
 import           Convex.BuildTx                     (TxBuilder)
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT)
-import           Convex.CoinSelection               (BalanceTxError, ChangeOutputPosition,
+import           Convex.CoinSelection               (BalanceTxError,
+                                                     ChangeOutputPosition,
                                                      TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MockChain                   (MockchainT, utxoSet)
