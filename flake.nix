@@ -21,7 +21,7 @@
             iohk-nix.overlays.haskell-nix-crypto
             (final: prev: {
               sc-tools = final.haskell-nix.cabalProject' {
-                compiler-nix-name = "ghc964";
+                compiler-nix-name = "ghc965";
                 src = lib.cleanSource ./.;
                 shell = {
                   withHoogle = true;

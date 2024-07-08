@@ -32,6 +32,7 @@ import           Control.Monad.Reader            (ReaderT (..), ask, lift)
 import           Control.Tracer                  (Tracer, traceWith)
 import           Convex.BuildTx                  (TxBuilder)
 import qualified Convex.BuildTx                  as BuildTx
+import           Convex.CardanoApi.Lenses        (emptyTxOut)
 import           Convex.Class                    (MonadBlockchain (networkId),
                                                   runMonadBlockchainCardanoNodeT,
                                                   sendTx)
@@ -40,7 +41,6 @@ import qualified Convex.CoinSelection            as CoinSelection
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
 import qualified Convex.Devnet.NodeQueries       as NodeQueries
 import           Convex.Devnet.Utils             (keysFor)
-import           Convex.CardanoApi.Lenses        (emptyTxOut)
 import           Convex.MonadLog                 (MonadLog (..))
 import           Convex.Utils                    (failOnError)
 import           Convex.Utxos                    (UtxoSet)

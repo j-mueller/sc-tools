@@ -11,10 +11,10 @@ import qualified Cardano.Api.Shelley            as C
 import           Control.Lens                   (mapped, over)
 import           Control.Monad                  (void)
 import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
+import           Convex.CardanoApi.Lenses       (emptyTx)
+import qualified Convex.CardanoApi.Lenses       as L
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadMockchain)
-import           Convex.CardanoApi.Lenses                  (emptyTx)
-import qualified Convex.CardanoApi.Lenses                  as L
 import           Convex.CoinSelection           (ChangeOutputPosition (TrailingChange))
 import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
 import qualified Convex.MockChain.Defaults      as Defaults

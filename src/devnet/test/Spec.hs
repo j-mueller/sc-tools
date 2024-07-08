@@ -65,7 +65,7 @@ main = do
 
 checkCardanoNode :: IO ()
 checkCardanoNode = do
-  let expectedVersion = "8.12.0"
+  let expectedVersion = "9.0.0"
   version <- getCardanoNodeVersion
   let isExpected = expectedVersion `isInfixOf` version
   unless isExpected (putStrLn version)

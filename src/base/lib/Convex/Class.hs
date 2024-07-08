@@ -369,7 +369,7 @@ runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runEx
 runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT e m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
-  result <- liftIO (C.queryNodeLocalState info T.VolatileTip qry)
+  result <- liftIO (runExceptT $ C.queryNodeLocalState info T.VolatileTip qry)
   case result of
     Left err -> do
       let msg = "runQuery: Query failed: " <> show err
