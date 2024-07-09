@@ -7,7 +7,7 @@ import           Control.Monad.Except           (MonadError)
 import           Control.Monad.IO.Class         (MonadIO (..))
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadMockchain)
-import           Convex.CoinSelection           (BalanceTxError, ERA)
+import           Convex.CoinSelection           (BalanceTxError, ChangeOutputPosition(TrailingChange), ERA)
 import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.Wallet                  (Wallet)
@@ -70,8 +70,8 @@ registerPool wallet = do
     delegCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate delegationCert
 
-  void $ tryBalanceAndSubmit mempty wallet stakeCertTx []
-  void $ tryBalanceAndSubmit mempty wallet poolCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
-  void $ tryBalanceAndSubmit mempty wallet delegCertTx [C.WitnessStakeKey stakeKey]
+  void $ tryBalanceAndSubmit mempty wallet stakeCertTx TrailingChange []
+  void $ tryBalanceAndSubmit mempty wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+  void $ tryBalanceAndSubmit mempty wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 
   pure poolId

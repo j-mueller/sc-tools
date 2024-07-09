@@ -53,6 +53,7 @@ import           Control.Monad.Except             (runExceptT)
 import           Control.Tracer                   (Tracer, traceWith)
 import           Convex.BuildTx                   (addCertificate, execBuildTx,
                                                    payToAddress)
+import           Convex.CoinSelection             (ChangeOutputPosition (TrailingChange))
 import           Convex.Devnet.CardanoNode.Types  (GenesisConfigChanges (..),
                                                    Port, PortsConfig (..),
                                                    RunningNode (..),
@@ -588,13 +589,13 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     delegCertTx = execBuildTx $ do
       addCertificate delegationCert
 
-  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx []
+  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx TrailingChange []
   _ <- waitForNextBlock node
 
-  _ <- W.balanceAndSubmit mempty node wallet poolCertTx [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+  _ <- W.balanceAndSubmit mempty node wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node
 
-  _ <- W.balanceAndSubmit mempty node wallet delegCertTx [C.WitnessStakeKey stakeKey]
+  _ <- W.balanceAndSubmit mempty node wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
   _ <- waitForNextBlock node
 
   vrfKeyFile <- writeEnvelope vrfKey "vrf.skey"

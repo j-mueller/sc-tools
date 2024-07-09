@@ -28,7 +28,7 @@ import           Convex.BuildTx                   (TxBuilder)
 import           Convex.Class                     (MonadBlockchain (..),
                                                    MonadMockchain (..),
                                                    MonadDatumQuery (queryDatumFromHash))
-import           Convex.CoinSelection             (BalanceTxError,
+import           Convex.CoinSelection             (BalanceTxError, ChangeOutputPosition,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.CardanoApi.Lenses         (emptyTxOut)
@@ -63,6 +63,9 @@ class Monad m => MonadBalance m where
     -- | The unbalanced transaction body
     TxBuilder ->
 
+    -- | The position of the change output
+    ChangeOutputPosition ->
+
     -- | The balanced transaction body and the balance changes (per address)
     m (Either (BalanceTxError C.BabbageEra) (C.BalancedTxBody BabbageEra, BalanceChanges))
 
@@ -75,22 +78,22 @@ instance MonadTrans BalancingT where
 deriving newtype instance MonadError e m => MonadError e (BalancingT m)
 
 instance MonadBalance m => MonadBalance (ExceptT e m) where
-  balanceTx addr utxos = lift . balanceTx addr utxos
+  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
 
 instance MonadBalance m => MonadBalance (ReaderT e m) where
-  balanceTx addr utxos = lift . balanceTx addr utxos
+  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
 
 instance MonadBalance m => MonadBalance (StrictState.StateT s m) where
-  balanceTx addr utxos = lift . balanceTx addr utxos
+  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
 
 instance MonadBalance m => MonadBalance (LazyState.StateT s m) where
-  balanceTx addr utxos = lift . balanceTx addr utxos
+  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
 
 instance MonadBalance m => MonadBalance (MonadLogIgnoreT m) where
-  balanceTx addr utxos = lift . balanceTx addr utxos
+  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
 
 instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
-  balanceTx addr utxos txb = runExceptT (Convex.CoinSelection.balanceTx mempty (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb)
+  balanceTx addr utxos txb changePosition = runExceptT (Convex.CoinSelection.balanceTx mempty (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb changePosition)
 
 instance MonadMockchain m => MonadMockchain (BalancingT m) where
   setReward cred = lift . setReward cred
@@ -114,9 +117,9 @@ instance MonadTrans TracingBalancingT where
 deriving newtype instance MonadError e m => MonadError e (TracingBalancingT m)
 
 instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
-  balanceTx addr utxos txb = TracingBalancingT $ do
+  balanceTx addr utxos txb changePosition = TracingBalancingT $ do
     tr <- ask
-    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb)
+    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb changePosition)
 
 instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
   setReward cred = lift . setReward cred
