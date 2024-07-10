@@ -1,6 +1,8 @@
+{-# LANGUAGE ConstraintKinds      #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE NumericUnderscores   #-}
@@ -90,6 +92,7 @@ import           Data.Aeson                    (FromJSON, ToJSON,
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.DList                    (DList)
 import qualified Data.DList                    as DList
+import           Data.Kind                     (Constraint, Type)
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, isNothing, listToMaybe,
@@ -174,21 +177,18 @@ instance ToJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
       , "txOut" .= toJSON txOut
       ]
 
--- FIXME (koslambou) Remove duplication with similar instance below
-instance FromJSON (C.InAnyCardanoEra (C.TxOut C.CtxTx)) where
-  parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxTx)" $ \o -> do
-    tag <- o .: "tag"
-    case tag :: Text of
-      "ShelleyTxOut" -> fmap (C.InAnyCardanoEra C.ShelleyEra) $ o .: "txOut"
-      "AllegraTxOut" -> fmap (C.InAnyCardanoEra C.AllegraEra) $ o .: "txOut"
-      "MaryTxOut" -> fmap (C.InAnyCardanoEra C.MaryEra) $ o .: "txOut"
-      "AlonzoTxOut" -> fmap (C.InAnyCardanoEra C.AlonzoEra) $ o .: "txOut"
-      "BabbageTxOut" -> fmap (C.InAnyCardanoEra C.BabbageEra) $ o .: "txOut"
-      "ConwayTxOut" -> fmap (C.InAnyCardanoEra C.ConwayEra) $ o .: "txOut"
-      _ -> fail "Expected tag to be ShelleyTxOut, AllegraTxOut, MaryTxOut, AlonzoTxOut, BabbageTxOut, ConwayTxOut"
+type TxOutConstraints (k :: Type -> Constraint) ctx =
+  ( k (CS.TxOut ctx CS.ShelleyEra)
+  , k (CS.TxOut ctx CS.AllegraEra)
+  , k (CS.TxOut ctx CS.MaryEra)
+  , k (CS.TxOut ctx CS.AlonzoEra)
+  , k (CS.TxOut ctx CS.BabbageEra)
+  , k (CS.TxOut ctx CS.ConwayEra)
+  )
 
-instance FromJSON (C.InAnyCardanoEra (C.TxOut C.CtxUTxO)) where
-  parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxUTxO)" $ \o -> do
+-- FIXME (koslambou) Remove duplication with similar instance below
+instance TxOutConstraints FromJSON ctx => FromJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
+  parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxTx)" $ \o -> do
     tag <- o .: "tag"
     case tag :: Text of
       "ShelleyTxOut" -> fmap (C.InAnyCardanoEra C.ShelleyEra) $ o .: "txOut"
