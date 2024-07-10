@@ -1,5 +1,5 @@
 {-# LANGUAGE DerivingStrategies   #-}
-{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
@@ -74,17 +74,19 @@ import qualified Cardano.Api                   as C
 import           Cardano.Api.Shelley           (ExecutionUnits, TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
 import qualified Cardano.Ledger.Alonzo.Scripts as Scripts
-import Data.Aeson (object, (.=), Value(String), withObject, (.:))
 import           Cardano.Ledger.Alonzo.TxWits  (unRedeemers)
 import qualified Cardano.Ledger.Babbage.TxBody as Babbage.TxBody
 import qualified Cardano.Ledger.BaseTypes      as CT
 import qualified Cardano.Ledger.Credential     as Shelley
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.TxIn           as CT
-import           Control.Lens                  (_2, makeLenses,
-                                                makePrisms, over, preview, view)
+import           Control.Lens                  (_2, makeLenses, makePrisms,
+                                                over, preview, view)
 import qualified Convex.CardanoApi.Lenses      as L
-import           Data.Aeson                    (FromJSON, ToJSON, parseJSON, toJSON)
+import           Data.Aeson                    (FromJSON, ToJSON,
+                                                Value (String), object,
+                                                parseJSON, toJSON, withObject,
+                                                (.:), (.=))
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.DList                    (DList)
 import qualified Data.DList                    as DList
@@ -357,7 +359,7 @@ onlyPubKey =
       txOutHasPubKeyAddr (C.InAnyCardanoEra _ (C.TxOut (C.AddressInEra (C.ShelleyAddressInEra _era) addr) _ _ _), _) =
         let (CS.ShelleyAddress _ (CS.fromShelleyPaymentCredential -> cred) _) = addr
          in case cred of
-              C.PaymentCredentialByKey _ -> True
+              C.PaymentCredentialByKey _    -> True
               C.PaymentCredentialByScript _ -> False
   in fst . partition txOutHasPubKeyAddr
 

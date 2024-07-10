@@ -51,6 +51,7 @@ import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
 import           Convex.NodeClient.WaitForTxnClient (MonadBlockchainWaitingT (..))
 import           Convex.Utils                       (liftEither, liftResult)
 import           Convex.Utxos                       (BalanceChanges,
+                                                     UtxoSet (_utxos),
                                                      fromUtxoTx,
                                                      onlyCredentials)
 import qualified Convex.Wallet.API                  as Wallet.API
@@ -67,7 +68,6 @@ import qualified Data.Set                           as Set
 import           GHC.Generics                       (Generic)
 import           Servant.Client                     (ClientEnv)
 import           Test.QuickCheck.Monadic            (PropertyM)
-import Convex.Utxos (UtxoSet(_utxos))
 
 class Monad m => MonadUtxoQuery m where
   utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO ())

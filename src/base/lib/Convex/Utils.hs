@@ -54,13 +54,11 @@ import           Cardano.Api                              (BabbageEra,
 import qualified Cardano.Api.Shelley                      as C
 import qualified Cardano.Ledger.Credential                as Shelley
 import           Cardano.Ledger.Crypto                    (StandardCrypto)
-import           Cardano.Slotting.EpochInfo.API           (EpochInfo,
-                                                           epochInfoSlotToUTCTime,
+import           Cardano.Slotting.EpochInfo.API           (epochInfoSlotToUTCTime,
                                                            hoistEpochInfo)
 import qualified Cardano.Slotting.Time                    as Time
 import           Control.Monad                            (void, when)
-import           Control.Monad.Except                     (MonadError,
-                                                           runExcept)
+import           Control.Monad.Except                     (MonadError)
 import           Control.Monad.IO.Class                   (MonadIO (..))
 import           Control.Monad.Result                     (ResultT, throwError)
 import qualified Control.Monad.Result                     as Result
@@ -77,12 +75,12 @@ import           Data.Function                            ((&))
 import           Data.Proxy                               (Proxy (..))
 import           Data.Set                                 (Set)
 import qualified Data.Set                                 as Set
+import qualified Data.Text                                as Text
 import qualified Data.Text.IO                             as Text
 import           Data.Time.Clock                          (NominalDiffTime,
                                                            UTCTime)
 import           Data.Time.Clock.POSIX                    (posixSecondsToUTCTime,
                                                            utcTimeToPOSIXSeconds)
-import qualified Ouroboros.Consensus.HardFork.History     as Consensus
 import qualified Ouroboros.Consensus.HardFork.History.Qry as Qry
 import qualified PlutusLedgerApi.V1                       as PV1
 import           System.Exit                              (exitFailure)
@@ -156,7 +154,8 @@ txnUtxos tx =
 {-| Convert a slot number to UTC time
 -}
 slotToUtcTime :: C.EraHistory -> C.SystemStart -> SlotNo -> Either String UTCTime
-slotToUtcTime (toLedgerEpochInfo -> info) systemStart slot = epochInfoSlotToUTCTime info systemStart slot
+slotToUtcTime (C.toLedgerEpochInfo -> C.LedgerEpochInfo info) systemStart slot =
+  epochInfoSlotToUTCTime (hoistEpochInfo (first Text.unpack) info) systemStart slot
 
 {-| Convert a UTC time to slot no. Returns the time spent and time left in this slot.
 -}
@@ -187,12 +186,6 @@ utcTimeToSlotUnsafe (C.EraHistory interpreter) systemStart t = first show $
 posixTimeToSlotUnsafe :: C.EraHistory -> C.SystemStart -> PV1.POSIXTime -> Either String (SlotNo, NominalDiffTime, NominalDiffTime)
 posixTimeToSlotUnsafe eraHistory systemStart (posixSecondsToUTCTime . unTransPOSIXTime -> utcTime) =
   utcTimeToSlotUnsafe eraHistory systemStart utcTime
-
--- FIXME: Looks like this function is exposed by Cardano.Api in cardano-node@v1.36
-toLedgerEpochInfo :: C.EraHistory -> EpochInfo (Either String)
-toLedgerEpochInfo (C.EraHistory interpreter) =
-  hoistEpochInfo (first show . runExcept) $
-    Consensus.interpreterToEpochInfo interpreter
 
 liftResult :: (MonadError e m) => (String -> e) -> ResultT m a -> m a
 liftResult f action = Result.runResultT action >>= either (throwError . f) pure . Result.toEither

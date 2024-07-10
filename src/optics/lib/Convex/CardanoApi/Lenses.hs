@@ -1,11 +1,11 @@
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE TypeOperators           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 {-| Lenses for @cardano-api@ types
 -}
 module Convex.CardanoApi.Lenses(
@@ -107,9 +107,9 @@ module Convex.CardanoApi.Lenses(
 ) where
 
 import           Cardano.Api                        (AddressInEra, AssetId,
-                                                     BuildTx,
-                                                     BuildTxWith, CtxTx,
-                                                     PolicyId, Quantity (..),
+                                                     BuildTx, BuildTxWith,
+                                                     CtxTx, PolicyId,
+                                                     Quantity (..),
                                                      ScriptWitness, TxMintValue,
                                                      TxOut, TxOutDatum,
                                                      TxOutValue, Value, ViewTx,
@@ -123,21 +123,21 @@ import qualified Cardano.Ledger.Credential          as Credential
 import           Cardano.Ledger.Crypto              (StandardCrypto)
 import qualified Cardano.Ledger.Hashes              as Hashes
 import qualified Cardano.Ledger.Keys                as Keys
+import           Cardano.Ledger.Mary.Value          (MaryValue (..))
 import           Cardano.Ledger.Shelley.API         (Coin, LedgerEnv (..), UTxO,
                                                      UTxOState (..))
 import           Cardano.Ledger.Shelley.Governance  (GovState)
 import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
                                                      updateStakeDistribution)
-import           Control.Lens                       qualified as L
-import           Control.Lens                       (Getter, Iso', Lens', Prism', iso,
-                                                     lens, prism')
+import           Control.Lens                       (Getter, Iso', Lens',
+                                                     Prism', iso, lens, prism')
+import qualified Control.Lens                       as L
 import qualified Convex.Scripts                     as Scripts
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
 import           Data.Proxy                         (Proxy (..))
 import           Data.Word                          (Word64)
 import           PlutusLedgerApi.V1                 (PubKeyHash (..))
-import           Cardano.Ledger.Mary.Value (MaryValue (..))
 import qualified PlutusLedgerApi.V1                 as PV1
 import           PlutusLedgerApi.V1.Interval        (Closure, Extended (..),
                                                      Interval (..),
@@ -572,7 +572,7 @@ _AddressInEra :: C.IsShelleyBasedEra era => Prism' (AddressInEra era) (Address S
 _AddressInEra = prism' from to where
   to :: AddressInEra era -> Maybe (Address ShelleyAddr)
   to (C.AddressInEra (C.ShelleyAddressInEra _era) addr) = Just addr
-  to _ = Nothing
+  to _                                                  = Nothing
   from = C.AddressInEra (C.ShelleyAddressInEra C.shelleyBasedEra)
 
 _Address :: Iso' (Address ShelleyAddr) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
