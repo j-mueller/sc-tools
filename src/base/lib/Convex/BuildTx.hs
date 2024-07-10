@@ -145,7 +145,7 @@ findIndexSpending txi = fromJust . lookupIndexSpending txi
 {-| Look up the index of the @TxIn@ in the list of reference inputs
 -}
 lookupIndexReference :: C.TxIn -> TxBody -> Maybe Int
-lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReference)
+lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReferenceIso)
 
 {-| Look up the index of the @TxIn@ in the list of reference inputs. Throws an error if the @TxIn@ is not present.
 -}
@@ -470,10 +470,10 @@ mintPlutusV2Ref refTxIn sh red assetName quantity =
       >> addReference refTxIn
 
 addCollateral :: MonadBuildTx m => C.TxIn -> m ()
-addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateral) ((:) i)
+addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateralIso) ((:) i)
 
 addReference :: MonadBuildTx m => C.TxIn -> m ()
-addReference i = addBtx $ over (L.txInsReference . L._TxInsReference) ((:) i)
+addReference i = addBtx $ over (L.txInsReference . L._TxInsReferenceIso) ((:) i)
 
 addAuxScript :: MonadBuildTx m => C.ScriptInEra C.BabbageEra -> m ()
 addAuxScript s = addBtx (over (L.txAuxScripts . L._TxAuxScripts) ((:) s))

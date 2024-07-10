@@ -142,8 +142,7 @@ import           Convex.Utils                          (slotToUtcTime)
 import           Convex.Utxos                          (UtxoSet (..),
                                                         fromApiUtxo,
                                                         onlyCredential,
-                                                        onlyCredentials,
-                                                        toApiUtxo)
+                                                        onlyCredentials)
 import           Convex.Wallet                         (Wallet, addressInEra,
                                                         paymentCredential)
 import           Data.Bifunctor                        (Bifunctor (..))
@@ -476,8 +475,7 @@ instance Monad m => MonadMockchain (MockchainT m) where
     pure a
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
-  utxosByPaymentCredentials cred =
-    toApiUtxo . onlyCredentials cred <$> utxoSet
+  utxosByPaymentCredentials cred = onlyCredentials cred <$> utxoSet
 
 instance Monad m => MonadDatumQuery (MockchainT m) where
   queryDatumFromHash dh = MockchainT (gets (Map.lookup dh . view datums))
@@ -504,7 +502,7 @@ addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraBabbage txBody _scripts scr
 -}
 utxoSet :: MonadMockchain m => m (UtxoSet C.CtxUTxO ())
 utxoSet =
-  let f (utxos) = (utxos, fromApiUtxo $ fromLedgerUTxO C.ShelleyBasedEraBabbage utxos)
+  let f utxos = (utxos, fromApiUtxo () $ fromLedgerUTxO C.ShelleyBasedEraBabbage utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain

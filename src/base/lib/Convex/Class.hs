@@ -78,6 +78,7 @@ import           Convex.MonadLog                                   (MonadLog (..
                                                                     logWarnS)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
+import           Convex.Utxos                                      (UtxoSet)
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
@@ -277,7 +278,7 @@ control over the capabilities they require.
 class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain state.
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (C.UTxO BabbageEra)
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO ())
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -301,7 +302,7 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (C.UTxO BabbageEra)
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO ())
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]

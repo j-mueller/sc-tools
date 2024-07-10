@@ -129,29 +129,29 @@ txInscript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn
 mintingScript :: C.PlutusScript C.PlutusScriptV1
 mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
-payToPlutusScript :: (MonadFail m, MonadError BalanceTxError m, MonadMockchain m) => m C.TxIn
+payToPlutusScript :: (MonadFail m, MonadError (BalanceTxError C.BabbageEra) m, MonadMockchain m) => m C.TxIn
 payToPlutusScript = do
   let tx = execBuildTx (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
   pure (C.TxIn i (C.TxIx 0))
 
-payToPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => m C.TxIn
+payToPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => m C.TxIn
 payToPlutusV2Script = do
   let tx = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
   pure (C.TxIn i (C.TxIx 0))
 
-spendPlutusScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxIn -> m C.TxId
+spendPlutusScript :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => C.TxIn -> m C.TxId
 spendPlutusScript ref = do
   let tx = execBuildTx (spendPlutusV1 ref txInscript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-spendPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxIn -> m C.TxId
+spendPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => C.TxIn -> m C.TxId
 spendPlutusV2Script ref = do
   let tx = execBuildTx (spendPlutusV2 ref Scripts.v2SpendingScript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-putReferenceScript :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => Wallet -> m C.TxIn
+putReferenceScript :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
   let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
       addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
@@ -168,19 +168,19 @@ putReferenceScript wallet = do
       _                   -> fail "No reference script found"
   pure outRef
 
-spendPlutusScriptReference :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) =>  C.TxIn -> m C.TxId
+spendPlutusScriptReference :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) =>  C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = execBuildTx (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-mintingPlutus :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => m C.TxId
+mintingPlutus :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => m C.TxId
 mintingPlutus = do
   void $ Wallet.w2 `paymentTo` Wallet.w1
   let tx = execBuildTx (mintPlutusV1 mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-spendTokens :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
+spendTokens :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => C.TxId -> m C.TxId
 spendTokens _ = do
   _ <- nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 51 Wallet.w1 Wallet.w2
@@ -188,7 +188,7 @@ spendTokens _ = do
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
 
 
-spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m C.TxId
+spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => C.TxId -> m C.TxId
 spendTokens2 txi = do
   let q  = 98
       wTo = Wallet.w2
@@ -204,21 +204,21 @@ spendTokens2 txi = do
 
 -- | Put all of the Wallet 2's funds into a single UTxO with mixed assets
 --   Then make a transaction that splits this output into two
-spendSingletonOutput :: (MonadFail m, MonadMockchain m, MonadError BalanceTxError m) => C.TxId -> m ()
+spendSingletonOutput :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => C.TxId -> m ()
 spendSingletonOutput txi = do
   void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
-  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
   let k = Utxos.onlyCredential (Wallet.paymentCredential Wallet.w2) utxoSet
   let totalVal = Utxos.totalBalance k
       newOut = C.TxOut (Wallet.addressInEra Defaults.networkId Wallet.w2) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue totalVal) C.TxOutDatumNone C.ReferenceScriptNone
       utxoSetMinusW2 = Utxos.removeUtxos (Map.keysSet $ Utxos._utxos k) utxoSet
-      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newOut, ())
+      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (C.InAnyCardanoEra C.BabbageEra newOut, ())
 
   setUtxo (C.toLedgerUTxO C.ShelleyBasedEraBabbage $ Utxos.toApiUtxo utxoSetPlusSingleOutput)
   -- check that wallet 2 only
   void $ nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
 
-nativeAssetPaymentTo :: (MonadMockchain m, MonadFail m, MonadError BalanceTxError m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
+nativeAssetPaymentTo :: (MonadMockchain m, MonadFail m, MonadError (BalanceTxError C.BabbageEra) m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
       tx = execBuildTx $
@@ -229,7 +229,7 @@ nativeAssetPaymentTo q wFrom wTo = do
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
 
-checkResolveDatumHash :: (MonadMockchain m, MonadDatumQuery m, MonadFail m, MonadError BalanceTxError m) => m ()
+checkResolveDatumHash :: (MonadMockchain m, MonadDatumQuery m, MonadFail m, MonadError (BalanceTxError C.BabbageEra) m) => m ()
 checkResolveDatumHash = do
   let addr = Wallet.addressInEra Defaults.networkId Wallet.w1
       assertDatumPresent vl = queryDatumFromHash (C.hashScriptDataBytes vl) >>= \case
@@ -271,7 +271,7 @@ checkResolveDatumHash = do
 {-| Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain.
 -}
-execBuildTxWallet :: (MonadMockchain m, MonadError BalanceTxError m) => Wallet -> BuildTxT m a -> m (Either SendTxFailed C.TxId)
+execBuildTxWallet :: (MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => Wallet -> BuildTxT m a -> m (Either SendTxFailed C.TxId)
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
   fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet tx TrailingChange []
@@ -279,7 +279,7 @@ execBuildTxWallet wallet action = do
 {-| Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain. Fail if 'balanceAndSubmit' is not successful.
 -}
-tryExecBuildTxWallet :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Wallet -> BuildTxT m a -> m C.TxId
+tryExecBuildTxWallet :: (MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => Wallet -> BuildTxT m a -> m C.TxId
 tryExecBuildTxWallet wallet action = execBuildTxWallet wallet action >>= either (fail . show) pure
 
 -- | Balance a transaction using a list of operators
@@ -323,9 +323,9 @@ buildTxMixedInputs :: Assertion
 buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   testWallet <- liftIO Wallet.generateWallet
   -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
-  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
   let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
-      newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
+      newUTxO = C.InAnyCardanoEra C.BabbageEra $ C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
   setUtxo
     $ C.toLedgerUTxO C.ShelleyBasedEraBabbage
@@ -363,7 +363,7 @@ largeTransactionTest = do
     Right _ -> fail $ "Unexpected failure. Expected 1 successful transaction."
     Left err -> fail $ "Unexpected failure: " <> show err
 
-matchingIndex :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+matchingIndex :: (MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => m ()
 matchingIndex = do
   let txBody = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.matchingIndexValidatorScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
       tx     = C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange []) <*> pure (C.TxIx 0)
@@ -377,12 +377,12 @@ matchingIndex = do
 stakingCredential :: C.StakeCredential
 stakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
 
-registerStakingCredential :: (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m C.TxIn
+registerStakingCredential :: (MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => m C.TxIn
 registerStakingCredential = do
   let txBody = execBuildTx (BuildTx.addStakeCredentialCertificate stakingCredential)
   C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange []) <*> pure (C.TxIx 0)
 
-withdrawZero :: (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+withdrawZero :: (MonadIO m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => m ()
 withdrawZero = do
   txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
   txI <- C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange []) <*> pure (C.TxIx 0)
@@ -390,14 +390,14 @@ withdrawZero = do
     Nothing -> fail "txI not found"
     Just{} -> pure ()
 
-matchingIndexMP ::  (MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+matchingIndexMP ::  (MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => m ()
 matchingIndexMP = do
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
       runTx assetName = Scripts.mintMatchingIndex policyId assetName 100
   void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]) TrailingChange []
 
-queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => m ()
 queryStakeAddressesTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -437,7 +437,7 @@ queryStakeAddressesTest = do
   when (length rewards /= 1) $ fail "Expected 1 reward"
   when (length delegations /= 1) $ fail "Expected 1 delegation"
 
-withdrawalTest :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => m ()
+withdrawalTest :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m, MonadFail m) => m ()
 withdrawalTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey

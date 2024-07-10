@@ -8,7 +8,8 @@ import           Control.Monad.IO.Class         (MonadIO (..))
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadMockchain)
 import           Convex.CoinSelection           (BalanceTxError,
-                                                 ChangeOutputPosition (TrailingChange))
+                                                 ChangeOutputPosition (TrailingChange),
+                                                 ERA)
 import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.Wallet                  (Wallet)
@@ -16,7 +17,7 @@ import           Data.Ratio                     ((%))
 
 {-| Run the 'Mockchain' action with registered pool
 -}
-registerPool :: forall m. (MonadIO m, MonadMockchain m, MonadError BalanceTxError m, MonadFail m) => Wallet -> m C.PoolId
+registerPool :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError Convex.CoinSelection.ERA) m, MonadFail m) => Wallet -> m C.PoolId
 registerPool wallet = do
   stakeKey <- C.generateSigningKey C.AsStakeKey
   vrfKey <- C.generateSigningKey C.AsVrfKey
