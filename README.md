@@ -18,8 +18,8 @@ The `main` branch uses the following versions of its major dependencies:
 |--|--|
 |`cardano-node`|[9.0.0](https://chap.intersectmbo.org/package/cardano-node-9.0.0/)|
 |`cardano-api`|[9.0.0](https://chap.intersectmbo.org/package/cardano-api-9.0.0.0/)|
-|`ghc`|9.6.5|
-|`cabal`|3.10.1.0|
+|`ghc`|9.6.6|
+|`cabal`|3.10.3.0|
 
 Support for `ghc-8.10.7` and `cardano-node-1.35.4` will be maintained for a little while in the [`node-1.35.4`](https://github.com/j-mueller/sc-tools/tree/node-1.35.4) branch.
 
@@ -118,7 +118,7 @@ foldClient' ::
   PipelinedLedgerStateClient
 ```
 
-This lets you deal with rollbacks explicitly, by giving you a summary of type `w` of all the data that has been rolled back. 
+This lets you deal with rollbacks explicitly, by giving you a summary of type `w` of all the data that has been rolled back.
 
 ## Goals
 

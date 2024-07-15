@@ -121,7 +121,8 @@ import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)
 import           Control.Monad.IO.Class                (MonadIO)
-import           Control.Monad.Reader                  (ReaderT, ask, asks,
+import           Control.Monad.Reader                  (MonadReader, ReaderT,
+                                                        ask, asks, local,
                                                         runReaderT)
 import           Control.Monad.State                   (MonadState, StateT, get,
                                                         gets, modify, put,
@@ -395,6 +396,14 @@ newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (
 
 instance MonadTrans MockchainT where
   lift = MockchainT . lift . lift . lift
+
+instance Monad m => MonadReader NodeParams (MockchainT m) where
+  ask = MockchainT ask
+  local f (MockchainT m) = MockchainT $ local f m
+
+instance Monad m => MonadState MockChainState (MockchainT m) where
+  get = MockchainT $ lift get
+  put = MockchainT . lift . put
 
 data MockchainError =
   FailWith String

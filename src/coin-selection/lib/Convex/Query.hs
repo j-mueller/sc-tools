@@ -33,6 +33,7 @@ import qualified Cardano.Api                        as C
 import           Control.Monad.Except               (MonadError)
 import           Control.Monad.IO.Class             (MonadIO (..))
 import           Control.Monad.Reader               (ReaderT, ask, runReaderT)
+import           Control.Monad.State                (gets)
 import           Control.Monad.Trans.Class          (MonadTrans (..))
 import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
 import           Control.Monad.Trans.Except.Result  (ResultT)
@@ -46,12 +47,13 @@ import           Convex.CoinSelection               (BalanceTxError,
                                                      ChangeOutputPosition,
                                                      TxBalancingMessage)
 import qualified Convex.CoinSelection
-import           Convex.MockChain                   (MockchainT, utxoSet)
+import           Convex.MockChain                   (MockchainT, mcsDatums,
+                                                     utxoSet)
 import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
 import           Convex.NodeClient.WaitForTxnClient (MonadBlockchainWaitingT (..))
 import           Convex.Utils                       (liftEither, liftResult)
 import           Convex.Utxos                       (BalanceChanges,
-                                                     UtxoSet (_utxos),
+                                                     UtxoSet (UtxoSet, _utxos),
                                                      fromUtxoTx,
                                                      onlyCredentials)
 import qualified Convex.Wallet.API                  as Wallet.API
@@ -60,7 +62,7 @@ import           Convex.Wallet.Operator             (Operator (..), Signing,
                                                      returnOutputFor,
                                                      signTxOperator)
 import           Data.Aeson                         (FromJSON, ToJSON)
-import           Data.Functor                       (($>))
+import           Data.Functor                       (($>), (<&>))
 import qualified Data.Map                           as Map
 import           Data.Maybe                         (listToMaybe)
 import           Data.Set                           (Set)
@@ -70,13 +72,28 @@ import           Servant.Client                     (ClientEnv)
 import           Test.QuickCheck.Monadic            (PropertyM)
 
 class Monad m => MonadUtxoQuery m where
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO ())
+  -- | Return all UTXOs of given payment credentials. Each UTXO also possibly has the
+  -- resolved datum (meaning that if we only have the datum hash, the
+  -- implementation should try and resolve it to the actual datum).
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO ())
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
-  utxosByPaymentCredentials cred = onlyCredentials cred <$> utxoSet
+  utxosByPaymentCredentials cred = do
+    UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
+    datumMap <- gets mcsDatums
+    let
+      resolveDatum :: C.TxOutDatum C.CtxUTxO era -> Maybe C.HashableScriptData
+      resolveDatum C.TxOutDatumNone         = Nothing
+      resolveDatum (C.TxOutDatumHash _ dh)  = Map.lookup dh datumMap
+      resolveDatum (C.TxOutDatumInline _ d) = Just d
+
+    let resolvedUtxos = utxos <&> \(txOut@(C.InAnyCardanoEra _ (C.TxOut _ _ d _)), _) ->
+          let resolvedDatum = resolveDatum d
+           in (txOut, resolvedDatum)
+    pure $ UtxoSet resolvedUtxos
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -134,7 +151,7 @@ instance MonadIO m => MonadUtxoQuery (WalletAPIQueryT m) where
         let msg = "WalletAPI: Error when calling remote server: " <> show err
         liftIO (putStrLn msg)
         error msg
-      Right x  -> pure (onlyCredentials credentials $ fromUtxoTx x)
+      Right x  -> pure (onlyCredentials credentials $ fromUtxoTx $ fmap (const Nothing) x)
 
 deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 

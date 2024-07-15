@@ -32,11 +32,15 @@
                 src = lib.cleanSource ./.;
                 shell = {
                   withHoogle = true;
+                  buildInputs = with pkgs; [
+                    fd
+                  ];
                   tools = {
                     cabal = "latest";
                     haskell-language-server = "latest";
                     ghcide = "latest";
                     ghcid = "latest";
+                    stylish-haskell = "latest";
                   };
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };

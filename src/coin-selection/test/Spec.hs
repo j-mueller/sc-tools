@@ -6,6 +6,7 @@ module Main(main) where
 
 import qualified Cardano.Api.Shelley            as C
 import           Cardano.Ledger.Alonzo.Rules    (AlonzoUtxoPredFailure (..))
+import qualified Cardano.Ledger.Api             as Ledger
 import           Cardano.Ledger.Babbage.Rules   (BabbageUtxoPredFailure (..),
                                                  BabbageUtxowPredFailure (..))
 import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
@@ -51,7 +52,7 @@ import           Convex.MockChain.Staking       (registerPool)
 import           Convex.MockChain.Utils         (mockchainSucceeds,
                                                  runMockchainProp)
 import           Convex.NodeParams              (ledgerProtocolParameters,
-                                                 maxTxSize)
+                                                 protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
 import           Convex.Utils                   (failOnError)
 import qualified Convex.Utxos                   as Utxos
@@ -356,8 +357,7 @@ largeTransactionTest = do
     Left err -> fail $ "Unexpected failure: " <> show err
 
   -- the tx should succeed after setting the max tx size to exactly 20304 (see the error message in the test above)
-  let protParams = Defaults.protocolParameters & maxTxSize .~ 20304
-      params' = Defaults.nodeParams & ledgerProtocolParameters .~ (either (error. show) id (C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage protParams))
+  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20304
   runMockchain0IOWith Wallet.initialUTxOs params' (failOnError largeDatumTx) >>= \case
     Right (Right{}, view failedTransactions -> []) -> pure ()
     Right _ -> fail $ "Unexpected failure. Expected 1 successful transaction."
