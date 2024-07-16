@@ -19,6 +19,9 @@ module Convex.PlutusLedger(
   transStakeKeyHash,
   unTransStakeKeyHash,
 
+  transStakePoolKeyHash,
+  unTransStakePoolKeyHash,
+
   -- * Asset names
   transAssetName,
   toMaryAssetName,
@@ -138,6 +141,14 @@ unTransStakeKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Ha
 unTransStakeKeyHash (PV1.PubKeyHash pkh) =
   let bsx = PlutusTx.fromBuiltin pkh
   in C.deserialiseFromRawBytes (C.AsHash C.AsStakeKey) bsx
+
+transStakePoolKeyHash :: C.Hash C.StakePoolKey -> PV1.PubKeyHash
+transStakePoolKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
+
+unTransStakePoolKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Hash C.StakePoolKey)
+unTransStakePoolKeyHash (PV1.PubKeyHash pkh) =
+  let bsx = PlutusTx.fromBuiltin pkh
+  in C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) bsx
 
 unTransCredential :: PV1.Credential -> Either C.SerialiseAsRawBytesError C.PaymentCredential
 unTransCredential = \case
