@@ -117,6 +117,7 @@ import           Control.Lens                          (_1, _3, over, set, to,
                                                         (^.))
 import           Control.Lens.TH                       (makeLensesFor,
                                                         makePrisms)
+import           Control.Monad                  (forM)
 import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)
@@ -484,7 +485,18 @@ instance Monad m => MonadMockchain (MockchainT m) where
     pure a
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
-  utxosByPaymentCredentials cred = onlyCredentials cred <$> utxoSet
+  utxosByPaymentCredentials cred = do
+    UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
+    let
+      resolveDatum :: C.TxOutDatum C.CtxUTxO era -> MockchainT m (Maybe C.HashableScriptData)
+      resolveDatum C.TxOutDatumNone         = pure Nothing
+      resolveDatum (C.TxOutDatumHash _ dh)  = queryDatumFromHash dh
+      resolveDatum (C.TxOutDatumInline _ d) = pure $ Just d
+
+    resolvedUtxos <- forM utxos $ \(txOut@(C.InAnyCardanoEra _ (C.TxOut _ _ d _)), _) -> do
+      resolvedDatum <- resolveDatum d
+      pure (txOut, resolvedDatum)
+    pure $ UtxoSet resolvedUtxos
 
 instance Monad m => MonadDatumQuery (MockchainT m) where
   queryDatumFromHash dh = MockchainT (gets (Map.lookup dh . view datums))

@@ -8,8 +8,6 @@
 queries that we need for building transactions
 -}
 module Convex.Query(
-  MonadUtxoQuery(..),
-  utxosByPaymentCredential,
   balanceTx,
 
   -- * Tx balancing for operator
@@ -27,99 +25,38 @@ module Convex.Query(
   runWalletAPIQueryT
 ) where
 
-import           Cardano.Api                        (BabbageEra, BalancedTxBody,
-                                                     PaymentCredential (..))
-import qualified Cardano.Api                        as C
-import           Control.Monad.Except               (MonadError)
-import           Control.Monad.IO.Class             (MonadIO (..))
-import           Control.Monad.Reader               (ReaderT, ask, runReaderT)
-import           Control.Monad.State                (gets)
-import           Control.Monad.Trans.Class          (MonadTrans (..))
-import           Control.Monad.Trans.Except         (ExceptT, runExceptT)
-import           Control.Monad.Trans.Except.Result  (ResultT)
-import qualified Control.Monad.Trans.State          as StrictState
-import qualified Control.Monad.Trans.State.Strict   as LazyState
-import           Control.Tracer                     (Tracer, natTracer)
-import           Convex.BuildTx                     (TxBuilder)
-import           Convex.Class                       (MonadBlockchain (..),
-                                                     MonadBlockchainCardanoNodeT)
-import           Convex.CoinSelection               (BalanceTxError,
-                                                     ChangeOutputPosition,
-                                                     TxBalancingMessage)
+import           Cardano.Api                (BabbageEra, BalancedTxBody,
+                                             PaymentCredential (..))
+import qualified Cardano.Api                as C
+import           Control.Monad.Except       (MonadError)
+import           Control.Monad.IO.Class     (MonadIO (..))
+import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
+import           Control.Monad.Trans.Class  (MonadTrans (..))
+import           Control.Monad.Trans.Except (runExceptT)
+import           Control.Tracer             (Tracer, natTracer)
+import           Convex.BuildTx             (TxBuilder)
+import           Convex.Class               (MonadBlockchain (..),
+                                             MonadUtxoQuery (utxosByPaymentCredentials),
+                                             utxosByPaymentCredential)
+import           Convex.CoinSelection       (BalanceTxError,
+                                             ChangeOutputPosition,
+                                             TxBalancingMessage)
 import qualified Convex.CoinSelection
-import           Convex.MockChain                   (MockchainT, mcsDatums,
-                                                     utxoSet)
-import           Convex.MonadLog                    (MonadLog, MonadLogIgnoreT)
-import           Convex.NodeClient.WaitForTxnClient (MonadBlockchainWaitingT (..))
-import           Convex.Utils                       (liftEither, liftResult)
-import           Convex.Utxos                       (BalanceChanges,
-                                                     UtxoSet (UtxoSet, _utxos),
-                                                     fromUtxoTx,
-                                                     onlyCredentials)
-import qualified Convex.Wallet.API                  as Wallet.API
-import           Convex.Wallet.Operator             (Operator (..), Signing,
-                                                     operatorPaymentCredential,
-                                                     returnOutputFor,
-                                                     signTxOperator)
-import           Data.Aeson                         (FromJSON, ToJSON)
-import           Data.Functor                       (($>), (<&>))
-import qualified Data.Map                           as Map
-import           Data.Maybe                         (listToMaybe)
-import           Data.Set                           (Set)
-import qualified Data.Set                           as Set
-import           GHC.Generics                       (Generic)
-import           Servant.Client                     (ClientEnv)
-import           Test.QuickCheck.Monadic            (PropertyM)
-
-class Monad m => MonadUtxoQuery m where
-  -- | Return all UTXOs of given payment credentials. Each UTXO also possibly has the
-  -- resolved datum (meaning that if we only have the datum hash, the
-  -- implementation should try and resolve it to the actual datum).
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
-
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
-utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
-
-instance Monad m => MonadUtxoQuery (MockchainT m) where
-  utxosByPaymentCredentials cred = do
-    UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
-    datumMap <- gets mcsDatums
-    let
-      resolveDatum :: C.TxOutDatum C.CtxUTxO era -> Maybe C.HashableScriptData
-      resolveDatum C.TxOutDatumNone         = Nothing
-      resolveDatum (C.TxOutDatumHash _ dh)  = Map.lookup dh datumMap
-      resolveDatum (C.TxOutDatumInline _ d) = Just d
-
-    let resolvedUtxos = utxos <&> \(txOut@(C.InAnyCardanoEra _ (C.TxOut _ _ d _)), _) ->
-          let resolvedDatum = resolveDatum d
-           in (txOut, resolvedDatum)
-    pure $ UtxoSet resolvedUtxos
-
-instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (ExceptT e m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (ReaderT e m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (StrictState.StateT s m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (LazyState.StateT s m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadUtxoQuery m => MonadUtxoQuery (PropertyM m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-deriving newtype instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainWaitingT m)
+import           Convex.MonadLog            (MonadLog)
+import           Convex.Utils               (liftEither, liftResult)
+import           Convex.Utxos               (BalanceChanges, UtxoSet (_utxos),
+                                             fromUtxoTx, onlyCredentials)
+import qualified Convex.Wallet.API          as Wallet.API
+import           Convex.Wallet.Operator     (Operator (..), Signing,
+                                             operatorPaymentCredential,
+                                             returnOutputFor, signTxOperator)
+import           Data.Aeson                 (FromJSON, ToJSON)
+import           Data.Functor               (($>))
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (listToMaybe)
+import qualified Data.Set                   as Set
+import           GHC.Generics               (Generic)
+import           Servant.Client             (ClientEnv)
 
 {-| Balance the transaction body using the UTxOs locked by the payment credentials,
 returning any unused funds to the given return output
@@ -213,7 +150,7 @@ operatorUtxos :: MonadUtxoQuery m => Operator k -> m [(C.TxIn, C.InAnyCardanoEra
 operatorUtxos = fmap (Map.toList . fmap fst . _utxos) . utxosByPaymentCredential . operatorPaymentCredential
 
 {-| Select a single UTxO that is controlled by the operator. |-}
-selectOperatorUTxO :: MonadUtxoQuery m => Operator k -> m (Maybe (C.TxIn, C.InAnyCardanoEra (C.TxOut (C.CtxUTxO))))
+selectOperatorUTxO :: MonadUtxoQuery m => Operator k -> m (Maybe (C.TxIn, C.InAnyCardanoEra (C.TxOut C.CtxUTxO)))
 selectOperatorUTxO operator = fmap listToMaybe (operatorUtxos operator)
 
 -- | Failures during txn balancing and submission

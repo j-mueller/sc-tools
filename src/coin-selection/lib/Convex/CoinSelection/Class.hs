@@ -28,13 +28,13 @@ import           Convex.BuildTx                   (TxBuilder)
 import           Convex.CardanoApi.Lenses         (emptyTxOut)
 import           Convex.Class                     (MonadBlockchain (..),
                                                    MonadDatumQuery (queryDatumFromHash),
-                                                   MonadMockchain (..))
+                                                   MonadMockchain (..),
+                                                   MonadUtxoQuery (utxosByPaymentCredentials))
 import           Convex.CoinSelection             (BalanceTxError,
                                                    ChangeOutputPosition,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MonadLog                  (MonadLog, MonadLogIgnoreT)
-import           Convex.Query                     (MonadUtxoQuery (utxosByPaymentCredentials))
 import           Convex.Utxos                     (BalanceChanges (..),
                                                    UtxoSet (..))
 
