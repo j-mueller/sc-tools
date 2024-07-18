@@ -37,6 +37,7 @@ module Convex.BuildTx(
   addInputWithTxBody,
   addMintWithTxBody,
   addWithdrawalWithTxBody,
+  addStakeWitnessWithTxBody,
   addReference,
   addCollateral,
   addAuxScript,
@@ -332,6 +333,12 @@ addMintWithTxBody policy assetName quantity f =
 addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
 addWithdrawalWithTxBody address amount f =
   addTxBuilder (TxBuilder $ \body -> (over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f body) :)))
+
+{- | Like @addStakeWitness@ but uses a function that takes a @TxBody@ to build the witness.
+-}
+addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addStakeWitnessWithTxBody credential buildWitness =
+  addTxBuilder (TxBuilder $ \body -> (set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just $ buildWitness body)))
 
 {-| Spend an output locked by a public key
 -}
