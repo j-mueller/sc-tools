@@ -277,8 +277,11 @@ control over the capabilities they require.
 --   NOTE: There are currently no implementations of this class in sc-tools.
 class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
-  -- those payment credentials according to the current indexed blockchain state.
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO ())
+  -- those payment credentials according to the current indexed blockchain
+  -- state. Each UTXO also possibly has the resolved datum (meaning that if we
+  -- only have the datum hash, the implementation should try and resolve it to
+  -- the actual datum).
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -301,8 +304,11 @@ instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT e m) wh
 instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
+instance MonadUtxoQuery m => MonadUtxoQuery (PropertyM m) where
+  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
+
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO ())
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]

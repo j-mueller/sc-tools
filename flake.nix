@@ -2,11 +2,18 @@
   description = "sc-tools";
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
-    haskellNix.url = "github:input-output-hk/haskell.nix";
     nixpkgs.follows = "haskellNix/nixpkgs-unstable";
+    hackage = {
+      url = "github:input-output-hk/hackage.nix";
+      flake = false;
+    };
     CHaP = {
       url = "github:intersectmbo/cardano-haskell-packages?ref=repo";
       flake = false;
+    };
+    haskellNix = {
+      url = "github:input-output-hk/haskell.nix";
+      inputs.hackage.follows = "hackage";
     };
     iohk-nix.url = "github:input-output-hk/iohk-nix";
   };
@@ -21,15 +28,19 @@
             iohk-nix.overlays.haskell-nix-crypto
             (final: prev: {
               sc-tools = final.haskell-nix.cabalProject' {
-                compiler-nix-name = "ghc965";
+                compiler-nix-name = "ghc966";
                 src = lib.cleanSource ./.;
                 shell = {
                   withHoogle = true;
+                  buildInputs = with pkgs; [
+                    fd
+                  ];
                   tools = {
                     cabal = "latest";
                     haskell-language-server = "latest";
                     ghcide = "latest";
                     ghcid = "latest";
+                    stylish-haskell = "latest";
                   };
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };
@@ -43,6 +54,15 @@
           devShells = flake.devShells;
         };
     };
+  nixConfig = {
+    extra-substituters = [
+      "https://cache.iog.io"
+    ];
+    extra-trusted-public-keys = [
+      "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
+    ];
+    allow-import-from-derivation = true;
+  };
 }
 
 
