@@ -7,11 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: cachix/install-nix-action@v27
-    # This checks the packages compile with the flake checks, see `flake.nix` for detials
+    - uses: cachix/install-nix-action@v25
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable
+    - uses: cachix/cachix-action@v14
+      with:
+        name: sc-tools
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Flake check
       run: nix flake check
-    # This checks the packages compile with cabal
-    - name: Cabal build into develop shell
-      run: nix develop && cabal build all -j
-    

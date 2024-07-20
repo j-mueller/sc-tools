@@ -52,6 +52,7 @@
         in
         {
           devShells = flake.devShells;
+          packages = flake.packages;
           checks = {
             build-all = pkgs.runCommandCC "check all cabal.project pagackes"
               {
