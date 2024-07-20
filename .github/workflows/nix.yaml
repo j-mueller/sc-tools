@@ -1,0 +1,17 @@
+name: "Nix"
+on:
+  pull_request:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: cachix/install-nix-action@v27
+    # This checks the packages compile with the flake checks, see `flake.nix` for detials
+    - name: Flake check
+      run: nix flake check
+    # This checks the packages compile with cabal
+    - name: Cabal build into develop shell
+      run: nix develop && cabal build all -j
+    

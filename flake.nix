@@ -52,6 +52,13 @@
         in
         {
           devShells = flake.devShells;
+          checks = {
+            build-all = pkgs.runCommandCC "check all cabal.project pagackes"
+              {
+                buildInputs = builtins.attrValues flake.packages;
+              }
+              "mkdir $out";
+          };
         };
     };
   nixConfig = {
