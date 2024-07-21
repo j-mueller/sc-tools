@@ -8,6 +8,7 @@ A collection of libraries that are helpful for building Cardano apps with Haskel
 * `convex-coin-selection`: Coin selection and transaction balancing
 * `convex-mockchain`: Minimal mockchain for tests
 * `convex-optics`: Some optics for plutus-ledger-api and cardano-api
+
 The API documentation (Haddocks) is published [here](https://j-mueller.github.io/sc-tools/)
 
 ### Dependencies
