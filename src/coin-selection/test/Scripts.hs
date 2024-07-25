@@ -58,7 +58,7 @@ spendMatchingIndex :: MonadBuildTx m => TxIn -> m ()
 spendMatchingIndex txi =
   let witness txBody = C.ScriptWitness C.ScriptWitnessForSpending $ BuildTx.buildV2ScriptWitness
         matchingIndexValidatorScript
-        (C.ScriptDatumForTxIn $ toHashableScriptData ())
+        (C.ScriptDatumForTxIn $ Just $ toHashableScriptData ())
         (fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi txBody)
   in BuildTx.setScriptsValid >> BuildTx.addInputWithTxBody txi witness
 
