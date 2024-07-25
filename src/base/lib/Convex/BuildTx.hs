@@ -9,7 +9,7 @@
 -}
 module Convex.BuildTx(
   -- * Tx Builder
-  TxBuilder(..),
+  TxBuilder,
   liftTxBodyEndo,
   -- ** Looking at transaction inputs
   lookupIndexSpending,
@@ -117,7 +117,8 @@ import           Control.Monad.Writer          (WriterT, execWriterT,
                                                 runWriterT)
 import           Control.Monad.Writer.Class    (MonadWriter (..))
 import qualified Convex.CardanoApi.Lenses      as L
-import           Convex.Class                  (MonadBlockchain (..),
+import Data.Set (Set)
+import           Convex.Class                  (MonadBlockchain (..), singleUTxO,
                                                 MonadBlockchainCardanoNodeT,
                                                 MonadDatumQuery (queryDatumFromHash),
                                                 MonadMockchain (..))
@@ -127,30 +128,32 @@ import           Convex.Scripts                (toHashableScriptData)
 import           Data.Functor.Identity         (Identity (..))
 import           Data.List                     (nub)
 import qualified Data.Map                      as Map
+import           Data.Map.Lazy                 (Map)
+import qualified Data.Map.Lazy                 as Map
 import           Data.Maybe                    (fromJust, fromMaybe)
 import qualified Data.Set                      as Set
 import qualified PlutusLedgerApi.V1            as Plutus
 
-type TxBody = C.TxBodyContent C.BuildTx C.BabbageEra
+type TxBodyContent = C.TxBodyContent C.BuildTx C.BabbageEra
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs
 -}
-lookupIndexSpending :: C.TxIn -> TxBody -> Maybe Int
+lookupIndexSpending :: C.TxIn -> TxBodyContent -> Maybe Int
 lookupIndexSpending txi = Map.lookupIndex txi . Map.fromList . (fmap (view L._BuildTxWith) <$>) . view L.txIns
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs. Throws an error if the @TxIn@ is not present.
 -}
-findIndexSpending :: C.TxIn -> TxBody -> Int
+findIndexSpending :: C.TxIn -> TxBodyContent -> Int
 findIndexSpending txi = fromJust . lookupIndexSpending txi
 
 {-| Look up the index of the @TxIn@ in the list of reference inputs
 -}
-lookupIndexReference :: C.TxIn -> TxBody -> Maybe Int
+lookupIndexReference :: C.TxIn -> TxBodyContent -> Maybe Int
 lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReferenceIso)
 
 {-| Look up the index of the @TxIn@ in the list of reference inputs. Throws an error if the @TxIn@ is not present.
 -}
-findIndexReference :: C.TxIn -> TxBody -> Int
+findIndexReference :: C.TxIn -> TxBodyContent -> Int
 findIndexReference txi = fromJust . lookupIndexReference txi
 
 {-| Look up the index of the @PolicyId@ in the transaction mint.
@@ -159,24 +162,68 @@ which is @Map CurrencySymbol (Map TokenName Quantity).
 Here, we want to get the index into the on-chain map, but instead index into the cardano-api @Map CurrencySymbol Witness@.
 These two indexes should be the same by construction, but it is possible to violate this invariant when building a tx.
 -}
-lookupIndexMinted :: C.PolicyId -> TxBody -> Maybe Int
+lookupIndexMinted :: C.PolicyId -> TxBodyContent -> Maybe Int
 lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxMintValue .  _2)
 
 {-| Look up the index of the @PolicyId@ in the transaction mint. Throws an error if the @PolicyId@ is not present.
 -}
-findIndexMinted :: C.PolicyId -> TxBody -> Int
+findIndexMinted :: C.PolicyId -> TxBodyContent -> Int
 findIndexMinted policy = fromJust . lookupIndexMinted policy
 
 {-| Look up the index of the @StakeAddress@ in the list of withdrawals.
 -}
-lookupIndexWithdrawal :: C.StakeAddress -> TxBody -> Maybe Int
+lookupIndexWithdrawal :: C.StakeAddress -> TxBodyContent -> Maybe Int
 lookupIndexWithdrawal stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (L.txWithdrawals . L._TxWithdrawals)
 
 {-| Look up the index of the @StakeAddress@ in the list of withdrawals. Throws an error if the @StakeAddress@ is not present.
 -}
-findIndexWithdrawal :: C.StakeAddress -> TxBody -> Int
+findIndexWithdrawal :: C.StakeAddress -> TxBodyContent -> Int
 findIndexWithdrawal stakeAddress = fromJust . lookupIndexWithdrawal stakeAddress
 
+type AnyOutput = C.InAnyCardanoEra (C.TxOut C.CtxUTxO)
+
+-- Invariant: All of the inputs in 'bcrBodyContent' have an entry in the 'bcrInput' map
+data BodyContentResolved =
+  BodyContentResolved
+    { bcrResolvedInputs      :: Map C.TxIn AnyOutput -- ^ Resolved inputs
+    , bcrBodyContent :: TxBodyContent
+    }
+
+emptyBodyContentResolved :: BodyContentResolved
+emptyBodyContentResolved = 
+  BodyContentResolved
+    { bcrBodyContent = L.emptyTx
+    , bcrResolvedInputs = Map.empty
+    }
+
+addTxInSpending :: C.TxIn -> AnyOutput -> C.Witness WitCtxTxIn C.BabbageEra -> BodyContentResolved -> BodyContentResolved
+addTxInSpending txIn txOut redeemer BodyContentResolved{bcrResolvedInputs = oldResolved, bcrBodyContent = oldContent} = 
+  BodyContentResolved
+    { bcrResolvedInputs = Map.insert txIn txOut oldResolved
+    , bcrBodyContent    = oldContent & over L.txIns ((:) (txIn, C.BuildTxWith redeemer))
+    }
+
+-- TODO: Use this for testing
+allInputsResolved :: BodyContentResolved -> Bool
+allInputsResolved = undefined
+
+-- | Resolve all inputs used by the 'TxBodyContent'
+toBodyContextResolved :: (MonadBlockchain m) => TxBodyContent -> m BodyContentResolved
+toBodyContextResolved txBody = do
+  utxos <- Map.toList . C.unUTxO <$> utxoByTxIn (requiredTxIns txBody)
+  pure BodyContentResolved
+        { bcrResolvedInputs = Map.fromList $ fmap (fmap (C.inAnyCardanoEra C.BabbageEra)) utxos
+        , bcrBodyContent    = txBody }
+
+
+requiredTxIns :: C.TxBodyContent v era -> Set C.TxIn
+requiredTxIns body =
+  Set.fromList (fst <$> view L.txIns body)
+  <> Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
+  <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)
+
+-- TODO: separate module for BodyContentResolved
+-- incl. requiredTxIns
 
 {-|
 A function that modifies the final @TxBodyContent@, after seeing the @TxBodyContent@ of
@@ -186,22 +233,25 @@ Note that the result of @unTxBuilder txBody@ must not completely force the @txBo
 or refer to itself circularly. For example, using this to construct a redeemer that contains the whole
 @TransactionInputs@ map is going to loop forever.
 -}
-newtype TxBuilder = TxBuilder{ unTxBuilder :: TxBody -> TxBody -> TxBody }
+data TxBuilder =
+  TxBuilder
+    { txbBuild  :: BodyContentResolved -> BodyContentResolved -> BodyContentResolved -- ^ Builder function for the tx body content
+    }
 
 {-| Construct the final @TxBodyContent@
 -}
-buildTx :: TxBuilder -> TxBody
-buildTx txb = buildTxWith txb L.emptyTx
+buildTx :: TxBuilder -> BodyContentResolved
+buildTx txb = buildTxWith txb emptyBodyContentResolved
 
 -- | The 'TxBuilder' that modifies the tx body without looking at the final result
-liftTxBodyEndo :: (TxBody -> TxBody) -> TxBuilder
+liftTxBodyEndo :: (BodyContentResolved -> BodyContentResolved) -> TxBuilder
 liftTxBodyEndo f = TxBuilder (const f)
 
 {-| Construct the final @TxBodyContent@ from the provided @TxBodyContent@
 -}
-buildTxWith :: TxBuilder -> TxBody -> TxBody
-buildTxWith TxBuilder{unTxBuilder} initial =
-  let result = unTxBuilder result initial
+buildTxWith :: TxBuilder -> BodyContentResolved -> BodyContentResolved
+buildTxWith TxBuilder{txbBuild} initial =
+  let result = txbBuild result initial
   in result
 
 instance Semigroup TxBuilder where
@@ -241,7 +291,7 @@ instance MonadBuildTx m => MonadBuildTx (MonadLogIgnoreT m) where
 instance MonadBuildTx m => MonadBuildTx (MonadLogKatipT m) where
   addTxBuilder = lift . addTxBuilder
 
-addBtx :: MonadBuildTx m => (TxBody -> TxBody) -> m ()
+addBtx :: MonadBuildTx m => (BodyContentResolved -> BodyContentResolved) -> m ()
 addBtx = addTxBuilder . TxBuilder . const
 
 {-| Monad transformer for the @MonadBuildTx@ effect
@@ -313,7 +363,7 @@ execBuildTx = runIdentity . execBuildTxT
 
 {-| Run the @BuildTx@ action and produce a transaction body
 -}
-execBuildTx' :: BuildTxT Identity a -> TxBody
+execBuildTx' :: BuildTxT Identity a -> BodyContentResolved
 execBuildTx' = buildTx . runIdentity . execBuildTxT
 
 {-| These functions allow to build the witness for an input/asset/withdrawal
@@ -322,21 +372,32 @@ constructing the witness, make sure that the witness does not depend on
 itself. For example: @addInputWithTxBody txi (\body -> find (\in -> in == txi) (txInputs body))@
 is going to loop.
 -}
-addInputWithTxBody :: MonadBuildTx m => C.TxIn -> (TxBody -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
-addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> (over L.txIns ((txIn, C.BuildTxWith $ f body) :)))
+addInputWithTxBody :: (MonadBlockchain m, MonadBuildTx m) => C.TxIn -> (BodyContentResolved -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
+addInputWithTxBody txIn f = do
+  utxo <- singleUTxO txIn
+  case utxo of
+    Nothing -> error  $ "UTXO not found: " <> show txIn -- TODO: Error handling
+    Just txOut -> addResolvedInput txIn (C.inAnyCardanoEra C.BabbageEra txOut) f
 
-addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
+addResolvedInput :: (MonadBuildTx m) => C.TxIn -> AnyOutput -> (BodyContentResolved -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
+addResolvedInput txIn txOut f =
+  let txB = TxBuilder $ \finalBodyContentResolved oldContent ->
+              addTxInSpending txIn txOut (f finalBodyContentResolved) oldContent
+  in addTxBuilder txB
+  -- addTxBuilder (TxBuilder $ \body -> (over L.txIns ((txIn, C.BuildTxWith $ f body) :)))
+
+addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBodyContent -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
 addMintWithTxBody policy assetName quantity f =
   let v = assetValue (C.unPolicyId policy) assetName quantity
   in addTxBuilder (TxBuilder $ \body -> (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f body)))))
 
-addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (TxBodyContent -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
 addWithdrawalWithTxBody address amount f =
   addTxBuilder (TxBuilder $ \body -> (over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f body) :)))
 
-{- | Like @addStakeWitness@ but uses a function that takes a @TxBody@ to build the witness.
+{- | Like @addStakeWitness@ but uses a function that takes a @TxBodyContent@ to build the witness.
 -}
-addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (TxBodyContent -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
 addStakeWitnessWithTxBody credential buildWitness =
   addTxBuilder (TxBuilder $ \body -> (set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just $ buildWitness body)))
 
