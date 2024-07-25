@@ -398,12 +398,12 @@ buildV2RefScriptWitness refTxIn mbSh datum redeemer =
 
 spendPlutusV1 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> m ()
 spendPlutusV1 txIn s (toHashableScriptData -> dat) red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV1ScriptWitness s (C.ScriptDatumForTxIn dat) red
+  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV1ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
   in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
 
 spendPlutusV2 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> m ()
 spendPlutusV2 txIn s (toHashableScriptData -> dat) red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s (C.ScriptDatumForTxIn dat) red
+  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
   in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
 
 {-| Spend an output locked by a Plutus V2 validator with an inline datum
@@ -427,7 +427,7 @@ spendPlutusV2RefBaseWithInRef :: forall redeemer m. (MonadBuildTx m, Plutus.ToDa
 spendPlutusV2RefBaseWithInRef txIn refTxIn sh dat red = spendPlutusV2RefBase txIn refTxIn sh dat (const red) >> addReference refTxIn
 
 spendPlutusV2Ref :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
-spendPlutusV2Ref txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh (C.ScriptDatumForTxIn dat) red
+spendPlutusV2Ref txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh (C.ScriptDatumForTxIn $ Just dat) red
 
 {-| same as spendPlutusV2Ref but considers inline datum at the spent utxo
 -}
@@ -438,7 +438,7 @@ spendPlutusV2RefWithInlineDatum txIn refTxIn sh red = spendPlutusV2RefBaseWithIn
 This is to cover the case whereby the reference script utxo is expected to be consumed in the same tx.
 -}
 spendPlutusV2RefWithoutInRef :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
-spendPlutusV2RefWithoutInRef txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBase txIn refTxIn sh (C.ScriptDatumForTxIn dat) (const red)
+spendPlutusV2RefWithoutInRef txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBase txIn refTxIn sh (C.ScriptDatumForTxIn $ Just dat) (const red)
 
 {-| same as spendPlutusV2RefWithoutInRef but considers inline datum at the spent utxo
 -}
