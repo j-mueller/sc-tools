@@ -11,6 +11,7 @@ module Convex.BuildTx(
   -- * Tx Builder
   TxBuilder,
   liftTxBodyEndo,
+  liftTxBodyResolved,
   -- ** Looking at transaction inputs
   lookupIndexSpending,
   lookupIndexReference,
@@ -34,7 +35,7 @@ module Convex.BuildTx(
   evalBuildTxT,
 
   -- * Building transactions
-  addInputWithTxBody,
+  addInput,
   addMintWithTxBody,
   addWithdrawalWithTxBody,
   addStakeWitnessWithTxBody,
@@ -96,45 +97,52 @@ module Convex.BuildTx(
   setMinAdaDepositAll
   ) where
 
-import           Cardano.Api.Shelley           (Hash, HashableScriptData,
-                                                NetworkId, PaymentKey,
-                                                PlutusScript, PlutusScriptV1,
-                                                PlutusScriptV2, ScriptHash,
-                                                WitCtxTxIn)
-import qualified Cardano.Api.Shelley           as C
-import qualified Cardano.Ledger.Shelley.TxCert as TxCert
-import           Control.Lens                  (_1, _2, at, mapped, over, set,
-                                                view, (&))
-import qualified Control.Lens                  as L
-import           Control.Monad.Except          (MonadError (..))
-import           Control.Monad.Reader.Class    (MonadReader (..))
-import qualified Control.Monad.State           as LazyState
-import           Control.Monad.State.Class     (MonadState (..))
-import qualified Control.Monad.State.Strict    as StrictState
-import           Control.Monad.Trans.Class     (MonadTrans (..))
-import           Control.Monad.Trans.Except    (ExceptT)
-import           Control.Monad.Writer          (WriterT, execWriterT,
-                                                runWriterT)
-import           Control.Monad.Writer.Class    (MonadWriter (..))
-import qualified Convex.CardanoApi.Lenses      as L
-import Data.Set (Set)
-import           Convex.Class                  (MonadBlockchain (..), singleUTxO,
-                                                MonadBlockchainCardanoNodeT,
-                                                MonadDatumQuery (queryDatumFromHash),
-                                                MonadMockchain (..))
-import           Convex.MonadLog               (MonadLog (..), MonadLogIgnoreT,
-                                                MonadLogKatipT)
-import           Convex.Scripts                (toHashableScriptData)
-import           Data.Functor.Identity         (Identity (..))
-import           Data.List                     (nub)
-import qualified Data.Map                      as Map
-import           Data.Map.Lazy                 (Map)
-import qualified Data.Map.Lazy                 as Map
-import           Data.Maybe                    (fromJust, fromMaybe)
-import qualified Data.Set                      as Set
-import qualified PlutusLedgerApi.V1            as Plutus
-
-type TxBodyContent = C.TxBodyContent C.BuildTx C.BabbageEra
+import           Cardano.Api.Shelley                (Hash, HashableScriptData,
+                                                     NetworkId, PaymentKey,
+                                                     PlutusScript,
+                                                     PlutusScriptV1,
+                                                     PlutusScriptV2, ScriptHash,
+                                                     WitCtxTxIn)
+import qualified Cardano.Api.Shelley                as C
+import qualified Cardano.Ledger.Shelley.TxCert      as TxCert
+import           Control.Lens                       (_1, _2, at, mapped, over,
+                                                     set, view, (&))
+import qualified Control.Lens                       as L
+import           Control.Monad.Except               (MonadError (..))
+import           Control.Monad.Reader.Class         (MonadReader (..))
+import qualified Control.Monad.State                as LazyState
+import           Control.Monad.State.Class          (MonadState (..))
+import qualified Control.Monad.State.Strict         as StrictState
+import           Control.Monad.Trans.Class          (MonadTrans (..))
+import           Control.Monad.Trans.Except         (ExceptT)
+import           Control.Monad.Writer               (WriterT, execWriterT,
+                                                     runWriterT)
+import           Control.Monad.Writer.Class         (MonadWriter (..))
+import           Convex.BuildTx.BodyContentResolved (AnyOutput,
+                                                     BodyContentResolved,
+                                                     TxBodyContent)
+import qualified Convex.BuildTx.BodyContentResolved as BCR
+import           Convex.BuildTx.Error               (BuildTxError)
+import           Convex.BuildTx.Error qualified as Error
+import qualified Convex.CardanoApi.Lenses           as L
+import           Convex.Class                       (MonadBlockchain (..),
+                                                     MonadBlockchainCardanoNodeT,
+                                                     MonadDatumQuery (queryDatumFromHash),
+                                                     MonadMockchain (..),
+                                                     singleUTxO)
+import           Convex.MonadLog                    (MonadLog (..),
+                                                     MonadLogIgnoreT,
+                                                     MonadLogKatipT)
+import           Convex.Scripts                     (toHashableScriptData)
+import           Data.Functor.Identity              (Identity (..))
+import           Data.List                          (nub)
+import qualified Data.Map                           as Map
+import           Data.Map.Lazy                      (Map)
+import qualified Data.Map.Lazy                      as Map
+import           Data.Maybe                         (fromJust, fromMaybe)
+import           Data.Set                           (Set)
+import qualified Data.Set                           as Set
+import qualified PlutusLedgerApi.V1                 as Plutus
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs
 -}
@@ -180,48 +188,6 @@ lookupIndexWithdrawal stakeAddress = Set.lookupIndex stakeAddress . Set.fromList
 findIndexWithdrawal :: C.StakeAddress -> TxBodyContent -> Int
 findIndexWithdrawal stakeAddress = fromJust . lookupIndexWithdrawal stakeAddress
 
-type AnyOutput = C.InAnyCardanoEra (C.TxOut C.CtxUTxO)
-
--- Invariant: All of the inputs in 'bcrBodyContent' have an entry in the 'bcrInput' map
-data BodyContentResolved =
-  BodyContentResolved
-    { bcrResolvedInputs      :: Map C.TxIn AnyOutput -- ^ Resolved inputs
-    , bcrBodyContent :: TxBodyContent
-    }
-
-emptyBodyContentResolved :: BodyContentResolved
-emptyBodyContentResolved = 
-  BodyContentResolved
-    { bcrBodyContent = L.emptyTx
-    , bcrResolvedInputs = Map.empty
-    }
-
-addTxInSpending :: C.TxIn -> AnyOutput -> C.Witness WitCtxTxIn C.BabbageEra -> BodyContentResolved -> BodyContentResolved
-addTxInSpending txIn txOut redeemer BodyContentResolved{bcrResolvedInputs = oldResolved, bcrBodyContent = oldContent} = 
-  BodyContentResolved
-    { bcrResolvedInputs = Map.insert txIn txOut oldResolved
-    , bcrBodyContent    = oldContent & over L.txIns ((:) (txIn, C.BuildTxWith redeemer))
-    }
-
--- TODO: Use this for testing
-allInputsResolved :: BodyContentResolved -> Bool
-allInputsResolved = undefined
-
--- | Resolve all inputs used by the 'TxBodyContent'
-toBodyContextResolved :: (MonadBlockchain m) => TxBodyContent -> m BodyContentResolved
-toBodyContextResolved txBody = do
-  utxos <- Map.toList . C.unUTxO <$> utxoByTxIn (requiredTxIns txBody)
-  pure BodyContentResolved
-        { bcrResolvedInputs = Map.fromList $ fmap (fmap (C.inAnyCardanoEra C.BabbageEra)) utxos
-        , bcrBodyContent    = txBody }
-
-
-requiredTxIns :: C.TxBodyContent v era -> Set C.TxIn
-requiredTxIns body =
-  Set.fromList (fst <$> view L.txIns body)
-  <> Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
-  <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)
-
 -- TODO: separate module for BodyContentResolved
 -- incl. requiredTxIns
 
@@ -233,7 +199,7 @@ Note that the result of @unTxBuilder txBody@ must not completely force the @txBo
 or refer to itself circularly. For example, using this to construct a redeemer that contains the whole
 @TransactionInputs@ map is going to loop forever.
 -}
-data TxBuilder =
+newtype TxBuilder =
   TxBuilder
     { txbBuild  :: BodyContentResolved -> BodyContentResolved -> BodyContentResolved -- ^ Builder function for the tx body content
     }
@@ -241,11 +207,15 @@ data TxBuilder =
 {-| Construct the final @TxBodyContent@
 -}
 buildTx :: TxBuilder -> BodyContentResolved
-buildTx txb = buildTxWith txb emptyBodyContentResolved
+buildTx txb = buildTxWith txb BCR.emptyBodyContentResolved
 
 -- | The 'TxBuilder' that modifies the tx body without looking at the final result
-liftTxBodyEndo :: (BodyContentResolved -> BodyContentResolved) -> TxBuilder
-liftTxBodyEndo f = TxBuilder (const f)
+liftTxBodyEndo :: (TxBodyContent -> TxBodyContent) -> TxBuilder
+liftTxBodyEndo f = TxBuilder $ \_ oldContent -> oldContent & over BCR.bodyContent f
+
+-- | The 'TxBuilder' that modifies the tx body, having access to the final result
+liftTxBodyResolved :: (BodyContentResolved -> TxBodyContent -> TxBodyContent) -> TxBuilder
+liftTxBodyResolved f = TxBuilder $ \finalContentResolved oldContent -> oldContent & over BCR.bodyContent (f finalContentResolved)
 
 {-| Construct the final @TxBodyContent@ from the provided @TxBodyContent@
 -}
@@ -369,44 +339,54 @@ execBuildTx' = buildTx . runIdentity . execBuildTxT
 {-| These functions allow to build the witness for an input/asset/withdrawal
 by accessing the final @TxBodyContent@. To avoid an infinite loop when
 constructing the witness, make sure that the witness does not depend on
-itself. For example: @addInputWithTxBody txi (\body -> find (\in -> in == txi) (txInputs body))@
+itself. For example: @addInput txi (\body -> find (\in -> in == txi) (txInputs body))@
 is going to loop.
 -}
-addInputWithTxBody :: (MonadBlockchain m, MonadBuildTx m) => C.TxIn -> (BodyContentResolved -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
-addInputWithTxBody txIn f = do
-  utxo <- singleUTxO txIn
-  case utxo of
-    Nothing -> error  $ "UTXO not found: " <> show txIn -- TODO: Error handling
-    Just txOut -> addResolvedInput txIn (C.inAnyCardanoEra C.BabbageEra txOut) f
+addInput :: (MonadBlockchain m, MonadBuildTx m, MonadError BuildTxError m) => C.TxIn -> (BodyContentResolved -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
+addInput txIn f = do
+  output <- Error.resolveTxIn txIn
+  addInputResolved txIn output f
 
-addResolvedInput :: (MonadBuildTx m) => C.TxIn -> AnyOutput -> (BodyContentResolved -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
-addResolvedInput txIn txOut f =
+{-| Spend a resolved 'C.TxIn'
+-}
+addInputResolved :: (MonadBuildTx m) => C.TxIn -> AnyOutput -> (BodyContentResolved -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
+addInputResolved txIn txOut f =
   let txB = TxBuilder $ \finalBodyContentResolved oldContent ->
-              addTxInSpending txIn txOut (f finalBodyContentResolved) oldContent
+              BCR.addTxInSpending txIn txOut (f finalBodyContentResolved) oldContent
   in addTxBuilder txB
-  -- addTxBuilder (TxBuilder $ \body -> (over L.txIns ((txIn, C.BuildTxWith $ f body) :)))
 
-addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBodyContent -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
+{-| Mint a native asset
+-}
+addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (BodyContentResolved -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
 addMintWithTxBody policy assetName quantity f =
   let v = assetValue (C.unPolicyId policy) assetName quantity
-  in addTxBuilder (TxBuilder $ \body -> (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f body)))))
+  in addTxBuilder $ liftTxBodyResolved $ \resolved -> over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f resolved)))
 
-addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (TxBodyContent -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+{-| Add a withdrawal for a given amount of Lovelace
+-}
+addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (BodyContentResolved -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
 addWithdrawalWithTxBody address amount f =
-  addTxBuilder (TxBuilder $ \body -> (over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f body) :)))
+  addTxBuilder $ liftTxBodyResolved $ \resolved -> (over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f resolved) :))
 
-{- | Like @addStakeWitness@ but uses a function that takes a @TxBodyContent@ to build the witness.
+{-| Like @addStakeWitness@ but uses a function that takes a @TxBodyContent@ to build the witness.
 -}
-addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (TxBodyContent -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (BodyContentResolved -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
 addStakeWitnessWithTxBody credential buildWitness =
-  addTxBuilder (TxBuilder $ \body -> (set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just $ buildWitness body)))
+  addTxBuilder $ liftTxBodyResolved $ \resolved -> set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just $ buildWitness resolved)
 
-{-| Spend an output locked by a public key
+{-| Spend an output locked by a public key, using the 'MonadBlockchain' effect to resolve the input
 -}
-spendPublicKeyOutput :: MonadBuildTx m => C.TxIn -> m ()
+spendPublicKeyOutput :: (MonadBlockchain m, MonadBuildTx m) => C.TxIn -> m ()
 spendPublicKeyOutput txIn = do
-  let wit = C.BuildTxWith (C.KeyWitness (C.KeyWitnessForSpending))
-  addBtx (over L.txIns ((txIn, wit) :))
+  let wit = C.KeyWitness (C.KeyWitnessForSpending)
+  addInput txIn (const wit)
+
+{-| Spend an output locked by a public key, using the 'MonadBlockchain' effect to resolve the input
+-}
+spendPublicKeyOutputResolved :: (MonadBuildTx m) => C.TxIn -> AnyOutput -> m ()
+spendPublicKeyOutputResolved txIn txOut = do
+  let wit = C.KeyWitness (C.KeyWitnessForSpending)
+  addInputResolved txIn txOut (const wit)
 
 {-| Utility function to build a v1 script witness
 -}
