@@ -27,6 +27,7 @@ module Convex.BuildTx(
   -- * Effect
   MonadBuildTx(..),
   BuildTxT(..),
+  BuildTxError(..),
   runBuildTxT,
   runBuildTx,
   execBuildTxT,
@@ -49,8 +50,11 @@ module Convex.BuildTx(
 
   -- ** Variations of @addInput@
   spendPublicKeyOutput,
+  spendPublicKeyOutputResolved,
   spendPlutusV1,
+  spendPlutusV1Resolved,
   spendPlutusV2,
+  spendPlutusV2Resolved,
   spendPlutusV2Ref,
   spendPlutusV2RefWithInlineDatum,
   spendPlutusV2RefWithoutInRef,
@@ -123,13 +127,12 @@ import           Convex.BuildTx.BodyContentResolved (AnyOutput,
                                                      TxBodyContent)
 import qualified Convex.BuildTx.BodyContentResolved as BCR
 import           Convex.BuildTx.Error               (BuildTxError)
-import           Convex.BuildTx.Error qualified as Error
+import qualified Convex.BuildTx.Error               as Error
 import qualified Convex.CardanoApi.Lenses           as L
 import           Convex.Class                       (MonadBlockchain (..),
                                                      MonadBlockchainCardanoNodeT,
                                                      MonadDatumQuery (queryDatumFromHash),
-                                                     MonadMockchain (..),
-                                                     singleUTxO)
+                                                     MonadMockchain (..))
 import           Convex.MonadLog                    (MonadLog (..),
                                                      MonadLogIgnoreT,
                                                      MonadLogKatipT)
@@ -137,31 +140,28 @@ import           Convex.Scripts                     (toHashableScriptData)
 import           Data.Functor.Identity              (Identity (..))
 import           Data.List                          (nub)
 import qualified Data.Map                           as Map
-import           Data.Map.Lazy                      (Map)
-import qualified Data.Map.Lazy                      as Map
 import           Data.Maybe                         (fromJust, fromMaybe)
-import           Data.Set                           (Set)
 import qualified Data.Set                           as Set
 import qualified PlutusLedgerApi.V1                 as Plutus
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs
 -}
-lookupIndexSpending :: C.TxIn -> TxBodyContent -> Maybe Int
-lookupIndexSpending txi = Map.lookupIndex txi . Map.fromList . (fmap (view L._BuildTxWith) <$>) . view L.txIns
+lookupIndexSpending :: C.TxIn -> BodyContentResolved -> Maybe Int
+lookupIndexSpending txi = Map.lookupIndex txi . Map.fromList . (fmap (view L._BuildTxWith) <$>) . view L.txIns . BCR.bcrBodyContent
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs. Throws an error if the @TxIn@ is not present.
 -}
-findIndexSpending :: C.TxIn -> TxBodyContent -> Int
+findIndexSpending :: C.TxIn -> BodyContentResolved -> Int
 findIndexSpending txi = fromJust . lookupIndexSpending txi
 
 {-| Look up the index of the @TxIn@ in the list of reference inputs
 -}
-lookupIndexReference :: C.TxIn -> TxBodyContent -> Maybe Int
-lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReferenceIso)
+lookupIndexReference :: C.TxIn -> BodyContentResolved -> Maybe Int
+lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (BCR.bodyContent . L.txInsReference . L._TxInsReferenceIso)
 
 {-| Look up the index of the @TxIn@ in the list of reference inputs. Throws an error if the @TxIn@ is not present.
 -}
-findIndexReference :: C.TxIn -> TxBodyContent -> Int
+findIndexReference :: C.TxIn -> BodyContentResolved -> Int
 findIndexReference txi = fromJust . lookupIndexReference txi
 
 {-| Look up the index of the @PolicyId@ in the transaction mint.
@@ -170,22 +170,22 @@ which is @Map CurrencySymbol (Map TokenName Quantity).
 Here, we want to get the index into the on-chain map, but instead index into the cardano-api @Map CurrencySymbol Witness@.
 These two indexes should be the same by construction, but it is possible to violate this invariant when building a tx.
 -}
-lookupIndexMinted :: C.PolicyId -> TxBodyContent -> Maybe Int
-lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxMintValue .  _2)
+lookupIndexMinted :: C.PolicyId -> BodyContentResolved -> Maybe Int
+lookupIndexMinted policy = Map.lookupIndex policy . view (BCR.bodyContent . L.txMintValue . L._TxMintValue .  _2)
 
 {-| Look up the index of the @PolicyId@ in the transaction mint. Throws an error if the @PolicyId@ is not present.
 -}
-findIndexMinted :: C.PolicyId -> TxBodyContent -> Int
+findIndexMinted :: C.PolicyId -> BodyContentResolved -> Int
 findIndexMinted policy = fromJust . lookupIndexMinted policy
 
 {-| Look up the index of the @StakeAddress@ in the list of withdrawals.
 -}
-lookupIndexWithdrawal :: C.StakeAddress -> TxBodyContent -> Maybe Int
-lookupIndexWithdrawal stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (L.txWithdrawals . L._TxWithdrawals)
+lookupIndexWithdrawal :: C.StakeAddress -> BodyContentResolved -> Maybe Int
+lookupIndexWithdrawal stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (BCR.bodyContent . L.txWithdrawals . L._TxWithdrawals)
 
 {-| Look up the index of the @StakeAddress@ in the list of withdrawals. Throws an error if the @StakeAddress@ is not present.
 -}
-findIndexWithdrawal :: C.StakeAddress -> TxBodyContent -> Int
+findIndexWithdrawal :: C.StakeAddress -> BodyContentResolved -> Int
 findIndexWithdrawal stakeAddress = fromJust . lookupIndexWithdrawal stakeAddress
 
 -- TODO: separate module for BodyContentResolved
@@ -261,8 +261,8 @@ instance MonadBuildTx m => MonadBuildTx (MonadLogIgnoreT m) where
 instance MonadBuildTx m => MonadBuildTx (MonadLogKatipT m) where
   addTxBuilder = lift . addTxBuilder
 
-addBtx :: MonadBuildTx m => (BodyContentResolved -> BodyContentResolved) -> m ()
-addBtx = addTxBuilder . TxBuilder . const
+addBtx :: MonadBuildTx m => (TxBodyContent -> TxBodyContent) -> m ()
+addBtx = addTxBuilder . liftTxBodyEndo
 
 {-| Monad transformer for the @MonadBuildTx@ effect
 -}
@@ -376,7 +376,7 @@ addStakeWitnessWithTxBody credential buildWitness =
 
 {-| Spend an output locked by a public key, using the 'MonadBlockchain' effect to resolve the input
 -}
-spendPublicKeyOutput :: (MonadBlockchain m, MonadBuildTx m) => C.TxIn -> m ()
+spendPublicKeyOutput :: (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m) => C.TxIn -> m ()
 spendPublicKeyOutput txIn = do
   let wit = C.KeyWitness (C.KeyWitnessForSpending)
   addInput txIn (const wit)
@@ -387,6 +387,32 @@ spendPublicKeyOutputResolved :: (MonadBuildTx m) => C.TxIn -> AnyOutput -> m ()
 spendPublicKeyOutputResolved txIn txOut = do
   let wit = C.KeyWitness (C.KeyWitnessForSpending)
   addInputResolved txIn txOut (const wit)
+
+{-| Add an input as collateral
+-}
+addCollateral :: (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m) => C.TxIn -> m ()
+addCollateral txIn = Error.resolveTxIn txIn >>= addCollateralResolved txIn
+
+{-| Add a resolved input as collateral
+-}
+addCollateralResolved :: MonadBuildTx m => C.TxIn -> AnyOutput -> m ()
+addCollateralResolved txIn txOut =
+  let txB = TxBuilder $ \_finalBodyContentResolved oldContent ->
+              BCR.addTxInCollateral txIn txOut oldContent
+  in addTxBuilder txB
+
+{-| Add an input as reference input
+-}
+addReference :: (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m) => C.TxIn -> m ()
+addReference txIn = Error.resolveTxIn txIn >>= addReferenceResolved txIn
+
+{-| Add a resolved input as reference input
+-}
+addReferenceResolved :: MonadBuildTx m => C.TxIn -> AnyOutput -> m ()
+addReferenceResolved txIn txOut =
+  let txB = TxBuilder $ \_finalBodyContentResolved oldContent ->
+              BCR.addTxInReference txIn txOut oldContent
+  in addTxBuilder txB
 
 {-| Utility function to build a v1 script witness
 -}
@@ -437,62 +463,71 @@ buildV2RefScriptWitness refTxIn mbSh datum redeemer =
     (toHashableScriptData redeemer)
     (C.ExecutionUnits 0 0)
 
-spendPlutusV1 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> m ()
+spendPlutusV1 :: forall datum redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> m ()
 spendPlutusV1 txIn s (toHashableScriptData -> dat) red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV1ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
-  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
+  let wit = C.ScriptWitness C.ScriptWitnessForSpending $ buildV1ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
+  in setScriptsValid >> addInput txIn (const wit)
 
-spendPlutusV2 :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> m ()
+spendPlutusV1Resolved :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> AnyOutput -> PlutusScript PlutusScriptV1 -> datum -> redeemer -> m ()
+spendPlutusV1Resolved txIn txOut s (toHashableScriptData -> dat) red =
+  let wit = C.ScriptWitness C.ScriptWitnessForSpending $ buildV1ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
+  in setScriptsValid >> addInputResolved txIn txOut (const wit)
+
+spendPlutusV2 :: forall datum redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> m ()
 spendPlutusV2 txIn s (toHashableScriptData -> dat) red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
-  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
+  let wit = C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
+  in setScriptsValid >> addInput txIn (const wit)
+
+spendPlutusV2Resolved :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> AnyOutput -> PlutusScript PlutusScriptV2 -> datum -> redeemer -> m ()
+spendPlutusV2Resolved txIn txOut s (toHashableScriptData -> dat) red =
+  let wit = C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
+  in setScriptsValid >> addInputResolved txIn txOut (const wit)
 
 {-| Spend an output locked by a Plutus V2 validator with an inline datum
 -}
-spendPlutusV2InlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> redeemer -> m ()
+spendPlutusV2InlineDatum :: forall redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> PlutusScript PlutusScriptV2 -> redeemer -> m ()
 spendPlutusV2InlineDatum txIn s red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s C.InlineScriptDatum red
-  in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
+  let wit = C.ScriptWitness C.ScriptWitnessForSpending $ buildV2ScriptWitness s C.InlineScriptDatum red
+  in setScriptsValid >> addInput txIn (const wit)
 
 {-| Spend an output locked by a Plutus V2 validator using the redeemer provided. The redeemer
 can depend on the index of the @TxIn@ in the inputs of the final transaction.
 -}
-spendPlutusV2RefBase :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
+spendPlutusV2RefBase :: forall redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
 spendPlutusV2RefBase txIn refTxIn sh dat red =
-  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildV2RefScriptWitness refTxIn sh dat (red $ findIndexSpending txIn txBody)
-  in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit body) :))
+  let wit txBody = C.ScriptWitness C.ScriptWitnessForSpending $ buildV2RefScriptWitness refTxIn sh dat (red $ findIndexSpending txIn txBody)
+  in setScriptsValid >> addInput txIn wit
 
 {-| Spend an output locked by a Plutus V2 validator using the redeemer
 -}
-spendPlutusV2RefBaseWithInRef :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
+spendPlutusV2RefBaseWithInRef :: forall redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
 spendPlutusV2RefBaseWithInRef txIn refTxIn sh dat red = spendPlutusV2RefBase txIn refTxIn sh dat (const red) >> addReference refTxIn
 
-spendPlutusV2Ref :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
+spendPlutusV2Ref :: forall datum redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
 spendPlutusV2Ref txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh (C.ScriptDatumForTxIn $ Just dat) red
 
 {-| same as spendPlutusV2Ref but considers inline datum at the spent utxo
 -}
-spendPlutusV2RefWithInlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
+spendPlutusV2RefWithInlineDatum :: forall redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
 spendPlutusV2RefWithInlineDatum txIn refTxIn sh red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh C.InlineScriptDatum red
 
 {-| same as spendPlutusV2Ref but does not add the reference script in the reference input list
 This is to cover the case whereby the reference script utxo is expected to be consumed in the same tx.
 -}
-spendPlutusV2RefWithoutInRef :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
+spendPlutusV2RefWithoutInRef :: forall datum redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
 spendPlutusV2RefWithoutInRef txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBase txIn refTxIn sh (C.ScriptDatumForTxIn $ Just dat) (const red)
 
 {-| same as spendPlutusV2RefWithoutInRef but considers inline datum at the spent utxo
 -}
-spendPlutusV2RefWithoutInRefInlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
+spendPlutusV2RefWithoutInRefInlineDatum :: forall redeemer m. (MonadError BuildTxError m, MonadBlockchain m, MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
 spendPlutusV2RefWithoutInRefInlineDatum txIn refTxIn sh red = spendPlutusV2RefBase txIn refTxIn sh C.InlineScriptDatum (const red)
 
 mintPlutusV1 :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => PlutusScript PlutusScriptV1 -> redeemer -> C.AssetName -> C.Quantity -> m ()
 mintPlutusV1 script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
-      v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
       wit      = buildV1ScriptWitness script C.NoScriptDatumForMint red
-  in  setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+  in  setScriptsValid >> addMintWithTxBody policyId assetName quantity (const wit)
 
 {-| A value containing the given amount of the native asset
 -}
@@ -503,34 +538,28 @@ assetValue hsh assetName quantity =
 mintPlutusV2 :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => PlutusScript PlutusScriptV2 -> redeemer -> C.AssetName -> C.Quantity -> m ()
 mintPlutusV2 script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-      v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
       wit      = buildV2ScriptWitness script C.NoScriptDatumForMint red
-  in  setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+  in  setScriptsValid >> addMintWithTxBody policyId assetName quantity (const wit)
 
-mintPlutusV2Ref :: forall redeemer m. (Plutus.ToData redeemer, MonadBuildTx m) => C.TxIn -> C.ScriptHash -> redeemer -> C.AssetName -> C.Quantity -> m ()
+mintPlutusV2Ref :: forall redeemer m. (MonadError BuildTxError m, MonadBlockchain m, Plutus.ToData redeemer, MonadBuildTx m) => C.TxIn -> C.ScriptHash -> redeemer -> C.AssetName -> C.Quantity -> m ()
 mintPlutusV2Ref refTxIn sh red assetName quantity =
-  let v = assetValue sh assetName quantity
-      wit = buildV2RefScriptWitness refTxIn (Just sh) C.NoScriptDatumForMint red
+  let wit = buildV2RefScriptWitness refTxIn (Just sh) C.NoScriptDatumForMint red
       policyId = C.PolicyId sh
   in  setScriptsValid
-      >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+      >> addMintWithTxBody policyId assetName quantity (const wit)
       >> addReference refTxIn
 
-addCollateral :: MonadBuildTx m => C.TxIn -> m ()
-addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateralIso) ((:) i)
-
-addReference :: MonadBuildTx m => C.TxIn -> m ()
-addReference i = addBtx $ over (L.txInsReference . L._TxInsReferenceIso) ((:) i)
-
 addAuxScript :: MonadBuildTx m => C.ScriptInEra C.BabbageEra -> m ()
-addAuxScript s = addBtx (over (L.txAuxScripts . L._TxAuxScripts) ((:) s))
+addAuxScript s = addTxBuilder $ liftTxBodyEndo (over (L.txAuxScripts . L._TxAuxScripts) ((:) s))
 
+{-| An output with an address and no datum or reference scripts
+-}
 payToAddressTxOut :: C.AddressInEra C.BabbageEra -> C.Value -> C.TxOut C.CtxTx C.BabbageEra
 payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl) C.TxOutDatumNone C.ReferenceScriptNone
 
 payToAddress :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> C.Value -> m ()
-payToAddress addr vl = addBtx $ over L.txOuts ((:) (payToAddressTxOut addr vl))
+payToAddress addr vl = addTxBuilder $ liftTxBodyEndo $ over L.txOuts ((:) (payToAddressTxOut addr vl))
 
 payToPublicKey :: MonadBuildTx m => NetworkId -> Hash PaymentKey -> C.Value -> m ()
 payToPublicKey network pk vl =

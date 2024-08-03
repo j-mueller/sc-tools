@@ -10,6 +10,8 @@ module Convex.BuildTx.BodyContentResolved(
   BodyContentResolved(..),
   emptyBodyContentResolved,
   addTxInSpending,
+  addTxInCollateral,
+  addTxInReference,
   allInputsResolved,
   toBodyContextResolved,
   requiredTxIns
@@ -59,6 +61,22 @@ addTxInSpending txIn txOut redeemer BodyContentResolved{bcrResolvedInputs = oldR
   BodyContentResolved
     { bcrResolvedInputs = Map.insert txIn txOut oldResolved
     , bcrBodyContent    = oldContent & over L.txIns ((:) (txIn, C.BuildTxWith redeemer))
+    }
+
+-- | Add a resolved collateral input
+addTxInCollateral :: C.TxIn -> AnyOutput -> BodyContentResolved -> BodyContentResolved
+addTxInCollateral txIn txOut BodyContentResolved{bcrResolvedInputs = oldResolved, bcrBodyContent = oldContent} =
+  BodyContentResolved
+    { bcrResolvedInputs = Map.insert txIn txOut oldResolved
+    , bcrBodyContent    = oldContent & over (L.txInsCollateral . L._TxInsCollateralIso) ((:) txIn)
+    }
+
+-- | Add a resolved reference input
+addTxInReference :: C.TxIn -> AnyOutput -> BodyContentResolved -> BodyContentResolved
+addTxInReference txIn txOut BodyContentResolved{bcrResolvedInputs = oldResolved, bcrBodyContent = oldContent} =
+  BodyContentResolved
+    { bcrResolvedInputs = Map.insert txIn txOut oldResolved
+    , bcrBodyContent    = oldContent & over (L.txInsReference . L._TxInsReferenceIso) ((:) txIn)
     }
 
 -- TODO: Use this for testing
