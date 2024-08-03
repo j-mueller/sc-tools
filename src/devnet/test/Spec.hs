@@ -24,9 +24,11 @@ import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
                                                   RunningNode (..),
                                                   RunningStakePoolNode (..),
                                                   StakePoolNodeParams (..),
-                                                  defaultStakePoolNodeParams)
+                                                  defaultStakePoolNodeParams,
+                                                  forkIntoConwayInEpoch)
 import           Convex.Devnet.Logging           (contramap, showLogsOnFailure)
 import           Convex.Devnet.NodeQueries       (loadConnectInfo)
+import           Convex.Devnet.NodeQueries qualified as Queries
 import           Convex.Devnet.Utils             (failAfter, failure,
                                                   withTempDir)
 import           Convex.Devnet.Wallet            (WalletLog)
@@ -55,6 +57,7 @@ main = do
   defaultMain $ testGroup "test"
     [ testCase "cardano-node is available" checkCardanoNode
     , testCase "start local node" startLocalNode
+    , testCase "transition to conway era" transitionToConway
     , testCase "make a payment" makePayment
     , testCase "start local stake pool node" startLocalStakePoolNode
     , testCase "stake pool registration" registeredStakePoolNode
@@ -76,10 +79,21 @@ startLocalNode = do
     showLogsOnFailure $ \tr -> do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile} -> do
+          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile, rnNetworkId} -> do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
               Left err -> failure (show err)
-              Right{}  -> pure ()
+              Right{}  -> do
+                Queries.queryEra rnNetworkId rnNodeSocket
+                  >>= assertBool "Should be in babbage era" . (==) (C.anyCardanoEra C.BabbageEra)
+
+transitionToConway :: IO ()
+transitionToConway = do
+    showLogsOnFailure $ \tr -> do
+      failAfter 5 $
+        withTempDir "cardano-cluster" $ \tmp -> do
+          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) (PortsConfig 3001 [3002]) $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
+            Queries.queryEra rnNetworkId rnNodeSocket
+              >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
 startLocalStakePoolNode :: IO ()
 startLocalStakePoolNode = do
@@ -142,7 +156,7 @@ stakePoolRewards = do
             , C.sgSlotLength = 1
             , C.sgSecurityParam = 1
             }
-          ) id id
+          ) id id id
 
       getStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Quantity
       getStakeRewards RunningNode{rnConnectInfo, rnNetworkId} cred =

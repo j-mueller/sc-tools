@@ -1,14 +1,17 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings  #-}
 module Convex.Devnet.CardanoNode.Types (
   Port,
   PortsConfig (..),
-  GenesisConfigChanges (..),
   RunningNode (..),
   RunningStakePoolNode (..),
   StakePoolNodeParams (..),
-  defaultStakePoolNodeParams
+  defaultStakePoolNodeParams,
+  -- * Genesis config changes
+  GenesisConfigChanges (..),
+  forkIntoConwayInEpoch
 ) where
 
 import           Cardano.Api                      (Env, LocalNodeConnectInfo,
@@ -18,10 +21,13 @@ import           Cardano.Api.Shelley              (KesKey, Key (..),
                                                    ShelleyGenesis, StakeKey,
                                                    StakePoolKey, VrfKey)
 import           Cardano.Ledger.Shelley.API       (Coin)
+import           Control.Lens                     (set)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as Aeson
+import           Data.Aeson.Lens                  (atKey)
 import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
+import           Numeric.Natural                  (Natural)
 import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 
 type Port = Int
@@ -88,6 +94,9 @@ data GenesisConfigChanges =
     -- just write 'toJSON . fromJSON' without modifying the value
     -- Note that the problem is with the ToJSON instance!
     , cfConway :: Aeson.Value -> Aeson.Value
+
+    -- | Changes to the node config file
+    , cfNodeConfig :: Aeson.Value -> Aeson.Value
     }
 
 instance Semigroup GenesisConfigChanges where
@@ -96,7 +105,13 @@ instance Semigroup GenesisConfigChanges where
       { cfShelley = cfShelley r . cfShelley l
       , cfAlonzo  = cfAlonzo  r . cfAlonzo l
       , cfConway  = cfConway  r . cfConway l
+      , cfNodeConfig = cfNodeConfig r . cfNodeConfig l
       }
 
 instance Monoid GenesisConfigChanges where
-  mempty = GenesisConfigChanges id id id
+  mempty = GenesisConfigChanges id id id id
+
+-- | Set the 'TestConwayHardForkAtEpoch' field to the given value (can be 0)
+forkIntoConwayInEpoch :: Natural -> GenesisConfigChanges
+forkIntoConwayInEpoch n =
+  mempty{ cfNodeConfig = set (atKey "TestConwayHardForkAtEpoch") (Just $ Aeson.toJSON n) }

@@ -24,7 +24,7 @@ module Convex.Devnet.CardanoNode(
   withCardanoNodeDevnet,
   allowLargeTransactions,
   withCardanoNodeDevnetConfig,
-  withCardanoStakePoolNodeDevnetConfig
+  withCardanoStakePoolNodeDevnetConfig,
 ) where
 
 import           Cardano.Api                      (NetworkId,
@@ -366,11 +366,12 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges PortsConfig{ours
     setFileMode destination ownerReadMode
     pure destination
 
-  GenesisConfigChanges{cfAlonzo, cfConway, cfShelley} = configChanges
+  GenesisConfigChanges{cfAlonzo, cfConway, cfShelley, cfNodeConfig} = configChanges
 
   copyDevnetFiles args = do
     readConfigFile ("devnet" </> "cardano-node.json")
-      >>= BS.writeFile
+      >>= copyAndChangeJSONFile
+        cfNodeConfig
         (stateDirectory </> nodeConfigFile args)
     readConfigFile ("devnet" </> "genesis-byron.json")
       >>= BS.writeFile

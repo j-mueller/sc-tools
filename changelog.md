@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Convex.BuildTx`: Added functions for withdrawals, certificates and stake witnesses
 - `Convex.Class`: Add `singleUTxO` function to retrieve a single output from the UTxO set
 - `Convex.Class`: Add `MonadUtxoQuery` class for looking up unspent transaction outputs by payment credential.
+- `Convex.Devnet.CardanoNode.Types`: Add Ability to hardfork to conway era in devnet
 
 ### Deleted
 
