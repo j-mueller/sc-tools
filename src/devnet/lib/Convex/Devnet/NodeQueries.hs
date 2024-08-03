@@ -17,7 +17,8 @@ module Convex.Devnet.NodeQueries(
   waitForTxIn,
   waitForTxInSpend,
   localNodeConnectInfo,
-  loadConnectInfo
+  loadConnectInfo,
+  queryEra
 ) where
 
 import           Cardano.Api                                        (Address,
@@ -105,6 +106,9 @@ cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots
 
 queryTipBlock :: NetworkId -> FilePath -> IO (WithOrigin BlockNo)
 queryTipBlock = queryLocalState C.QueryChainBlockNo
+
+queryEra :: NetworkId -> FilePath -> IO C.AnyCardanoEra
+queryEra = queryLocalState C.QueryCurrentEra
 
 queryEpoch :: NetworkId -> FilePath -> IO C.EpochNo
 queryEpoch nid path = do
