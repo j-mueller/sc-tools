@@ -13,7 +13,8 @@ module Convex.Devnet.CardanoNode.Types (
   -- * Genesis config changes
   GenesisConfigChanges (..),
   forkIntoConwayInEpoch,
-  allowLargeTransactions
+  allowLargeTransactions,
+  setEpochLength
 ) where
 
 import           Cardano.Api                      (Env, LocalNodeConnectInfo,
@@ -22,6 +23,7 @@ import           Cardano.Api.Shelley              (KesKey, Key (..),
                                                    OperationalCertificateIssueCounter,
                                                    ShelleyGenesis, StakeKey,
                                                    StakePoolKey, VrfKey)
+import           Cardano.Ledger.BaseTypes         (EpochSize)
 import qualified Cardano.Ledger.Core              as Core
 import           Cardano.Ledger.Shelley.API       (Coin)
 import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
@@ -132,4 +134,14 @@ allowLargeTransactions =
       change g = g{sgProtocolParams = double (sgProtocolParams g)}
       double :: Core.PParams (ShelleyEra StandardCrypto) -> Core.PParams (ShelleyEra StandardCrypto)
       double = over (Core.ppLens . Core.hkdMaxTxSizeL) (*2)
+  in mempty{cfShelley = change}
+
+{-| Set the epoch length in the shelley genesis configuration. Note that the parameter is a multiple of
+  the slot length. With the default slot length of 0.1s, an epoch length of 100 would result in
+  10 second epochs.
+-}
+setEpochLength :: EpochSize -> GenesisConfigChanges
+setEpochLength n =
+  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+      change g = g{sgEpochLength = n}
   in mempty{cfShelley = change}
