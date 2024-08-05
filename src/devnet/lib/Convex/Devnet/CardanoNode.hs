@@ -22,74 +22,70 @@ module Convex.Devnet.CardanoNode(
   waitForNextEpoch,
   waitForNextEpoch',
   withCardanoNodeDevnet,
-  allowLargeTransactions,
   withCardanoNodeDevnetConfig,
   withCardanoStakePoolNodeDevnetConfig,
 ) where
 
-import           Cardano.Api                      (NetworkId,
-                                                   StakeAddressReference (..))
-import qualified Cardano.Api                      as C
-import           Cardano.Api.Shelley              (KESPeriod (..),
-                                                   OperationalCertificateIssueCounter (..),
-                                                   StakeAddressRequirements (..),
-                                                   StakeCredential (..),
-                                                   StakeDelegationRequirements (..),
-                                                   StakePoolParameters (..),
-                                                   StakePoolRegistrationRequirements (..),
-                                                   toShelleyPoolParams)
-import qualified Cardano.Ledger.Core              as Core
-import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
-import           Cardano.Slotting.Slot            (withOriginToMaybe)
-import           Cardano.Slotting.Time            (diffRelativeTime,
-                                                   getRelativeTime,
-                                                   toRelativeTime)
-import           Control.Concurrent               (threadDelay)
-import           Control.Concurrent.Async         (race)
-import           Control.Exception                (finally, throwIO)
-import           Control.Lens                     (over)
-import           Control.Monad                    (unless, when, (>=>))
-import           Control.Monad.Except             (runExceptT)
-import           Control.Tracer                   (Tracer, traceWith)
-import           Convex.BuildTx                   (addCertificate, execBuildTx,
-                                                   payToAddress)
-import           Convex.CoinSelection             (ChangeOutputPosition (TrailingChange))
-import           Convex.Devnet.CardanoNode.Types  (GenesisConfigChanges (..),
-                                                   Port, PortsConfig (..),
-                                                   RunningNode (..),
-                                                   RunningStakePoolNode (..),
-                                                   StakePoolNodeParams (..))
-import qualified Convex.Devnet.NodeQueries        as Q
-import           Convex.Devnet.Utils              (checkProcessHasNotDied,
-                                                   defaultNetworkId, failure,
-                                                   readConfigFile, withLogFile)
-import qualified Convex.Devnet.Wallet             as W
-import           Convex.Wallet                    (Wallet, paymentCredential)
-import           Data.Aeson                       (FromJSON, ToJSON (toJSON),
-                                                   (.=))
-import qualified Data.Aeson                       as Aeson
-import qualified Data.Aeson.KeyMap                as Aeson.KeyMap
-import qualified Data.ByteString                  as BS
-import           Data.Fixed                       (Centi)
-import           Data.Functor                     ((<&>))
-import           Data.Text                        (Text)
-import qualified Data.Text                        as Text
-import           Data.Time.Clock                  (UTCTime, addUTCTime,
-                                                   getCurrentTime)
-import           Data.Time.Clock.POSIX            (posixSecondsToUTCTime,
-                                                   utcTimeToPOSIXSeconds)
-import           GHC.Generics                     (Generic)
-import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
-import           System.Directory                 (createDirectoryIfMissing,
-                                                   doesFileExist, removeFile)
-import           System.FilePath                  ((</>))
-import           System.IO                        (BufferMode (NoBuffering),
-                                                   hSetBuffering)
-import           System.Posix                     (ownerReadMode, setFileMode)
-import           System.Process                   (CreateProcess (..),
-                                                   StdStream (UseHandle), proc,
-                                                   readProcess,
-                                                   withCreateProcess)
+import           Cardano.Api                     (NetworkId,
+                                                  StakeAddressReference (..))
+import qualified Cardano.Api                     as C
+import           Cardano.Api.Shelley             (KESPeriod (..),
+                                                  OperationalCertificateIssueCounter (..),
+                                                  StakeAddressRequirements (..),
+                                                  StakeCredential (..),
+                                                  StakeDelegationRequirements (..),
+                                                  StakePoolParameters (..),
+                                                  StakePoolRegistrationRequirements (..),
+                                                  toShelleyPoolParams)
+import           Cardano.Slotting.Slot           (withOriginToMaybe)
+import           Cardano.Slotting.Time           (diffRelativeTime,
+                                                  getRelativeTime,
+                                                  toRelativeTime)
+import           Control.Concurrent              (threadDelay)
+import           Control.Concurrent.Async        (race)
+import           Control.Exception               (finally, throwIO)
+import           Control.Monad                   (unless, when, (>=>))
+import           Control.Monad.Except            (runExceptT)
+import           Control.Tracer                  (Tracer, traceWith)
+import           Convex.BuildTx                  (addCertificate, execBuildTx,
+                                                  payToAddress)
+import           Convex.CoinSelection            (ChangeOutputPosition (TrailingChange))
+import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
+                                                  Port, PortsConfig (..),
+                                                  RunningNode (..),
+                                                  RunningStakePoolNode (..),
+                                                  StakePoolNodeParams (..),
+                                                  defaultPortsConfig)
+import qualified Convex.Devnet.NodeQueries       as Q
+import           Convex.Devnet.Utils             (checkProcessHasNotDied,
+                                                  defaultNetworkId, failure,
+                                                  readConfigFile, withLogFile)
+import qualified Convex.Devnet.Wallet            as W
+import           Convex.Wallet                   (Wallet, paymentCredential)
+import           Data.Aeson                      (FromJSON, ToJSON (toJSON),
+                                                  (.=))
+import qualified Data.Aeson                      as Aeson
+import qualified Data.Aeson.KeyMap               as Aeson.KeyMap
+import qualified Data.ByteString                 as BS
+import           Data.Fixed                      (Centi)
+import           Data.Functor                    ((<&>))
+import           Data.Text                       (Text)
+import qualified Data.Text                       as Text
+import           Data.Time.Clock                 (UTCTime, addUTCTime,
+                                                  getCurrentTime)
+import           Data.Time.Clock.POSIX           (posixSecondsToUTCTime,
+                                                  utcTimeToPOSIXSeconds)
+import           GHC.Generics                    (Generic)
+import           System.Directory                (createDirectoryIfMissing,
+                                                  doesFileExist, removeFile)
+import           System.FilePath                 ((</>))
+import           System.IO                       (BufferMode (NoBuffering),
+                                                  hSetBuffering)
+import           System.Posix                    (ownerReadMode, setFileMode)
+import           System.Process                  (CreateProcess (..),
+                                                  StdStream (UseHandle), proc,
+                                                  readProcess,
+                                                  withCreateProcess)
 
 import           Prelude
 
@@ -290,16 +286,6 @@ waitForNextEpoch' n@RunningNode{rnNodeSocket, rnNetworkId} epochNo = do
     pure currentEpochNo else
     threadDelay 1_000_000 >> waitForNextEpoch' n epochNo
 
--- {-| Change the alonzo genesis config to allow transactions with up to twice the normal size
--- -}
-allowLargeTransactions :: GenesisConfigChanges
-allowLargeTransactions =
-  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
-      change g = g{sgProtocolParams = double (sgProtocolParams g)}
-      double :: Core.PParams (ShelleyEra StandardCrypto) -> Core.PParams (ShelleyEra StandardCrypto)
-      double = over (Core.ppLens . Core.hkdMaxTxSizeL) (*2)
-  in mempty{cfShelley = change}
-
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
 -- "initialFunds". Use 'seedFromFaucet' to distribute funds other wallets.
@@ -310,7 +296,7 @@ withCardanoNodeDevnet ::
   (RunningNode -> IO a) ->
   IO a
 withCardanoNodeDevnet tracer stateDirectory action =
-  withCardanoNodeDevnetConfig tracer stateDirectory mempty (PortsConfig 3001 []) action
+  withCardanoNodeDevnetConfig tracer stateDirectory mempty defaultPortsConfig action
 
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive

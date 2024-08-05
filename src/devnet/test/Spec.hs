@@ -14,7 +14,6 @@ import           Control.Lens                    (view)
 import           Control.Monad                   (unless)
 import           Control.Monad.Except            (runExceptT)
 import           Convex.Devnet.CardanoNode       (NodeLog (..),
-                                                  allowLargeTransactions,
                                                   getCardanoNodeVersion,
                                                   withCardanoNodeDevnet,
                                                   withCardanoNodeDevnetConfig,
@@ -24,11 +23,13 @@ import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
                                                   RunningNode (..),
                                                   RunningStakePoolNode (..),
                                                   StakePoolNodeParams (..),
+                                                  allowLargeTransactions,
+                                                  defaultPortsConfig,
                                                   defaultStakePoolNodeParams,
                                                   forkIntoConwayInEpoch)
 import           Convex.Devnet.Logging           (contramap, showLogsOnFailure)
 import           Convex.Devnet.NodeQueries       (loadConnectInfo)
-import           Convex.Devnet.NodeQueries qualified as Queries
+import qualified Convex.Devnet.NodeQueries       as Queries
 import           Convex.Devnet.Utils             (failAfter, failure,
                                                   withTempDir)
 import           Convex.Devnet.Wallet            (WalletLog)
@@ -91,7 +92,7 @@ transitionToConway = do
     showLogsOnFailure $ \tr -> do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) (PortsConfig 3001 [3002]) $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
+          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
             Queries.queryEra rnNetworkId rnNodeSocket
               >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
@@ -206,7 +207,7 @@ changeMaxTxSize =
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize
-      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions (PortsConfig 3001 []) getMaxTxSize
+      largeTxSize <- withCardanoNodeDevnetConfig (contramap TLNode tr) tmp allowLargeTransactions defaultPortsConfig getMaxTxSize
       assertEqual "tx size should be large" (2 * standardTxSize) largeTxSize
 
 data TestLog =

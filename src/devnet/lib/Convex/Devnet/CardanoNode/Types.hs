@@ -5,13 +5,16 @@
 module Convex.Devnet.CardanoNode.Types (
   Port,
   PortsConfig (..),
+  defaultPortsConfig,
   RunningNode (..),
   RunningStakePoolNode (..),
   StakePoolNodeParams (..),
   defaultStakePoolNodeParams,
   -- * Genesis config changes
   GenesisConfigChanges (..),
-  forkIntoConwayInEpoch
+  forkIntoConwayInEpoch,
+  allowLargeTransactions,
+  setEpochLength
 ) where
 
 import           Cardano.Api                      (Env, LocalNodeConnectInfo,
@@ -20,15 +23,18 @@ import           Cardano.Api.Shelley              (KesKey, Key (..),
                                                    OperationalCertificateIssueCounter,
                                                    ShelleyGenesis, StakeKey,
                                                    StakePoolKey, VrfKey)
+import           Cardano.Ledger.BaseTypes         (EpochSize)
+import qualified Cardano.Ledger.Core              as Core
 import           Cardano.Ledger.Shelley.API       (Coin)
-import           Control.Lens                     (set)
+import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
+import           Control.Lens                     (over, set)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as Aeson
 import           Data.Aeson.Lens                  (atKey)
 import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
 import           Numeric.Natural                  (Natural)
-import           Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
+import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
 
 type Port = Int
 
@@ -42,6 +48,10 @@ data PortsConfig = PortsConfig
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
+
+-- | Default value for 'PortsConfig'
+defaultPortsConfig :: PortsConfig
+defaultPortsConfig = PortsConfig 3001 []
 
 {-| Describes a running pool node
 -}
@@ -115,3 +125,23 @@ instance Monoid GenesisConfigChanges where
 forkIntoConwayInEpoch :: Natural -> GenesisConfigChanges
 forkIntoConwayInEpoch n =
   mempty{ cfNodeConfig = set (atKey "TestConwayHardForkAtEpoch") (Just $ Aeson.toJSON n) }
+
+{-| Change the alonzo genesis config to allow transactions with up to twice the normal size
+-}
+allowLargeTransactions :: GenesisConfigChanges
+allowLargeTransactions =
+  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+      change g = g{sgProtocolParams = double (sgProtocolParams g)}
+      double :: Core.PParams (ShelleyEra StandardCrypto) -> Core.PParams (ShelleyEra StandardCrypto)
+      double = over (Core.ppLens . Core.hkdMaxTxSizeL) (*2)
+  in mempty{cfShelley = change}
+
+{-| Set the epoch length in the shelley genesis configuration. Note that the parameter is a multiple of
+  the slot length. With the default slot length of 0.1s, an epoch length of 100 would result in
+  10 second epochs.
+-}
+setEpochLength :: EpochSize -> GenesisConfigChanges
+setEpochLength n =
+  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+      change g = g{sgEpochLength = n}
+  in mempty{cfShelley = change}
