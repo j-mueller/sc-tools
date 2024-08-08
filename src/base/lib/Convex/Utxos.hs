@@ -68,7 +68,7 @@ module Convex.Utxos(
 
 import           Cardano.Api                   (AddressInEra, BabbageEra,
                                                 Block (..), BlockInMode (..),
-                                                HashableScriptData,
+                                                ConwayEra, HashableScriptData,
                                                 PaymentCredential,
                                                 StakeCredential, Tx (..), TxId,
                                                 TxIn (..), TxIx (..), UTxO (..))
@@ -77,8 +77,11 @@ import           Cardano.Api.Shelley           (ExecutionUnits, TxBody (..))
 import qualified Cardano.Api.Shelley           as CS
 import qualified Cardano.Ledger.Alonzo.Scripts as Scripts
 import           Cardano.Ledger.Alonzo.TxWits  (unRedeemers)
+import qualified Cardano.Ledger.Alonzo.TxWits  as Alonzo.TxWits
 import qualified Cardano.Ledger.Babbage.TxBody as Babbage.TxBody
 import qualified Cardano.Ledger.BaseTypes      as CT
+import qualified Cardano.Ledger.Conway.Scripts as Scripts.Conway
+import qualified Cardano.Ledger.Conway.TxBody  as Conway.TxBody
 import qualified Cardano.Ledger.Credential     as Shelley
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.TxIn           as CT
@@ -418,7 +421,7 @@ data AddUtxoEvent a =
     , aueTxOut :: !(C.InAnyCardanoEra (C.TxOut C.CtxTx))
     , aueTxIn  :: !TxIn
     , aueTxId  :: !TxId
-    , aueTx    :: C.Tx BabbageEra
+    , aueTx    :: !(C.InAnyCardanoEra C.Tx)
     }
 
 {-| A tx output was spent
@@ -430,7 +433,7 @@ data RemoveUtxoEvent a =
     , rueTxIn     :: !TxIn
     , rueTxId     :: !TxId
     -- ^ Id of the transaction that spent the output
-    , rueTx       :: C.Tx BabbageEra
+    , rueTx       :: !(C.InAnyCardanoEra C.Tx)
     -- ^ The transaction that spent the output
     , rueRedeemer :: Maybe (HashableScriptData, ExecutionUnits) -- fromAlonzoData
     }
@@ -564,12 +567,80 @@ extract :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a) -> Maybe A
 extract ex cred state = DList.toList . \case
   -- FIXME (koslambrou) why is this only extracting from babbage?
   BlockInMode C.BabbageEra block -> extractBabbage ex state cred block
+  BlockInMode C.ConwayEra  block -> extractConway ex state cred block
   _                              -> mempty
 
 {-| Extract from a block the UTXO changes at the given address
 -}
 extract_ :: AddressCredential -> UtxoSet C.CtxTx () -> BlockInMode -> UtxoChange C.CtxTx ()
 extract_ a b = foldMap fromEvent . extract (\_ -> const $ Just ()) (Just a) b
+
+extractConway
+  :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
+  -> UtxoSet C.CtxTx a
+  -> Maybe AddressCredential
+  -> Block ConwayEra
+  -> DList (UtxoChangeEvent a)
+extractConway ex state cred (CS.Block _blockHeader txns) = foldMap (extractConwayTxn' ex state cred) txns
+
+extractConwayTxn'
+  :: forall a. (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
+  -> UtxoSet C.CtxTx a
+  -> Maybe AddressCredential
+  -> C.Tx ConwayEra
+  -> DList (UtxoChangeEvent a)
+extractConwayTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
+  let ShelleyTxBody _ txBody' _scripts scriptData _auxiliaryData _ = txBody
+      Conway.TxBody.ConwayTxBody{Conway.TxBody.ctbSpendInputs} = txBody'
+      txid = C.getTxId txBody
+
+      allOuts = fmap (C.InAnyCardanoEra C.ConwayEra) $ C.fromLedgerTxOuts C.ShelleyBasedEraConway txBody' scriptData
+
+      txReds = case scriptData of
+              C.TxBodyScriptData _ _ r -> r
+              _                        -> mempty
+
+      checkInput :: (Word32, TxIn) -> Maybe (TxIn, ((C.InAnyCardanoEra (C.TxOut C.CtxTx), a), Maybe (HashableScriptData, ExecutionUnits)))
+      checkInput (idx, txIn) = fmap (txIn,) $ do
+        o <- Map.lookup txIn _utxos
+        let redeemer = fmap (bimap CS.fromAlonzoData CS.fromAlonzoExUnits) (Alonzo.TxWits.lookupRedeemer (Scripts.Conway.ConwaySpending $ Scripts.AsIx idx) txReds)
+        pure (o, redeemer)
+
+      checkOutput :: TxIx -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe (TxIn, (C.InAnyCardanoEra (C.TxOut C.CtxTx), a))
+      checkOutput _ (C.InAnyCardanoEra _era (C.TxOut (C.AddressInEra C.ByronAddressInAnyEra _) _ _ _)) = Nothing
+      checkOutput txIx_ (C.InAnyCardanoEra era txOut@(C.TxOut (C.AddressInEra (C.ShelleyAddressInEra _era) (CS.ShelleyAddress _ outputCred _)) _ _ _))
+        | isNothing cred || Just outputCred == cred =
+            let txi = TxIn txid txIx_
+            in fmap (\a -> (txi, (C.InAnyCardanoEra era txOut, a))) (ex txi $ C.InAnyCardanoEra era txOut)
+        | otherwise = Nothing
+
+      mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTxId = txid, aueTx = C.inAnyCardanoEra C.ConwayEra theTx}
+
+      mkO (rueTxIn, ((rueTxOut, rueEvent), rueRedeemer)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = C.inAnyCardanoEra C.ConwayEra theTx, rueRedeemer}
+
+      _outputsAdded =
+        DList.fromList
+        $ fmap (Left . mkI)
+        $ mapMaybe (uncurry checkOutput)
+        $ zip (TxIx <$> [0..]) allOuts
+
+      _outputsRemoved =
+        DList.fromList
+        $ fmap (Right . mkO)
+        $ mapMaybe checkInput
+        $ zip [0..] -- for redeemer pointers
+        $ fmap (uncurry TxIn . bimap CS.fromShelleyTxId txIx . (\(CT.TxIn i n) -> (i, n)))
+        $ Set.toList ctbSpendInputs
+
+  in _outputsAdded <> _outputsRemoved
+
+extractBabbage
+  :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
+  -> UtxoSet C.CtxTx a
+  -> Maybe AddressCredential
+  -> Block BabbageEra
+  -> DList (UtxoChangeEvent a)
+extractBabbage ex state cred (CS.Block _blockHeader txns) = foldMap (extractBabbageTxn' ex state cred) txns
 
 {-| Extract from a transaction the UTXO changes at the given address}
  -}
@@ -580,14 +651,6 @@ extractBabbageTxn
   -> C.Tx BabbageEra
   -> [UtxoChangeEvent a]
 extractBabbageTxn ex cred state = DList.toList . extractBabbageTxn' ex state cred
-
-extractBabbage
-  :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
-  -> UtxoSet C.CtxTx a
-  -> Maybe AddressCredential
-  -> Block BabbageEra
-  -> DList (UtxoChangeEvent a)
-extractBabbage ex state cred (CS.Block _blockHeader txns) = foldMap (extractBabbageTxn' ex state cred) txns
 
 extractBabbageTxn'
   :: forall a. (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
@@ -620,15 +683,15 @@ extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
             in fmap (\a -> (txi, (C.InAnyCardanoEra era txOut, a))) (ex txi $ C.InAnyCardanoEra era txOut)
         | otherwise = Nothing
 
-      mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTxId = txid, aueTx = theTx}
+      mkI (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, aueTxIn, aueTxId = txid, aueTx = C.inAnyCardanoEra C.BabbageEra theTx}
 
-      mkO (rueTxIn, ((rueTxOut, rueEvent), rueRedeemer)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = theTx, rueRedeemer}
+      mkO (rueTxIn, ((rueTxOut, rueEvent), rueRedeemer)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = C.inAnyCardanoEra C.BabbageEra theTx, rueRedeemer}
 
       _outputsAdded =
         DList.fromList
         $ fmap (Left . mkI)
         $ mapMaybe (uncurry checkOutput)
-        $ (zip (TxIx <$> [0..]) allOuts)
+        $ zip (TxIx <$> [0..]) allOuts
 
       _outputsRemoved =
         DList.fromList
