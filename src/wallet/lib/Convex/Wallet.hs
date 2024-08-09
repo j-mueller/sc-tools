@@ -128,7 +128,7 @@ parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
 selectAdaInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
-selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSet) target
+selectAdaInputsCovering utxoSet = selectAnyInputsCovering (onlyAda utxoSet)
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
@@ -159,6 +159,4 @@ selectMixedInputsCovering UtxoSet{_utxos} xs =
   in
     find coversTarget
       $ scanl append (mempty, mempty)
-      $ mapMaybe relevantValue
-      $ fmap (second fst)
-      $ Map.toAscList _utxos
+      $ mapMaybe (relevantValue . second fst) (Map.toAscList _utxos)

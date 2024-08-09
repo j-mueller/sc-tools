@@ -103,7 +103,8 @@ withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, 
                 , rwsManager
                 , rwsClient
                 }
-        _ <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000) >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
+        txi <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000)
+        NodeQueries.waitForTxn rnNetworkId rnNodeSocket txi
         waitUntilAvailable tracer rws
         action rws
 

@@ -39,6 +39,7 @@ import           Convex.CoinSelection           (BalanceTxError,
                                                  ChangeOutputPosition (TrailingChange),
                                                  keyWitnesses,
                                                  publicKeyCredential)
+import qualified Convex.Eras                    as Eras
 import           Convex.MockChain               (ValidationError (..),
                                                  failedTransactions,
                                                  fromLedgerUTxO,
@@ -161,7 +162,7 @@ putReferenceScript wallet = do
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx TrailingChange []
   let outRef = C.TxIn txId (C.TxIx 0)
-  C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
+  C.UTxO utxo <- Eras.babbageUTxO <$> utxoByTxIn (Set.singleton outRef)
   case Map.lookup outRef utxo of
     Nothing  -> fail "Utxo not found"
     Just out -> case view (L._TxOut . _4) out of
@@ -208,7 +209,7 @@ spendTokens2 txi = do
 spendSingletonOutput :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.BabbageEra) m) => C.TxId -> m ()
 spendSingletonOutput txi = do
   void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
-  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.BabbageEra . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
   let k = Utxos.onlyCredential (Wallet.paymentCredential Wallet.w2) utxoSet
   let totalVal = Utxos.totalBalance k
       newOut = C.TxOut (Wallet.addressInEra Defaults.networkId Wallet.w2) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue totalVal) C.TxOutDatumNone C.ReferenceScriptNone
@@ -304,7 +305,7 @@ balanceMultiAddress = do
 
               -- send the entire amount back to Wallet.w2
               walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
-              protParams <- queryProtocolParameters
+              protParams <- Eras.babbageProtocolParams <$> queryProtocolParameters
               let tx = execBuildTx $ do
                         payToAddress walletAddr $ C.lovelaceToValue $ C.quantityToLovelace nAmount
                         traverse_ addRequiredSignature (fmap (C.verificationKeyHash . verificationKey . oPaymentKey) requiredSignatures)
@@ -324,7 +325,7 @@ buildTxMixedInputs :: Assertion
 buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   testWallet <- liftIO Wallet.generateWallet
   -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
-  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.BabbageEra . fromLedgerUTxO C.ShelleyBasedEraBabbage <$> getUtxo
   let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
       newUTxO = C.InAnyCardanoEra C.BabbageEra $ C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"

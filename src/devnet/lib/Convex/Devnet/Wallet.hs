@@ -87,7 +87,7 @@ runningNodeBlockchain ::
  forall e a. (Show e)
   => Tracer IO WalletLog
   -> RunningNode
-  -> (forall m. (MonadFail m, MonadLog m, MonadBlockchain m) => m a)
+  -> (forall m. (MonadFail m, MonadLog m, MonadBlockchain m, MonadIO m) => m a)
   -> IO a
 runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
   let info = NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket

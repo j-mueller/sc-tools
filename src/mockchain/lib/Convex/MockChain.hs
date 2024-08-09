@@ -117,7 +117,7 @@ import           Control.Lens                          (_1, _3, over, set, to,
                                                         (^.))
 import           Control.Lens.TH                       (makeLensesFor,
                                                         makePrisms)
-import           Control.Monad                  (forM)
+import           Control.Monad                         (forM)
 import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)
@@ -136,6 +136,7 @@ import           Convex.Class                          (MonadBlockchain (..),
                                                         MonadUtxoQuery (..),
                                                         SendTxFailed (..))
 import           Convex.Constants                      (ERA)
+import qualified Convex.Eras                           as Eras
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.MonadLog                       (MonadLog (..))
@@ -420,7 +421,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     st <- get
     case applyTransaction nps st tx of
       Left err       -> do
-        failedTransactions %= ((:) (tx, err))
+        failedTransactions %= (:) (tx, err)
         return $ Left $ SendTxFailed $ show err
       Right (st', _) ->
         let C.Tx body _ = tx
@@ -429,8 +430,8 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     nps <- ask
     C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.ShelleyBasedEraBabbage))
     let mp' = Map.restrictKeys mp txIns
-    pure (C.UTxO mp')
-  queryProtocolParameters = MockchainT (asks npProtocolParameters)
+    pure (Eras.inAnyBabbageEraOnwardsBabbage $ C.UTxO mp')
+  queryProtocolParameters = MockchainT (asks (Eras.inAnyBabbageEraOnwardsBabbage . npProtocolParameters))
   queryStakeAddresses creds nid = MockchainT $ do
     dState <- gets (view $ poolState . lsCertStateL . certDStateL)
     let
@@ -523,7 +524,7 @@ addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraBabbage txBody _scripts scr
 -}
 utxoSet :: MonadMockchain m => m (UtxoSet C.CtxUTxO ())
 utxoSet =
-  let f utxos = (utxos, fromApiUtxo () $ fromLedgerUTxO C.ShelleyBasedEraBabbage utxos)
+  let f utxos = (utxos, fromApiUtxo () $ C.inAnyCardanoEra C.BabbageEra $ fromLedgerUTxO C.ShelleyBasedEraBabbage utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain

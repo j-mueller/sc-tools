@@ -26,6 +26,7 @@ import           Convex.CoinSelection      (BalanceTxError,
                                             ChangeOutputPosition (TrailingChange),
                                             TxBalancingMessage)
 import qualified Convex.CoinSelection      as CoinSelection
+import qualified Convex.Eras               as Eras
 import qualified Convex.MockChain          as MockChain
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.Wallet             (Wallet)
@@ -102,13 +103,13 @@ paymentTo wFrom wTo = do
 {-| Pay 100 Ada from one of the seed addresses to an @Operator@
 -}
 payToOperator :: (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m) => Tracer m TxBalancingMessage -> Wallet -> Operator k -> m (Either SendTxFailed (C.Tx C.BabbageEra))
-payToOperator dbg wFrom = payToOperator' dbg (C.lovelaceToValue 100_000_000) wFrom
+payToOperator dbg = payToOperator' dbg (C.lovelaceToValue 100_000_000)
 
 {-| Pay some Ada from one of the seed addresses to an @Operator@
 -}
 payToOperator' :: (MonadMockchain m, MonadError (BalanceTxError CoinSelection.ERA) m) => Tracer m TxBalancingMessage -> Value -> Wallet -> Operator k -> m (Either SendTxFailed (C.Tx C.BabbageEra))
 payToOperator' dbg value wFrom Operator{oPaymentKey} = do
-  p <- queryProtocolParameters
+  p <- Eras.babbageProtocolParams <$> queryProtocolParameters
   let addr =
         C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage Defaults.networkId
         (C.PaymentCredentialByKey $ C.verificationKeyHash $ verificationKey oPaymentKey)

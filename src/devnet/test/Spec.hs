@@ -57,14 +57,20 @@ main = do
   setLocaleEncoding utf8
   defaultMain $ testGroup "test"
     [ testCase "cardano-node is available" checkCardanoNode
-    , testCase "start local node" startLocalNode
-    , testCase "transition to conway era" transitionToConway
-    , testCase "make a payment" makePayment
     , testCase "start local stake pool node" startLocalStakePoolNode
     , testCase "stake pool registration" registeredStakePoolNode
     , testCase "stake pool rewards" stakePoolRewards
-    , testCase "run the wallet server" runWalletServer
     , testCase "change max tx size" changeMaxTxSize
+    , testGroup "babbage"
+        [ testCase "start local node in babbage era" (startLocalNodeInEra mempty (C.anyCardanoEra C.BabbageEra))
+        , testCase "run wallet in babbage era" (runWalletServer mempty)
+        , testCase "make a payment in babbage era" (makePayment mempty)
+        ]
+    , testGroup "conway"
+        [ testCase "start local node in conway era" (startLocalNodeInEra (forkIntoConwayInEpoch 0) (C.anyCardanoEra C.ConwayEra))
+        , testCase "run wallet in conway era" (runWalletServer $ forkIntoConwayInEpoch 0)
+        , testCase "make a payment in conway era" (makePayment $ forkIntoConwayInEpoch 0)
+        ]
     ]
 
 checkCardanoNode :: IO ()
@@ -75,26 +81,17 @@ checkCardanoNode = do
   unless isExpected (putStrLn version)
   assertBool ("cardano-node version should be " <> expectedVersion) isExpected
 
-startLocalNode :: IO ()
-startLocalNode = do
+startLocalNodeInEra :: GenesisConfigChanges -> C.AnyCardanoEra -> IO ()
+startLocalNodeInEra config expectedEra = do
     showLogsOnFailure $ \tr -> do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile, rnNetworkId} -> do
+          withCardanoNodeDevnetConfig tr tmp config defaultPortsConfig $ \RunningNode{rnNodeSocket, rnNodeConfigFile, rnNetworkId} -> do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
               Left err -> failure (show err)
               Right{}  -> do
                 Queries.queryEra rnNetworkId rnNodeSocket
-                  >>= assertBool "Should be in babbage era" . (==) (C.anyCardanoEra C.BabbageEra)
-
-transitionToConway :: IO ()
-transitionToConway = do
-    showLogsOnFailure $ \tr -> do
-      failAfter 5 $
-        withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
-            Queries.queryEra rnNetworkId rnNodeSocket
-              >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
+                  >>= assertBool "Should be in expected era" . (==) expectedEra
 
 startLocalStakePoolNode :: IO ()
 startLocalStakePoolNode = do
@@ -178,23 +175,23 @@ stakePoolRewards = do
           pure rewards else
           threadDelay 1_000_000 >> waitForStakeRewards' node cred amount
 
-makePayment :: IO ()
-makePayment = do
+makePayment :: GenesisConfigChanges -> IO ()
+makePayment config = do
   showLogsOnFailure $ \tr -> do
     failAfter 10 $
       withTempDir "cardano-cluster" $ \tmp -> do
-        withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode -> do
+        withCardanoNodeDevnetConfig (contramap TLNode tr) tmp config defaultPortsConfig $ \runningNode -> do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           bal <- Utxos.totalBalance <$> W.walletUtxos runningNode wllt
           assertEqual "Wallet should have the expected balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.lovelaceToQuantity $ C.selectLovelace bal)
 
-runWalletServer :: IO ()
-runWalletServer =
+runWalletServer :: GenesisConfigChanges -> IO ()
+runWalletServer config =
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
-      withCardanoNodeDevnet (contramap TLNode tr) tmp $ \node ->
+      withCardanoNodeDevnetConfig (contramap TLNode tr) tmp config defaultPortsConfig $ \node ->
         withWallet (contramap TWallet tr) tmp node $ \wllt -> do
           bal <- Utxos.totalBalance <$> getUTxOs wllt
           let lovelacePerUtxo = 100_000_000
