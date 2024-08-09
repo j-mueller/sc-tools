@@ -170,19 +170,6 @@ queryUTxOFilterBabbage networkId socket flt =
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
--- queryUTxOByTxInBabbage :: NetworkId -> FilePath -> Set TxIn -> IO (UTxO C.BabbageEra)
--- queryUTxOByTxInBabbage networkId socket flt =
---   let query =
---         C.QueryInEra
---           ( C.QueryInShelleyBasedEra
---               C.ShelleyBasedEraBabbage
---               ( C.QueryUTxO flt)
---           )
---    in queryLocalState query networkId socket >>= throwOnEraMismatch
-
--- | Query UTxO for all given addresses at given point.
---
--- Throws at least 'QueryException' if query fails.
 queryUTxOFilterConway :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.ConwayEra)
 queryUTxOFilterConway networkId socket flt =
   let query =
