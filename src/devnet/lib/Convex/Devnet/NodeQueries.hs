@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs          #-}
 {-# LANGUAGE LambdaCase     #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RankNTypes     #-}
 {-# LANGUAGE ViewPatterns   #-}
 {-| Helper functions for querying a local @cardano-node@ using the socket interface
 -}
@@ -38,6 +39,7 @@ import           Cardano.Slotting.Time                              (SlotLength,
                                                                      SystemStart)
 import           Control.Concurrent                                 (threadDelay)
 import           Control.Exception                                  (Exception,
+                                                                     throw,
                                                                      throwIO)
 import           Control.Monad                                      (unless,
                                                                      when)
@@ -59,6 +61,7 @@ import           Prelude
 data QueryException
   = QueryAcquireException String
   | QueryEraMismatchException EraMismatch
+  | QueryUnsupportedEra C.AnyCardanoEra
   deriving (Eq, Show)
 
 instance Exception QueryException
@@ -85,7 +88,7 @@ queryLocalState :: QueryInMode b -> NetworkId -> FilePath -> IO b
 queryLocalState query networkId socket = do
   runExceptT (C.queryNodeLocalState (localNodeConnectInfo networkId socket) T.VolatileTip query) >>= \case
     Left err -> do
-      failure $ "querySystemStart: Failed with " <> show err
+      failure $ "queryLocalState: Failed with " <> show err
     Right result -> pure result
 
 
@@ -153,8 +156,8 @@ queryTipSlotNo networkId socket = queryTip networkId socket >>= (\(s, l, _) -> p
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxOFilter :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.BabbageEra)
-queryUTxOFilter networkId socket flt =
+queryUTxOFilterBabbage :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.BabbageEra)
+queryUTxOFilterBabbage networkId socket flt =
   let query =
         C.QueryInEra
           ( C.QueryInShelleyBasedEra
@@ -166,15 +169,52 @@ queryUTxOFilter networkId socket flt =
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO C.BabbageEra)
+queryUTxOFilterConway :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.ConwayEra)
+queryUTxOFilterConway networkId socket flt =
+  let query =
+        C.QueryInEra
+          ( C.QueryInShelleyBasedEra
+              C.ShelleyBasedEraConway
+              ( C.QueryUTxO flt)
+          )
+   in queryLocalState query networkId socket >>= throwOnEraMismatch
+
+{-| Query the node for the current era and perform an action based on the result
+-- Throws 'QueryException' if the current era is not one of (Babbage, Conway)
+-}
+withSupportedEra ::
+  NetworkId ->
+  FilePath ->
+  (forall era. C.BabbageEraOnwards era -> IO a) -> -- ^
+  IO a
+withSupportedEra networkId socket handler = do
+  queryEra networkId socket >>= \case
+    C.AnyCardanoEra C.BabbageEra -> handler C.BabbageEraOnwardsBabbage
+    C.AnyCardanoEra C.ConwayEra  -> handler C.BabbageEraOnwardsConway
+    otherEra -> throw (QueryUnsupportedEra otherEra)
+
+-- | Query UTxO for all given addresses at given point.
+--
+-- Throws at least 'QueryException' if query fails.
+queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (C.InAnyCardanoEra UTxO)
 queryUTxO networkId socket addresses =
-  queryUTxOFilter networkId socket (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
+  withSupportedEra networkId socket $ \case
+    C.BabbageEraOnwardsBabbage -> C.inAnyCardanoEra C.BabbageEra <$> queryUTxOFilterBabbage networkId socket (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
+    C.BabbageEraOnwardsConway -> C.inAnyCardanoEra C.ConwayEra <$> queryUTxOFilterConway networkId socket (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
 
 -- | Query the entire UTxO set
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxOWhole :: NetworkId -> FilePath -> IO (UTxO C.BabbageEra)
-queryUTxOWhole networkId socket = queryUTxOFilter networkId socket C.QueryUTxOWhole
+queryUTxOWhole :: NetworkId -> FilePath -> IO (C.InAnyCardanoEra UTxO)
+queryUTxOWhole networkId socket =
+  queryEra networkId socket >>= \case
+    C.AnyCardanoEra C.BabbageEra ->
+        C.inAnyCardanoEra C.BabbageEra <$>
+          queryUTxOFilterBabbage networkId socket C.QueryUTxOWhole
+    C.AnyCardanoEra C.ConwayEra ->
+      C.inAnyCardanoEra C.ConwayEra <$>
+          queryUTxOFilterConway networkId socket C.QueryUTxOWhole
+    otherEra -> throw (QueryUnsupportedEra otherEra)
 
 throwOnEraMismatch :: (MonadThrow m, MonadIO m) => Either EraMismatch a -> m a
 throwOnEraMismatch res =
@@ -186,20 +226,24 @@ throwOnEraMismatch res =
 -}
 waitForTxIn :: NetworkId -> FilePath -> TxIn -> IO ()
 waitForTxIn networkId socket txIn = do
-  let query =
-        C.QueryInEra
-          ( C.QueryInShelleyBasedEra
-              C.ShelleyBasedEraBabbage
-              ( C.QueryUTxO
-                  (C.QueryUTxOByTxIn (Set.singleton txIn))
-              )
-          )
-      go = do
-        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
-        when (utxo == mempty) $ do
-          threadDelay 2_000_000
-          go
-  go
+  let go :: forall era. C.BabbageEraOnwards era -> IO ()
+      go era = do
+        let query :: QueryInMode (Either EraMismatch (UTxO era))
+            query =
+              C.QueryInEra
+                ( C.QueryInShelleyBasedEra
+                    (C.babbageEraOnwardsToShelleyBasedEra era)
+                    ( C.QueryUTxO
+                        (C.QueryUTxOByTxIn (Set.singleton txIn))
+                    )
+                )
+            loop = do
+              utxo <- Utxos.fromApiUtxo () . C.inAnyCardanoEra (C.toCardanoEra $ C.babbageEraOnwardsToShelleyBasedEra era) <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+              when (utxo == mempty) $ do
+                threadDelay 2_000_000
+                loop
+        loop
+  withSupportedEra networkId socket go
 
 waitForTxn :: NetworkId -> FilePath -> Tx BabbageEra -> IO ()
 waitForTxn network socket (head . fmap fst . txnUtxos -> txi) = waitForTxIn network socket txi
@@ -208,17 +252,20 @@ waitForTxn network socket (head . fmap fst . txnUtxos -> txi) = waitForTxIn netw
 -}
 waitForTxInSpend :: NetworkId -> FilePath -> TxIn -> IO ()
 waitForTxInSpend networkId socket txIn = do
-  let query =
-        C.QueryInEra
-          ( C.QueryInShelleyBasedEra
-              C.ShelleyBasedEraBabbage
-              ( C.QueryUTxO
-                  (C.QueryUTxOByTxIn (Set.singleton txIn))
-              )
-          )
-      go = do
-        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
-        unless (utxo == mempty) $ do
-          threadDelay 2_000_000
-          go
-  go
+  let go :: forall era. C.BabbageEraOnwards era -> IO ()
+      go era = do
+        let query =
+              C.QueryInEra
+                ( C.QueryInShelleyBasedEra
+                    (C.babbageEraOnwardsToShelleyBasedEra era)
+                    ( C.QueryUTxO
+                        (C.QueryUTxOByTxIn (Set.singleton txIn))
+                    )
+                )
+            loop = do
+              utxo <- Utxos.fromApiUtxo () . C.inAnyCardanoEra (C.toCardanoEra $ C.babbageEraOnwardsToShelleyBasedEra era) <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+              unless (utxo == mempty) $ do
+                threadDelay 2_000_000
+                loop
+        loop
+  withSupportedEra networkId socket go

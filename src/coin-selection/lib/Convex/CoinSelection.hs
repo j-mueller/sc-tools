@@ -45,7 +45,7 @@ module Convex.CoinSelection(
   publicKeyCredential
   ) where
 
-import qualified Cardano.Api                   as Cardano.Api
+import qualified Cardano.Api
 import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
@@ -73,6 +73,7 @@ import           Convex.BuildTx                (TxBuilder, addCollateral,
 import qualified Convex.BuildTx                as BuildTx
 import qualified Convex.CardanoApi.Lenses      as L
 import           Convex.Class                  (MonadBlockchain (..))
+import qualified Convex.Eras                   as Eras
 import           Convex.Utils                  (mapError)
 import           Convex.UTxOCompatibility      (UTxOCompatibility,
                                                 compatibleWith, txCompatibility)
@@ -542,11 +543,11 @@ balanceTx ::
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
 balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
-  params <- queryProtocolParameters
+  params <- Eras.babbageProtocolParams <$> queryProtocolParameters
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
   -- compatibility level
-  let txb0 = txb <> (BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just params))))
+  let txb0 = txb <> BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just params)))
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns $ BuildTx.buildTx txb)
   let combinedTxIns =
@@ -773,8 +774,7 @@ prepCSInputs
   -> TxBuilder -- ^ Unbalanced transaction body
   -> m CSInputs -- ^ Inputs for coin balancing
 prepCSInputs sigCount csiChangeAddress csiUtxo (BuildTx.buildTx -> csiTxBody) = do
-  CSInputs
-    <$> pure csiUtxo
+  pure (CSInputs csiUtxo)
     <*> pure csiTxBody
     <*> pure csiChangeAddress
     <*> pure sigCount
@@ -791,11 +791,11 @@ requiredTxIns body =
   <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)
 
 lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
-lookupTxIns = utxoByTxIn
+lookupTxIns = fmap Eras.babbageUTxO . utxoByTxIn
 
 keyWitnesses :: MonadBlockchain m => C.TxBodyContent v C.BabbageEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
 keyWitnesses (requiredTxIns -> inputs) = do
-  C.UTxO utxos <- utxoByTxIn inputs
+  C.UTxO utxos <- Eras.babbageUTxO <$> utxoByTxIn inputs
   pure $ Set.fromList $ mapMaybe (publicKeyCredential . snd) $ Map.toList utxos
 
 -- | The number of signatures required to spend the transaction's inputs

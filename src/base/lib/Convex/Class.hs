@@ -3,7 +3,9 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Typeclasses for blockchain operations
@@ -39,71 +41,74 @@ module Convex.Class(
   runMonadBlockchainCardanoNodeT
 ) where
 
-import qualified Cardano.Api                                       as C
-import           Cardano.Api.Shelley                               (BabbageEra,
-                                                                    EraHistory (..),
-                                                                    Hash,
-                                                                    HashableScriptData,
-                                                                    LedgerProtocolParameters (..),
-                                                                    LocalNodeConnectInfo,
-                                                                    NetworkId,
-                                                                    PaymentCredential,
-                                                                    PoolId,
-                                                                    ScriptData,
-                                                                    SlotNo, Tx,
-                                                                    TxId)
-import           Cardano.Ledger.Shelley.API                        (Coin (..),
-                                                                    UTxO)
-import           Cardano.Slotting.Time                             (SlotLength,
-                                                                    SystemStart)
-import           Control.Lens                                      (_1, view)
-import           Control.Monad.Except                              (MonadError,
-                                                                    catchError,
-                                                                    runExceptT,
-                                                                    throwError)
-import           Control.Monad.IO.Class                            (MonadIO (..))
-import           Control.Monad.Reader                              (MonadTrans,
-                                                                    ReaderT (..),
-                                                                    ask, asks,
-                                                                    lift)
-import qualified Control.Monad.State                               as LazyState
-import qualified Control.Monad.State.Strict                        as StrictState
-import           Control.Monad.Trans.Except                        (ExceptT (..))
-import           Control.Monad.Trans.Except.Result                 (ResultT)
-import           Convex.Constants                                  (ERA)
-import           Convex.MonadLog                                   (MonadLog (..),
-                                                                    MonadLogIgnoreT (..),
-                                                                    logInfoS,
-                                                                    logWarn,
-                                                                    logWarnS)
-import           Convex.Utils                                      (posixTimeToSlotUnsafe,
-                                                                    slotToUtcTime)
-import           Convex.Utxos                                      (UtxoSet)
-import           Data.Aeson                                        (FromJSON,
-                                                                    ToJSON)
-import           Data.Bifunctor                                    (Bifunctor (..))
-import           Data.Map                                          (Map)
-import qualified Data.Map                                          as Map
-import           Data.Set                                          (Set)
-import qualified Data.Set                                          as Set
-import           Data.Time.Clock                                   (UTCTime)
-import           GHC.Generics                                      (Generic)
-import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
-                                                                    slotToSlotLength)
-import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type   as T
-import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
-import qualified PlutusLedgerApi.V1                                as PV1
-import           Prettyprinter                                     (Pretty (..),
-                                                                    (<+>))
-import           Test.QuickCheck.Monadic                           (PropertyM)
+import qualified Cardano.Api                                        as C
+import           Cardano.Api.Shelley                                (BabbageEra,
+                                                                     EraHistory (..),
+                                                                     Hash,
+                                                                     HashableScriptData,
+                                                                     LedgerProtocolParameters (..),
+                                                                     LocalNodeConnectInfo,
+                                                                     NetworkId,
+                                                                     PaymentCredential,
+                                                                     PoolId,
+                                                                     ScriptData,
+                                                                     SlotNo, Tx,
+                                                                     TxId)
+import           Cardano.Ledger.Shelley.API                         (Coin (..),
+                                                                     UTxO)
+import           Cardano.Slotting.Time                              (SlotLength,
+                                                                     SystemStart)
+import           Control.Lens                                       (_1, view)
+import           Control.Monad.Except                               (MonadError,
+                                                                     catchError,
+                                                                     runExceptT,
+                                                                     throwError)
+import           Control.Monad.IO.Class                             (MonadIO (..))
+import           Control.Monad.Reader                               (MonadTrans,
+                                                                     ReaderT (..),
+                                                                     ask, asks,
+                                                                     lift)
+import qualified Control.Monad.State                                as LazyState
+import qualified Control.Monad.State.Strict                         as StrictState
+import           Control.Monad.Trans.Except                         (ExceptT (..))
+import           Control.Monad.Trans.Except.Result                  (ResultT)
+import           Convex.Constants                                   (ERA)
+import           Convex.Eras                                        (InAnyBabbageEraOnwards (..))
+import qualified Convex.Eras                                        as Eras
+import           Convex.MonadLog                                    (MonadLog (..),
+                                                                     MonadLogIgnoreT (..),
+                                                                     logInfoS,
+                                                                     logWarn,
+                                                                     logWarnS)
+import           Convex.Utils                                       (posixTimeToSlotUnsafe,
+                                                                     slotToUtcTime)
+import           Convex.Utxos                                       (UtxoSet)
+import           Data.Aeson                                         (FromJSON,
+                                                                     ToJSON)
+import           Data.Bifunctor                                     (Bifunctor (..))
+import           Data.Map                                           (Map)
+import qualified Data.Map                                           as Map
+import           Data.Set                                           (Set)
+import qualified Data.Set                                           as Set
+import           Data.Time.Clock                                    (UTCTime)
+import           GHC.Generics                                       (Generic)
+import           Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
+import           Ouroboros.Consensus.HardFork.History               (interpretQuery,
+                                                                     slotToSlotLength)
+import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type    as T
+import           Ouroboros.Network.Protocol.LocalTxSubmission.Type  (SubmitResult (..))
+import qualified PlutusLedgerApi.V1                                 as PV1
+import           Prettyprinter                                      (Pretty (..),
+                                                                     (<+>))
+import           Test.QuickCheck.Monadic                            (PropertyM)
 
 {-| Send transactions and resolve tx inputs.
 -}
 class Monad m => MonadBlockchain m where
   -- see note Note [sendTx Failure]
   sendTx                  :: Tx BabbageEra -> m (Either SendTxFailed TxId) -- ^ Submit a transaction to the network
-  utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m (LedgerProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
+  utxoByTxIn              :: Set C.TxIn -> m (InAnyBabbageEraOnwards C.UTxO) -- ^ Resolve tx inputs
+  queryProtocolParameters :: m (InAnyBabbageEraOnwards LedgerProtocolParameters) -- ^ Get the protocol parameters
   queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
@@ -177,9 +182,9 @@ instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   networkId = lift networkId
 
 -- | Look up  a single UTxO
-singleUTxO :: MonadBlockchain m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO C.BabbageEra))
-singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
-  C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
+singleUTxO :: MonadBlockchain m => C.TxIn -> m (Maybe (InAnyBabbageEraOnwards (C.TxOut C.CtxUTxO)))
+singleUTxO txi = utxoByTxIn (Set.singleton txi) >>= \case
+  InAnyBabbageEraOnwards era (C.UTxO (Map.toList -> [(_, o)])) -> pure (Just $ InAnyBabbageEraOnwards era o)
   _ -> pure Nothing
 
 {-| Modify the mockchain internals
@@ -257,6 +262,7 @@ nextSlot = modifySlot (\s -> (succ s, ()))
 data MonadBlockchainError e =
   MonadBlockchainError e
   | FailWith String
+  | UnsupportedEra C.AnyCardanoEra
   deriving stock (Functor, Generic, Show)
   deriving anyclass (ToJSON, FromJSON)
 
@@ -372,6 +378,20 @@ instance Monad m => MonadError e (MonadBlockchainCardanoNodeT e m) where
 runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runExceptT (runReaderT action info)
 
+{-| Query the node for the current era.
+Fails with 'UnsupportedEra' if the current era is not one of (Babbage, Conway)
+-}
+getSupportedEra :: forall e m.
+  (MonadIO m) =>
+  MonadBlockchainCardanoNodeT e m (InAnyBabbageEraOnwards C.BabbageEraOnwards)
+getSupportedEra = MonadBlockchainCardanoNodeT $ do
+  connectInfo <- ask
+  era <- liftIO (runExceptT $ C.queryNodeLocalState connectInfo T.VolatileTip C.QueryCurrentEra) >>= either (throwError . FailWith . show) pure
+  case era of
+    C.AnyCardanoEra C.BabbageEra -> pure $ Eras.inAnyBabbageEraOnwardsBabbage C.BabbageEraOnwardsBabbage
+    C.AnyCardanoEra C.ConwayEra  -> pure $ Eras.inAnyBabbageEraOnwardsConway C.BabbageEraOnwardsConway
+    otherEra -> throwError (UnsupportedEra otherEra)
+
 runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT e m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
@@ -384,13 +404,28 @@ runQuery qry = MonadBlockchainCardanoNodeT $ do
     Right result' -> do
       pure result'
 
-runQuery' :: (MonadIO m, MonadLog m, Show e1) => C.QueryInMode (Either e1 a) -> MonadBlockchainCardanoNodeT e2 m a
-runQuery' qry = runQuery qry >>= \case
-  Left err -> MonadBlockchainCardanoNodeT $ do
-    let msg = "runQuery': Era mismatch: " <> show err
-    logWarnS msg
-    throwError $ FailWith msg
-  Right result' -> pure result'
+{-| An query that returns an era-specific value wrapped in an era-agnostic type
+-}
+data QueryWithHandler a =
+  forall b. QueryWithHandler
+    { qryQuery   :: C.QueryInMode (Either EraMismatch b) -- ^ Era-specific query returning value of type b
+    , qryHandler :: b -> a -- ^ Era-agnostic return type @a@
+    }
+
+runQuery' :: (MonadIO m, MonadLog m) => (InAnyBabbageEraOnwards C.BabbageEraOnwards -> QueryWithHandler b) -> MonadBlockchainCardanoNodeT e2 m b
+runQuery' qry = do
+  era <- getSupportedEra
+  case qry era of
+    QueryWithHandler{qryQuery, qryHandler} ->
+      runQuery qryQuery >>= \case
+        Left err -> MonadBlockchainCardanoNodeT $ do
+          -- *should* not happen as we pass the era to the handler to construct the right query
+          -- However, if the HF happens at exactly the moment between "asking for era" and "submitting query"
+          -- then we will still fail
+          let msg = "runQuery': Era mismatch: " <> show err
+          logWarnS msg
+          throwError $ FailWith msg
+        Right result' -> pure $ qryHandler result'
 
 instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT e m) where
   sendTx tx = MonadBlockchainCardanoNodeT $ do
@@ -406,17 +441,53 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
         logWarn msg
         pure (Left msg)
 
-  utxoByTxIn txIns =
-    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
+  utxoByTxIn txIns = runQuery' $ \case
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage C.BabbageEraOnwardsBabbage ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns)))
+        , qryHandler = Eras.inAnyBabbageEraOnwardsBabbage
+        }
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsConway C.BabbageEraOnwardsConway ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway (C.QueryUTxO (C.QueryUTxOByTxIn txIns)))
+        , qryHandler = Eras.inAnyBabbageEraOnwardsConway
+        }
 
-  queryProtocolParameters = do
-    LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
+  queryProtocolParameters = runQuery' $ \case
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage C.BabbageEraOnwardsBabbage ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters)
+        , qryHandler = Eras.inAnyBabbageEraOnwardsBabbage . LedgerProtocolParameters
+        }
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsConway C.BabbageEraOnwardsConway ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryProtocolParameters)
+        , qryHandler = Eras.inAnyBabbageEraOnwardsConway . LedgerProtocolParameters
+        }
 
-  queryStakeAddresses creds nid =
-    first (fmap C.lovelaceToQuantity) <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryStakeAddresses creds nid)))
+  queryStakeAddresses creds nid = runQuery' $ \case
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage C.BabbageEraOnwardsBabbage ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryStakeAddresses creds nid))
+        , qryHandler = first (fmap C.lovelaceToQuantity)
+        }
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsConway C.BabbageEraOnwardsConway ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway (C.QueryStakeAddresses creds nid))
+        , qryHandler = first (fmap C.lovelaceToQuantity)
+        }
 
-  queryStakePools =
-    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))
+  queryStakePools = runQuery' $ \case
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage C.BabbageEraOnwardsBabbage ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools)
+        , qryHandler = id
+        }
+    InAnyBabbageEraOnwards C.BabbageEraOnwardsConway C.BabbageEraOnwardsConway ->
+      QueryWithHandler
+        { qryQuery   = C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryStakePools)
+        , qryHandler = id
+        }
 
   querySystemStart = runQuery C.QuerySystemStart
 

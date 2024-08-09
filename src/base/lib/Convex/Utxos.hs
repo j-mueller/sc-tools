@@ -222,8 +222,15 @@ makePrisms ''UtxoSet
 
 {-| Convert a @cardano-api@ 'UTxO BabbageEra' to a utxo set
 -}
-fromApiUtxo :: C.IsCardanoEra era => a -> UTxO era -> UtxoSet C.CtxUTxO a
-fromApiUtxo v (UTxO utxoSet) = UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+fromApiUtxo :: a -> C.InAnyCardanoEra UTxO -> UtxoSet C.CtxUTxO a
+fromApiUtxo v = \case
+  C.InAnyCardanoEra C.ByronEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+  C.InAnyCardanoEra C.AllegraEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+  C.InAnyCardanoEra C.MaryEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+  C.InAnyCardanoEra C.ShelleyEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+  C.InAnyCardanoEra C.AlonzoEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+  C.InAnyCardanoEra C.BabbageEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
+  C.InAnyCardanoEra C.ConwayEra (UTxO utxoSet) -> UtxoSet (fmap (\x -> (C.InAnyCardanoEra C.cardanoEra x, v)) utxoSet)
 
 {-| Convert a utxo set to a @cardano-api@ 'UTxO BabbageEra'
 -}
