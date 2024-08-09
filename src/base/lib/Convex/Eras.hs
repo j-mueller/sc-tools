@@ -7,6 +7,7 @@ module Convex.Eras(
   inAnyBabbageEraOnwards,
   inAnyBabbageEraOnwardsBabbage,
   inAnyBabbageEraOnwardsConway,
+  toInAnyCardanoEra,
   -- * Downgrades to babbage era
   babbageProtocolParams,
   babbageTxOut,
@@ -16,7 +17,7 @@ module Convex.Eras(
 
 import           Cardano.Api              (BabbageEra, BabbageEraOnwards (..),
                                            ConwayEra)
-import           Cardano.Api.Shelley      (CtxUTxO,
+import           Cardano.Api.Shelley      (CtxUTxO, InAnyCardanoEra (..),
                                            LedgerProtocolParameters (..),
                                            ReferenceScript (..), TxOut (..),
                                            TxOutDatum (..), UTxO (..))
@@ -34,6 +35,12 @@ data InAnyBabbageEraOnwards thing where
     => BabbageEraOnwards era
     -> thing era
     -> InAnyBabbageEraOnwards thing
+
+-- | Relax 'InAnyBabbageEraOnwards' to 'InAnyCardanoEra'
+toInAnyCardanoEra :: InAnyBabbageEraOnwards thing -> InAnyCardanoEra thing
+toInAnyCardanoEra = \case
+  InAnyBabbageEraOnwards BabbageEraOnwardsBabbage thing -> C.inAnyCardanoEra C.cardanoEra thing
+  InAnyBabbageEraOnwards BabbageEraOnwardsConway thing -> C.inAnyCardanoEra C.cardanoEra thing
 
 -- | Constructor for 'InAnyBabbageEraOnwards'
 inAnyBabbageEraOnwards :: Typeable era => BabbageEraOnwards era -> thing era -> InAnyBabbageEraOnwards thing
