@@ -14,6 +14,7 @@ module Convex.Devnet.NodeQueries(
   queryTipSlotNo,
   queryUTxO,
   queryUTxOWhole,
+  queryUTxOByTxIn,
   waitForTxn,
   waitForTxIn,
   waitForTxInSpend,
@@ -169,6 +170,19 @@ queryUTxOFilterBabbage networkId socket flt =
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
+-- queryUTxOByTxInBabbage :: NetworkId -> FilePath -> Set TxIn -> IO (UTxO C.BabbageEra)
+-- queryUTxOByTxInBabbage networkId socket flt =
+--   let query =
+--         C.QueryInEra
+--           ( C.QueryInShelleyBasedEra
+--               C.ShelleyBasedEraBabbage
+--               ( C.QueryUTxO flt)
+--           )
+--    in queryLocalState query networkId socket >>= throwOnEraMismatch
+
+-- | Query UTxO for all given addresses at given point.
+--
+-- Throws at least 'QueryException' if query fails.
 queryUTxOFilterConway :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.ConwayEra)
 queryUTxOFilterConway networkId socket flt =
   let query =
@@ -192,6 +206,15 @@ withSupportedEra networkId socket handler = do
     C.AnyCardanoEra C.BabbageEra -> handler C.BabbageEraOnwardsBabbage
     C.AnyCardanoEra C.ConwayEra  -> handler C.BabbageEraOnwardsConway
     otherEra -> throw (QueryUnsupportedEra otherEra)
+
+-- | Query UTxO for the outputs in the set of 'TxIn's
+--
+-- Throws at least 'QueryException' if query fails.
+queryUTxOByTxIn :: NetworkId -> FilePath -> Set.Set TxIn -> IO (C.InAnyCardanoEra UTxO)
+queryUTxOByTxIn networkId socket txIns =
+  withSupportedEra networkId socket $ \case
+    C.BabbageEraOnwardsBabbage -> C.inAnyCardanoEra C.BabbageEra <$> queryUTxOFilterBabbage networkId socket (C.QueryUTxOByTxIn txIns)
+    C.BabbageEraOnwardsConway -> C.inAnyCardanoEra C.ConwayEra <$> queryUTxOFilterConway networkId socket (C.QueryUTxOByTxIn txIns)
 
 -- | Query UTxO for all given addresses at given point.
 --
