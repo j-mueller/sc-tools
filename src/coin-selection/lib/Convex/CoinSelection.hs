@@ -289,7 +289,7 @@ balanceTransactionBody
 -}
 refScriptsFeeBabbageTxnInConway :: C.TxBody BabbageEra -> UTxO BabbageEra -> C.LedgerProtocolParameters C.ConwayEra -> Coin
 refScriptsFeeBabbageTxnInConway tx_body tx_utxo params =
-  let refScriptSize = C.getReferenceInputsSizeForTxIds C.BabbageEraOnwardsBabbage (C.toLedgerUTxO C.ShelleyBasedEraBabbage tx_utxo) (referenceScriptInputs $ C.getTxBodyContent tx_body)
+  let refScriptSize = C.getReferenceInputsSizeForTxIds C.BabbageEraOnwardsBabbage (C.toLedgerUTxO C.ShelleyBasedEraBabbage tx_utxo) (spentTxIns $ C.getTxBodyContent tx_body)
       refScriptCostPerByte = Ledger.unboundRational (C.unLedgerProtocolParameters params ^. Ledger.ppMinFeeRefScriptCostPerByteL)
       refScriptsFee = Ledger.tierRefScriptFee multiplier sizeIncrement refScriptCostPerByte refScriptSize
 
