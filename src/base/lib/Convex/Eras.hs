@@ -90,7 +90,7 @@ babbageUTxO = \case
     UTxO $ fmap downgradeTxOut m
 
 upgradeUTxO :: C.UTxO BabbageEra -> C.UTxO ConwayEra
-upgradeUTxO (C.UTxO m) = C.UTxO (fmap upgradeTxOut m)
+upgradeUTxO (C.UTxO m) = C.UTxO (fmap upgradeTxOutUTxO m)
 
 -- | Babbage-era tx outputs. We can always downgrade conway-era outputs because
 --   they didn't change compared to babbage.
@@ -178,7 +178,7 @@ upgradeTxInsReference = \case
   C.TxInsReferenceNone -> C.TxInsReferenceNone
   C.TxInsReference _ txIns_ -> C.TxInsReference C.babbageBasedEra txIns_
 
-upgradeTxOut :: TxOut ctx BabbageEra -> TxOut ctx ConwayEra
+upgradeTxOut :: TxOut C.CtxTx BabbageEra -> TxOut C.CtxTx ConwayEra
 upgradeTxOut txOut =
   let (addr, vl, dat, ref) = L.view L._TxOut txOut
   in TxOut
@@ -187,8 +187,24 @@ upgradeTxOut txOut =
       (upgradeTxOutDatum dat)
       (upgradeTxOutRefScript ref)
 
-upgradeTxOutDatum :: TxOutDatum ctx BabbageEra -> TxOutDatum ctx ConwayEra
+upgradeTxOutDatum :: TxOutDatum C.CtxTx BabbageEra -> TxOutDatum C.CtxTx ConwayEra
 upgradeTxOutDatum = \case
+  TxOutDatumNone -> TxOutDatumNone
+  TxOutDatumHash _era hash -> TxOutDatumHash C.alonzoBasedEra hash
+  TxOutDatumInline _era dat -> TxOutDatumInline C.babbageBasedEra dat
+  TxOutDatumInTx _era hash -> TxOutDatumInTx C.alonzoBasedEra  hash
+
+upgradeTxOutUTxO :: TxOut C.CtxUTxO BabbageEra -> TxOut C.CtxUTxO ConwayEra
+upgradeTxOutUTxO txOut =
+  let (addr, vl, dat, ref) = L.view L._TxOut txOut
+  in TxOut
+      (C.fromShelleyAddr C.shelleyBasedEra $ C.toShelleyAddr addr)
+      (C.TxOutValueShelleyBased C.shelleyBasedEra $ C.toMaryValue $ C.txOutValueToValue vl)
+      (upgradeTxOutDatumTxUTxO dat)
+      (upgradeTxOutRefScript ref)
+
+upgradeTxOutDatumTxUTxO :: TxOutDatum C.CtxUTxO BabbageEra -> TxOutDatum C.CtxUTxO ConwayEra
+upgradeTxOutDatumTxUTxO = \case
   TxOutDatumNone -> TxOutDatumNone
   TxOutDatumHash _era hash -> TxOutDatumHash C.alonzoBasedEra hash
   TxOutDatumInline _era dat -> TxOutDatumInline C.babbageBasedEra dat
