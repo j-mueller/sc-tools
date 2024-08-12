@@ -50,9 +50,6 @@ import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
 import qualified Cardano.Api.Shelley           as C
-import qualified Cardano.Ledger.BaseTypes      as Ledger
-import qualified Cardano.Ledger.Conway.PParams as Ledger
-import qualified Cardano.Ledger.Conway.Tx      as Ledger
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
 import           Cardano.Ledger.Shelley.API    (Coin (..), Credential (..),
@@ -93,9 +90,8 @@ import           Data.Function                 (on)
 import qualified Data.List                     as List
 import           Data.Map                      (Map)
 import qualified Data.Map                      as Map
-import           Data.Maybe                    (fromMaybe, isNothing,
-                                                listToMaybe, mapMaybe,
-                                                maybeToList)
+import           Data.Maybe                    (isNothing, listToMaybe,
+                                                mapMaybe, maybeToList)
 import           Data.Ord                      (Down (..))
 import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
@@ -171,7 +167,7 @@ data TxBalancingMessage =
   | PrepareInputs{availableBalance :: C.Value, transactionBalance :: C.Value } -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
-  | Txfee{ fee :: C.Quantity, conwayAdjustedFee :: Maybe C.Quantity } -- ^ The transaction fee (babbage era), plus the transaction fee in conway era if applicable
+  | Txfee{ fee :: C.Quantity } -- ^ The transaction fee
   | TxRemainingBalance{ remainingBalance :: C.Value } -- ^ The remaining balance (after paying the fee)
   | NoAssetsMissing -- ^ The transaction was not missing any assets
   | MissingAssets C.Value -- ^ The transaction is missing some inputs, these will be covered from the wallet's UTxOs.
@@ -237,19 +233,26 @@ balanceTransactionBody
   txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody
   let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
-  -- append output instead of prepending
-  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
 
-  let !t_fee = C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters $ Eras.babbageProtocolParams protocolParams) csiUtxo txbody1 numWits
-      !t_fee_adjusted = case protocolParams of
-        Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage _ -> Nothing
-        Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsConway params -> do
-          let refScriptsFee = refScriptsFeeBabbageTxnInConway txbody1 csiUtxo params
-          pure (t_fee + refScriptsFee)
-      !t_fee_final = fromMaybe t_fee t_fee_adjusted
-  traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee, conwayAdjustedFee = fmap C.lovelaceToQuantity t_fee_adjusted }
+  !t_fee <- case protocolParams of
+    Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage params -> do
+      -- append output instead of prepending
+      txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
+      pure $ C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters params) csiUtxo txbody1 numWits
+    Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsConway params -> do
+      -- append output instead of prepending
+      txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraConway (Eras.upgradeTxBodyContent params txbodycontent1')
+      pure $ C.calculateMinTxFee C.ShelleyBasedEraConway (C.unLedgerProtocolParameters params) (Eras.upgradeUTxO csiUtxo) txbody1 numWits
+    -- C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters $ Eras.babbageProtocolParams protocolParams) csiUtxo txbody1 numWits
+    --   !t_fee_adjusted = case protocolParams of
+    --     Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage _ -> Nothing
+    --     Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsConway params -> do
+    --       let refScriptsFee = refScriptsFeeBabbageTxnInConway txbody1 csiUtxo params
+    --       pure (t_fee + refScriptsFee)
 
-  let txbodycontent2 = txbodycontent1 & set L.txFee t_fee_final & appendTxOut csiChangeLatestEraOutput
+  traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee }
+
+  let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeLatestEraOutput
   txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
 
   -- TODO: If there are any stake pool unregistration certificates in the transaction
@@ -273,30 +276,15 @@ balanceTransactionBody
 
   let finalBodyContent =
         txbodycontent1
-          & set L.txFee t_fee_final
+          & set L.txFee t_fee
           & addChangeOutput changeOutputBalance
 
   txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage finalBodyContent
 
   balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
-  let mkBalancedBody b = C.BalancedTxBody finalBodyContent b changeOutputBalance t_fee_final
+  let mkBalancedBody b = C.BalancedTxBody finalBodyContent b changeOutputBalance t_fee
   return (mkBalancedBody txbody3, balances)
-
-{-| The conway era adds an extra fee for reference scripts. If we calculate the fee for a babbage-era transaction
-    that uses reference scripts in conway, we will underestimate the fee and create an invalid transaction.
-    We therefore need to add the reference script fee manually.
--}
-refScriptsFeeBabbageTxnInConway :: C.TxBody BabbageEra -> UTxO BabbageEra -> C.LedgerProtocolParameters C.ConwayEra -> Coin
-refScriptsFeeBabbageTxnInConway tx_body tx_utxo params =
-  let refScriptSize = C.getReferenceInputsSizeForTxIds C.BabbageEraOnwardsBabbage (C.toLedgerUTxO C.ShelleyBasedEraBabbage tx_utxo) (spentTxIns $ C.getTxBodyContent tx_body)
-      refScriptCostPerByte = Ledger.unboundRational (C.unLedgerProtocolParameters params ^. Ledger.ppMinFeeRefScriptCostPerByteL)
-      refScriptsFee = Ledger.tierRefScriptFee multiplier sizeIncrement refScriptCostPerByte refScriptSize
-
-      -- These numbers come from 'Cardano.Ledger.Conway.Tx.getConwayMinFeeTx'
-      multiplier = 1.2
-      sizeIncrement = 25_600 -- 25KiB
-  in refScriptsFee
 
 checkMinUTxOValue
   :: (C.IsShelleyBasedEra era, MonadError (BalancingError era) m)
