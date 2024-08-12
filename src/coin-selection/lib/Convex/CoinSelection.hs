@@ -50,6 +50,9 @@ import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
 import qualified Cardano.Api.Shelley           as C
+import qualified Cardano.Ledger.BaseTypes      as Ledger
+import qualified Cardano.Ledger.Conway.PParams as Ledger
+import qualified Cardano.Ledger.Conway.Tx      as Ledger
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
 import           Cardano.Ledger.Shelley.API    (Coin (..), Credential (..),
@@ -73,6 +76,7 @@ import           Convex.BuildTx                (TxBuilder, addCollateral,
 import qualified Convex.BuildTx                as BuildTx
 import qualified Convex.CardanoApi.Lenses      as L
 import           Convex.Class                  (MonadBlockchain (..))
+import           Convex.Eras                   (InAnyBabbageEraOnwards)
 import qualified Convex.Eras                   as Eras
 import           Convex.Utils                  (mapError)
 import           Convex.UTxOCompatibility      (UTxOCompatibility,
@@ -89,8 +93,9 @@ import           Data.Function                 (on)
 import qualified Data.List                     as List
 import           Data.Map                      (Map)
 import qualified Data.Map                      as Map
-import           Data.Maybe                    (isNothing, listToMaybe,
-                                                mapMaybe, maybeToList)
+import           Data.Maybe                    (fromMaybe, isNothing,
+                                                listToMaybe, mapMaybe,
+                                                maybeToList)
 import           Data.Ord                      (Down (..))
 import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
@@ -166,7 +171,7 @@ data TxBalancingMessage =
   | PrepareInputs{availableBalance :: C.Value, transactionBalance :: C.Value } -- ^ Preparing to balance the transaction using the available wallet balance
   | StartBalancing{numInputs :: !Int, numOutputs :: !Int} -- ^ Balancing a transaction body
   | ExUnitsMap{ exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)] } -- ^ Execution units of the transaction, or error message in case of script error
-  | Txfee{ fee :: C.Quantity } -- ^ The transaction fee
+  | Txfee{ fee :: C.Quantity, conwayAdjustedFee :: Maybe C.Quantity } -- ^ The transaction fee (babbage era), plus the transaction fee in conway era if applicable
   | TxRemainingBalance{ remainingBalance :: C.Value } -- ^ The remaining balance (after paying the fee)
   | NoAssetsMissing -- ^ The transaction was not missing any assets
   | MissingAssets C.Value -- ^ The transaction is missing some inputs, these will be covered from the wallet's UTxOs.
@@ -185,7 +190,7 @@ balanceTransactionBody ::
   Tracer m TxBalancingMessage ->
   SystemStart ->
   EraHistory ->
-  C.LedgerProtocolParameters ERA ->
+  InAnyBabbageEraOnwards C.LedgerProtocolParameters ->
   Set PoolId ->
   CSInputs ->
   ChangeOutputPosition ->
@@ -217,7 +222,7 @@ balanceTransactionBody
   exUnitsMap <- balancingError . first C.TxBodyErrorValidityInterval $
                 C.evaluateTransactionExecutionUnits C.BabbageEra
                 systemStart (C.toLedgerEpochInfo eraHistory)
-                protocolParams
+                (Eras.babbageProtocolParams protocolParams)
                 csiUtxo
                 txbody0
 
@@ -235,10 +240,16 @@ balanceTransactionBody
   -- append output instead of prepending
   txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
 
-  let !t_fee = C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) csiUtxo txbody1 numWits
-  traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee}
+  let !t_fee = C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters $ Eras.babbageProtocolParams protocolParams) csiUtxo txbody1 numWits
+      !t_fee_adjusted = case protocolParams of
+        Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsBabbage _ -> Nothing
+        Eras.InAnyBabbageEraOnwards C.BabbageEraOnwardsConway params -> do
+          let refScriptsFee = refScriptsFeeBabbageTxnInConway txbody1 csiUtxo params
+          pure (t_fee + refScriptsFee)
+      !t_fee_final = fromMaybe t_fee t_fee_adjusted
+  traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee, conwayAdjustedFee = fmap C.lovelaceToQuantity t_fee_adjusted }
 
-  let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeLatestEraOutput
+  let txbodycontent2 = txbodycontent1 & set L.txFee t_fee_final & appendTxOut csiChangeLatestEraOutput
   txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
 
   -- TODO: If there are any stake pool unregistration certificates in the transaction
@@ -246,31 +257,46 @@ balanceTransactionBody
   -- See https://github.com/input-output-hk/cardano-api/commit/d23f964d311282b1950b2fd840bcc57ae40a0998
   let unregPoolStakeBalance = mempty
 
-  let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)
+  let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters $ Eras.babbageProtocolParams protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)
 
   traceWith tracer TxRemainingBalance{remainingBalance = balance}
 
-  mapM_ (`checkMinUTxOValue` protocolParams) $ C.txOuts txbodycontent1
+  mapM_ (`checkMinUTxOValue` Eras.babbageProtocolParams protocolParams) $ C.txOuts txbodycontent1
 
   -- debug "balanceTransactionBody: changeOutputBalance"
   changeOutputBalance <- case C.valueToLovelace balance of
     Just b -> do
       let op = csiChangeLatestEraOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId <>~ (Just $ C.lovelaceToQuantity b)
-      balanceCheck protocolParams op
+      balanceCheck (Eras.babbageProtocolParams protocolParams) op
       pure op
     Nothing -> balancingError $ Left $ C.TxBodyErrorNonAdaAssetsUnbalanced balance
 
   let finalBodyContent =
         txbodycontent1
-          & set L.txFee t_fee
+          & set L.txFee t_fee_final
           & addChangeOutput changeOutputBalance
 
   txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage finalBodyContent
 
   balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
-  let mkBalancedBody b = C.BalancedTxBody finalBodyContent b changeOutputBalance t_fee
+  let mkBalancedBody b = C.BalancedTxBody finalBodyContent b changeOutputBalance t_fee_final
   return (mkBalancedBody txbody3, balances)
+
+{-| The conway era adds an extra fee for reference scripts. If we calculate the fee for a babbage-era transaction
+    that uses reference scripts in conway, we will underestimate the fee and create an invalid transaction.
+    We therefore need to add the reference script fee manually.
+-}
+refScriptsFeeBabbageTxnInConway :: C.TxBody BabbageEra -> UTxO BabbageEra -> C.LedgerProtocolParameters C.ConwayEra -> Coin
+refScriptsFeeBabbageTxnInConway tx_body tx_utxo params =
+  let refScriptSize = C.getReferenceInputsSizeForTxIds C.BabbageEraOnwardsBabbage (C.toLedgerUTxO C.ShelleyBasedEraBabbage tx_utxo) (referenceScriptInputs $ C.getTxBodyContent tx_body)
+      refScriptCostPerByte = Ledger.unboundRational (C.unLedgerProtocolParameters params ^. Ledger.ppMinFeeRefScriptCostPerByteL)
+      refScriptsFee = Ledger.tierRefScriptFee multiplier sizeIncrement refScriptCostPerByte refScriptSize
+
+      -- These numbers come from 'Cardano.Ledger.Conway.Tx.getConwayMinFeeTx'
+      multiplier = 1.2
+      sizeIncrement = 25_600 -- 25KiB
+  in refScriptsFee
 
 checkMinUTxOValue
   :: (C.IsShelleyBasedEra era, MonadError (BalancingError era) m)
@@ -543,11 +569,12 @@ balanceTx ::
   -- | The balanced transaction body and the balance changes (per address)
   m (C.BalancedTxBody ERA, BalanceChanges)
 balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
-  params <- Eras.babbageProtocolParams <$> queryProtocolParameters
+  params <- queryProtocolParameters
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
   -- compatibility level
-  let txb0 = txb <> BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just params)))
+  let babbageParams = Eras.babbageProtocolParams params
+      txb0 = txb <> BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just babbageParams)))
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns $ BuildTx.buildTx txb)
   let combinedTxIns =
@@ -558,7 +585,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
   (finalBody, returnUTxO1) <- mapError ACoinSelectionError $ do
     bodyWithInputs <- addOwnInput txb0 walletUtxo
     bodyWithCollat <- setCollateral bodyWithInputs walletUtxo
-    balancePositive (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
+    balancePositive (natTracer lift dbg) pools babbageParams combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
   count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
@@ -787,8 +814,11 @@ spentTxIns (view L.txIns -> inputs) =
 requiredTxIns :: C.TxBodyContent v era -> Set C.TxIn
 requiredTxIns body =
   Set.fromList (fst <$> view L.txIns body)
-  <> Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
+  <> referenceScriptInputs body
   <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)
+
+referenceScriptInputs :: C.TxBodyContent v era -> Set C.TxIn
+referenceScriptInputs body = Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
 
 lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
 lookupTxIns = fmap Eras.babbageUTxO . utxoByTxIn

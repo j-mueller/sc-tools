@@ -45,10 +45,8 @@ library
       convex-mockchain,
       convex-base,
       convex-optics,
-      convex-node-client,
       convex-wallet,
       data-default,
-      QuickCheck,
       servant-client,
       text
 
@@ -56,11 +54,11 @@ library
     build-depends:
       cardano-api,
       cardano-ledger-core -any,
+      cardano-ledger-conway,
       cardano-ledger-shelley,
       cardano-slotting,
       transformers,
-      mtl,
-      either-result
+      mtl
 
 test-suite convex-coin-selection-test
   import: lang
