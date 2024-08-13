@@ -36,9 +36,10 @@ import           Convex.Devnet.Wallet            (WalletLog)
 import qualified Convex.Devnet.Wallet            as W
 import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer      as WS
-import           Convex.NodeQueries              (queryProtocolParameters,
-                                                  queryStakeAddresses,
-                                                  queryStakePools)
+import qualified Convex.Eras                     as Eras
+import           Convex.NodeQueries              (tryQueryProtocolParameters,
+                                                  tryQueryStakeAddresses,
+                                                  tryQueryStakePools)
 import qualified Convex.Utxos                    as Utxos
 import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.List                       (isInfixOf)
@@ -120,10 +121,10 @@ registeredStakePoolNode = do
               nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let mode = fst rnConnectInfo
-          initialStakePools <- queryStakePools mode
+          initialStakePools <- tryQueryStakePools mode
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
             withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001])  runningNode $ \_ -> do
-              currentStakePools <- queryStakePools mode
+              currentStakePools <- tryQueryStakePools mode
               let
                 initial = length initialStakePools
                 current = length currentStakePools
@@ -157,12 +158,12 @@ stakePoolRewards = do
           ) id id id
 
       getStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Quantity
-      getStakeRewards RunningNode{rnConnectInfo, rnNetworkId} cred =
+      getStakeRewards RunningNode{rnConnectInfo} cred =
         let
           mode  = fst rnConnectInfo
           creds = Set.singleton cred
         in
-         sum . Map.elems . fst <$> queryStakeAddresses mode creds rnNetworkId
+         sum . Map.elems . fst <$> tryQueryStakeAddresses mode creds
 
       waitForStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Quantity
       waitForStakeRewards node cred =
@@ -200,7 +201,7 @@ runWalletServer config =
 
 changeMaxTxSize :: IO ()
 changeMaxTxSize =
-  let getMaxTxSize = fmap (view ppMaxTxSizeL) . queryProtocolParameters . fst . rnConnectInfo in
+  let getMaxTxSize = fmap (view ppMaxTxSizeL . C.unLedgerProtocolParameters . Eras.babbageProtocolParams) . tryQueryProtocolParameters . fst . rnConnectInfo in
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize

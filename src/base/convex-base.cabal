@@ -61,7 +61,6 @@ library
       cardano-ledger-core,
       cardano-crypto-wrapper,
 
-      cardano-ledger-api,
       cardano-ledger-byron,
       cardano-ledger-mary,
       cardano-ledger-shelley,

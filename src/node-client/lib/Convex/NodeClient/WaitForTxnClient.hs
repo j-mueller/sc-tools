@@ -38,7 +38,7 @@ transaction.
 -}
 runWaitForTxn :: LocalNodeConnectInfo -> Env -> TxId -> IO (TMVar BlockInMode)
 runWaitForTxn connectInfo env txi = do
-  tip' <- NodeQueries.queryTip connectInfo
+  tip' <- NodeQueries.tryQueryTip connectInfo
   tmv <- atomically newEmptyTMVar
   _ <- forkIO $ C.connectToLocalNode connectInfo (protocols $ waitForTxnClient tmv tip' txi env)
   pure tmv
