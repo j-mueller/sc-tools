@@ -639,6 +639,7 @@ addOwnInput builder allUtxos =
 
 -- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
 --   but no suitable input is provided in the wallet UTxO set.
+--   Additionally returns the collateral UTxOs that were used.
 setCollateral :: MonadError CoinSelectionError m => TxBuilder -> UtxoSet ctx a -> m (TxBuilder, UtxoSet ctx a)
 setCollateral builder (Utxos.onlyAda -> UtxoSet{_utxos}) =
   let body = BuildTx.buildTx builder
