@@ -85,14 +85,14 @@ import qualified Cardano.Ledger.TxIn           as CT
 import           Control.Lens                  (_2, makeLenses, makePrisms,
                                                 over, preview, view)
 import qualified Convex.CardanoApi.Lenses      as L
-import           Data.Aeson                    (FromJSON, ToJSON,
-                                                Value (String), object,
-                                                parseJSON, toJSON, withObject,
-                                                (.:), (.=))
+-- import           Data.Aeson                    (FromJSON, ToJSON,
+--                                                 Value (String), object,
+--                                                 parseJSON, toJSON, withObject,
+--                                                 (.:), (.=))
 import           Data.Bifunctor                (Bifunctor (..))
 import           Data.DList                    (DList)
 import qualified Data.DList                    as DList
-import           Data.Kind                     (Constraint, Type)
+-- import           Data.Kind                     (Constraint, Type)
 import           Data.Map.Strict               (Map)
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe                    (isJust, isNothing, listToMaybe,
@@ -121,10 +121,10 @@ instance Show a => Show (UtxoSet ctx a) where
 instance Eq a => Eq (UtxoSet ctx a) where
   (UtxoSet set1) == (UtxoSet set2) = set1 == set2
 
-deriving instance FromJSON a => FromJSON (UtxoSet C.CtxTx a)
-deriving instance FromJSON a => FromJSON (UtxoSet C.CtxUTxO a)
-deriving instance ToJSON a => ToJSON (UtxoSet C.CtxTx a)
-deriving instance ToJSON a => ToJSON (UtxoSet C.CtxUTxO a)
+-- deriving instance FromJSON a => FromJSON (UtxoSet C.CtxTx a)
+-- deriving instance FromJSON a => FromJSON (UtxoSet C.CtxUTxO a)
+-- deriving instance ToJSON a => ToJSON (UtxoSet C.CtxTx a)
+-- deriving instance ToJSON a => ToJSON (UtxoSet C.CtxUTxO a)
 
 -- FIXME (koslambrou) Remove those orphan instances and use custom type instead such as TxOutInAnyEra
 instance Show (C.InAnyCardanoEra (C.TxOut ctx)) where
@@ -140,67 +140,64 @@ instance Eq (C.InAnyCardanoEra (C.TxOut ctx)) where
   (C.InAnyCardanoEra C.ConwayEra txOutL) == (C.InAnyCardanoEra C.ConwayEra txOutR) = txOutL == txOutR
   _ == _ = False
 
-instance ToJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
-  toJSON (C.InAnyCardanoEra C.ByronEra txOut) =
-    object
-      [ "tag" .= String "ByronTxOut"
-      , "txOut" .= toJSON txOut
-      ]
-  toJSON (C.InAnyCardanoEra C.ShelleyEra txOut) =
-    object
-      [ "tag" .= String "ShelleyTxOut"
-      , "txOut" .= toJSON txOut
-      ]
-  toJSON (C.InAnyCardanoEra C.AllegraEra txOut) =
-    object
-      [ "tag" .= String "AllegraTxOut"
-      , "txOut" .= toJSON txOut
-      ]
-  toJSON (C.InAnyCardanoEra C.MaryEra txOut) =
-    object
-      [ "tag" .= String "MaryTxOut"
-      , "txOut" .= toJSON txOut
-      ]
-  toJSON (C.InAnyCardanoEra C.AlonzoEra txOut) =
-    object
-      [ "tag" .= String "AlonzoTxOut"
-      , "txOut" .= toJSON txOut
-      ]
-  toJSON (C.InAnyCardanoEra C.BabbageEra txOut) =
-    object
-      [ "tag" .= String "BabbageTxOut"
-      , "txOut" .= toJSON txOut
-      ]
-  toJSON (C.InAnyCardanoEra C.ConwayEra txOut) =
-    object
-      [ "tag" .= String "ConwayTxOut"
-      , "txOut" .= toJSON txOut
-      ]
+-- instance ToJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
+--   toJSON (C.InAnyCardanoEra C.ByronEra txOut) =
+--     object
+--       [ "tag" .= String "ByronTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
+--   toJSON (C.InAnyCardanoEra C.ShelleyEra txOut) =
+--     object
+--       [ "tag" .= String "ShelleyTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
+--   toJSON (C.InAnyCardanoEra C.AllegraEra txOut) =
+--     object
+--       [ "tag" .= String "AllegraTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
+--   toJSON (C.InAnyCardanoEra C.MaryEra txOut) =
+--     object
+--       [ "tag" .= String "MaryTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
+--   toJSON (C.InAnyCardanoEra C.AlonzoEra txOut) =
+--     object
+--       [ "tag" .= String "AlonzoTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
+--   toJSON (C.InAnyCardanoEra C.BabbageEra txOut) =
+--     object
+--       [ "tag" .= String "BabbageTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
+--   toJSON (C.InAnyCardanoEra C.ConwayEra txOut) =
+--     object
+--       [ "tag" .= String "ConwayTxOut"
+--       , "txOut" .= toJSON txOut
+--       ]
 
-type TxOutConstraints (k :: Type -> Constraint) ctx =
-  ( k (CS.TxOut ctx CS.ShelleyEra)
-  , k (CS.TxOut ctx CS.AllegraEra)
-  , k (CS.TxOut ctx CS.MaryEra)
-  , k (CS.TxOut ctx CS.AlonzoEra)
-  , k (CS.TxOut ctx CS.BabbageEra)
-  , k (CS.TxOut ctx CS.ConwayEra)
-  )
+-- type TxOutConstraints (k :: Type -> Constraint) ctx =
+--   ( k (CS.TxOut ctx CS.ShelleyEra)
+--   , k (CS.TxOut ctx CS.AllegraEra)
+--   , k (CS.TxOut ctx CS.MaryEra)
+--   , k (CS.TxOut ctx CS.AlonzoEra)
+--   , k (CS.TxOut ctx CS.BabbageEra)
+--   , k (CS.TxOut ctx CS.ConwayEra)
+--   )
 
--- FIXME (koslambou) Remove duplication with similar instance below
-instance TxOutConstraints FromJSON ctx => FromJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
-  parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxTx)" $ \o -> do
-    tag <- o .: "tag"
-    case tag :: Text of
-      "ShelleyTxOut" -> fmap (C.InAnyCardanoEra C.ShelleyEra) $ o .: "txOut"
-      "AllegraTxOut" -> fmap (C.InAnyCardanoEra C.AllegraEra) $ o .: "txOut"
-      "MaryTxOut" -> fmap (C.InAnyCardanoEra C.MaryEra) $ o .: "txOut"
-      "AlonzoTxOut" -> fmap (C.InAnyCardanoEra C.AlonzoEra) $ o .: "txOut"
-      "BabbageTxOut" -> fmap (C.InAnyCardanoEra C.BabbageEra) $ o .: "txOut"
-      "ConwayTxOut" -> fmap (C.InAnyCardanoEra C.ConwayEra) $ o .: "txOut"
-      _ -> fail "Expected tag to be ShelleyTxOut, AllegraTxOut, MaryTxOut, AlonzoTxOut, BabbageTxOut, ConwayTxOut"
-
--- deriving instance (FromJSON a, FromJSON (C.TxOut ctx C.BabbageEra)) => FromJSON (UtxoSet ctx a)
--- deriving instance (ToJSON a, ToJSON (C.TxOut ctx C.BabbageEra)) => ToJSON (UtxoSet ctx a)
+-- -- FIXME (koslambou) Remove duplication with similar instance below
+-- instance TxOutConstraints FromJSON ctx => FromJSON (C.InAnyCardanoEra (C.TxOut ctx)) where
+--   parseJSON = withObject "InAnyCardanoEra (C.TxOut C.CtxTx)" $ \o -> do
+--     tag <- o .: "tag"
+--     case tag :: Text of
+--       "ShelleyTxOut" -> fmap (C.InAnyCardanoEra C.ShelleyEra) $ o .: "txOut"
+--       "AllegraTxOut" -> fmap (C.InAnyCardanoEra C.AllegraEra) $ o .: "txOut"
+--       "MaryTxOut" -> fmap (C.InAnyCardanoEra C.MaryEra) $ o .: "txOut"
+--       "AlonzoTxOut" -> fmap (C.InAnyCardanoEra C.AlonzoEra) $ o .: "txOut"
+--       "BabbageTxOut" -> fmap (C.InAnyCardanoEra C.BabbageEra) $ o .: "txOut"
+--       "ConwayTxOut" -> fmap (C.InAnyCardanoEra C.ConwayEra) $ o .: "txOut"
+--       _ -> fail "Expected tag to be ShelleyTxOut, AllegraTxOut, MaryTxOut, AlonzoTxOut, BabbageTxOut, ConwayTxOut"
 
 {-| A utxo set with one element
 -}
@@ -213,7 +210,7 @@ fromUtxoTx :: UtxoSet C.CtxTx a -> UtxoSet C.CtxUTxO a
 fromUtxoTx = UtxoSet . fmap (first fromTxOutInAnyEraTx) . _utxos
 
 fromTxOutInAnyEraTx :: C.InAnyCardanoEra (C.TxOut C.CtxTx) -> C.InAnyCardanoEra (C.TxOut C.CtxUTxO)
-fromTxOutInAnyEraTx (C.InAnyCardanoEra era txOut) = (C.InAnyCardanoEra era $ C.toCtxUTxOTxOut txOut)
+fromTxOutInAnyEraTx (C.InAnyCardanoEra era txOut) = C.InAnyCardanoEra era $ C.toCtxUTxOTxOut txOut
 
 makePrisms ''UtxoSet
 
@@ -324,7 +321,7 @@ onlyCredential c = onlyCredentials (Set.singleton c)
 
 {-| Restrict the utxo set to outputs locked by one of the given payment credentials
 -}
-onlyCredentials :: Set (C.PaymentCredential) -> UtxoSet ctx a -> UtxoSet ctx a
+onlyCredentials :: Set C.PaymentCredential -> UtxoSet ctx a -> UtxoSet ctx a
 onlyCredentials cs =
   let txOutHasOneOfCreds :: (C.InAnyCardanoEra (C.TxOut ctx), a) -> Bool
       txOutHasOneOfCreds (C.InAnyCardanoEra _ (C.TxOut (C.AddressInEra C.ByronAddressInAnyEra _) _ _ _), _) =
@@ -528,14 +525,14 @@ newtype PrettyUtxoChange ctx a = PrettyUtxoChange (UtxoChange ctx a)
 
 instance Pretty a => Pretty (PrettyUtxoChange ctx a) where
   pretty (PrettyUtxoChange UtxoChange{_outputsAdded, _outputsRemoved}) =
-    let b = foldMap (\((C.InAnyCardanoEra _ (C.TxOut _ txOutValue _ _)), _) -> C.txOutValueToValue txOutValue)
+    let b = foldMap (\(C.InAnyCardanoEra _ (C.TxOut _ txOutValue _ _), _) -> C.txOutValueToValue txOutValue)
         bPlus = b _outputsAdded
         bMinus = C.negateValue (b _outputsRemoved)
     in Prettyprinter.hsep $
         [ pretty (Map.size _outputsAdded)
         , "outputs added"
         , pretty (Map.size _outputsRemoved), "outputs removed."]
-        ++ (prettyValue (bPlus <> bMinus))
+        ++ prettyValue (bPlus <> bMinus)
 
 newtype PrettyBalance ctx  a = PrettyBalance (UtxoSet ctx a)
 
@@ -628,7 +625,7 @@ extractBabbageTxn' ex UtxoSet{_utxos} cred theTx@(Tx txBody _) =
         DList.fromList
         $ fmap (Left . mkI)
         $ mapMaybe (uncurry checkOutput)
-        $ (zip (TxIx <$> [0..]) allOuts)
+        $ zip (TxIx <$> [0..]) allOuts
 
       _outputsRemoved =
         DList.fromList
