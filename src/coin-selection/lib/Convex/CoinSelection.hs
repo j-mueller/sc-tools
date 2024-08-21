@@ -692,7 +692,8 @@ balancePositive
   -> C.UTxO ERA
   -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
   -> UtxoSet ctx a
-  -> UtxoSet ctx a
+  -> UtxoSet ctx a -- ^ Collateral UTxOs, these are the UTxOs that were used as collateral inputs
+                   --  they will only be used for balancing in the case that the other UTxOs are insufficient.
   -> TxBuilder
   -> m (TxBuilder, C.InAnyCardanoEra (C.TxOut C.CtxTx))
 balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo collateralUTxOs txBuilder0 = do
