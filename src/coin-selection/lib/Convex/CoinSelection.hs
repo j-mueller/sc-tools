@@ -546,7 +546,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
   pools <- queryStakePools
   availableUTxOs <- checkCompatibilityLevel dbg txb walletUtxo
   -- compatibility level
-  let txb0 = txb <> (BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just params))))
+  let txb0 = txb <> BuildTx.liftTxBodyEndo (set L.txProtocolParams (C.BuildTxWith (Just params)))
   -- TODO: Better error handling (better than 'fail')
   otherInputs <- lookupTxIns (requiredTxIns $ BuildTx.buildTx txb)
   let combinedTxIns =
@@ -556,8 +556,9 @@ balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
 
   (finalBody, returnUTxO1) <- mapError ACoinSelectionError $ do
     bodyWithInputs <- addOwnInput txb0 walletUtxo
-    bodyWithCollat <- setCollateral bodyWithInputs walletUtxo
-    balancePositive (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletUtxo bodyWithCollat
+    (bodyWithCollat, collatUTxOs) <- setCollateral bodyWithInputs walletUtxo
+    let walletTxInsMinusCollatUTxOs = Utxos.removeUtxos (Map.keysSet $ _utxos collatUTxOs) walletUtxo
+    balancePositive (natTracer lift dbg) pools params combinedTxIns returnUTxO0 walletTxInsMinusCollatUTxOs collatUTxOs bodyWithCollat
   count <- requiredSignatureCount finalBody
   csi <- prepCSInputs count returnUTxO1 combinedTxIns finalBody
   start <- querySystemStart
@@ -638,14 +639,20 @@ addOwnInput builder allUtxos =
 
 -- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
 --   but no suitable input is provided in the wallet UTxO set.
-setCollateral :: MonadError CoinSelectionError m => TxBuilder -> UtxoSet ctx a -> m TxBuilder
+--   Additionally returns the collateral UTxOs that were used.
+setCollateral :: MonadError CoinSelectionError m => TxBuilder -> UtxoSet ctx a -> m (TxBuilder, UtxoSet ctx a)
 setCollateral builder (Utxos.onlyAda -> UtxoSet{_utxos}) =
   let body = BuildTx.buildTx builder
       noScripts = not (runsScripts body)
-      hasCollateral = not (view (L.txInsCollateral . L.txInsCollateralTxIns . to List.null) body)
+      collateral = view (L.txInsCollateral . L.txInsCollateralTxIns) body
+      hasCollateral = not $ List.null collateral
   in
-    if noScripts || hasCollateral
-      then pure builder -- no script witnesses in inputs.
+    if noScripts
+      then pure (builder, UtxoSet{_utxos=Map.empty}) -- no script witnesses in inputs.
+      else if hasCollateral
+        then do
+          let collatUTxOs = Map.restrictKeys _utxos (Set.fromList collateral)
+          pure (builder,  UtxoSet{_utxos=collatUTxOs})
       else do
         -- select the output with the largest amount of Ada
         let outputWithLargestAda =
@@ -659,7 +666,7 @@ setCollateral builder (Utxos.onlyAda -> UtxoSet{_utxos}) =
                   ) $ Map.toList _utxos
         case outputWithLargestAda of
           Nothing     -> throwError NoAdaOnlyUTxOsForCollateral
-          Just (k, _) -> pure $ builder <> execBuildTx (addCollateral k)
+          Just kp@(k, _) -> pure (builder <> execBuildTx (addCollateral k), UtxoSet{_utxos=Map.fromList [kp]})
 
 {-| Whether the transaction runs any plutus scripts
 -}
@@ -685,9 +692,11 @@ balancePositive
   -> C.UTxO ERA
   -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
   -> UtxoSet ctx a
+  -> UtxoSet ctx a -- ^ Collateral UTxOs, these are the UTxOs that were used as collateral inputs
+                   --  they will only be used for balancing in the case that the other UTxOs are insufficient.
   -> TxBuilder
   -> m (TxBuilder, C.InAnyCardanoEra (C.TxOut C.CtxTx))
-balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBuilder0 = do
+balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo collateralUTxOs txBuilder0 = do
   let txBodyContent0 = BuildTx.buildTx txBuilder0
   txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txBodyContent0)
   let bal = C.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
@@ -704,7 +713,7 @@ balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo txBuilder0 = 
     { availableBalance   = Utxos.totalBalance available
     , transactionBalance = balance
     }
-  (txBuilder1, additionalBalance) <- addInputsForAssets dbg balance available txBuilder0
+  (txBuilder1, additionalBalance) <- addInputsForAssets dbg balance available collateralUTxOs txBuilder0
 
   let bal0 = balance <> additionalBalance
   let (returnUTxO1, _deposit) = addOutputForNonAdaAssets ledgerPPs returnUTxO0 bal0
@@ -719,10 +728,11 @@ addInputsForAssets ::
   MonadError CoinSelectionError m =>
   Tracer m TxBalancingMessage ->
   C.Value -> -- ^ The balance of the transaction
-  UtxoSet ctx a -> -- ^ UTxOs that we can spend to cover the negative part of the balance
+  UtxoSet ctx a -> -- ^ UTxOs (excluding collateral) that we can spend to cover the negative part of the balance
+  UtxoSet ctx a -> -- ^ collateral UTxOs that we can use to cover the negative part of the balance if there are no other UTxOs available
   TxBuilder -> -- ^ Transaction body
   m (TxBuilder, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
-addInputsForAssets dbg txBal availableUtxo txBuilder =
+addInputsForAssets dbg txBal availableUtxo collateralUtxo txBuilder =
   if | null (fst $ splitValue txBal) -> do
         traceWith dbg NoAssetsMissing
         return (txBuilder, mempty)
@@ -730,7 +740,10 @@ addInputsForAssets dbg txBal availableUtxo txBuilder =
         let missingAssets = fmap (second abs) $ fst $ splitValue txBal
         traceWith dbg (MissingAssets $ C.valueFromList missingAssets)
         case Wallet.selectMixedInputsCovering availableUtxo missingAssets of
-          Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance availableUtxo) txBal)
+          Nothing -> 
+            case Wallet.selectMixedInputsCovering (availableUtxo <> collateralUtxo) missingAssets of
+              Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance availableUtxo) txBal)
+              Just (total, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total)
           Just (total, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total)
 
 {-| Examine the positive part of the transaction balance and add any non-Ada assets it contains
