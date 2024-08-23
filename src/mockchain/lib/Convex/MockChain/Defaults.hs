@@ -29,7 +29,6 @@ import           Cardano.Api.Shelley                  (AnyPlutusScriptVersion (.
                                                        toLedgerPParams)
 import qualified Cardano.Api.Shelley                  as C
 import           Cardano.Ledger.Alonzo.PParams        (DowngradeAlonzoPParams (..))
-import           Cardano.Ledger.Babbage               (Babbage)
 import           Cardano.Ledger.Babbage.Core          (CoinPerByte (..),
                                                        CoinPerWord (..))
 import           Cardano.Ledger.Babbage.PParams       (DowngradeBabbagePParams (..),
@@ -61,7 +60,7 @@ import           Data.Time.Calendar                   (fromGregorian)
 import           Data.Time.Clock                      (UTCTime (..))
 import qualified Ouroboros.Consensus.Block.Abstract   as Ouroboros
 import qualified Ouroboros.Consensus.HardFork.History as Ouroboros
-import           Ouroboros.Consensus.Shelley.Eras     (StandardBabbage)
+import           Ouroboros.Consensus.Shelley.Eras     (StandardConway)
 
 networkId :: NetworkId
 networkId = Testnet (NetworkMagic 0)
@@ -124,6 +123,26 @@ protocolParameters =
                             , 32947, 10
                             ]
 
+      defaultV3CostModel = C.CostModel
+                            [ 100788, 420, 1, 1, 1000, 173, 0, 1, 1000, 59957, 4, 1, 11183, 32, 201305, 8356, 4
+                            , 16000, 100, 16000, 100, 16000, 100, 16000, 100, 16000, 100, 16000, 100, 100, 100
+                            , 16000, 100, 94375, 32, 132994, 32, 61462, 4, 72010, 178, 0, 1, 22151, 32, 91189
+                            , 769, 4, 2, 85848, 123203, 7305, -900, 1716, 549, 57, 85848, 0, 1, 1, 1000, 42921
+                            , 4, 2, 24548, 29498, 38, 1, 898148, 27279, 1, 51775, 558, 1, 39184, 1000, 60594, 1
+                            , 141895, 32, 83150, 32, 15299, 32, 76049, 1, 13169, 4, 22100, 10, 28999, 74, 1, 28999
+                            , 74, 1, 43285, 552, 1, 44749, 541, 1, 33852, 32, 68246, 32, 72362, 32, 7243, 32, 7391
+                            , 32, 11546, 32, 85848, 123203, 7305, -900, 1716, 549, 57, 85848, 0, 1, 90434, 519, 0
+                            , 1, 74433, 32, 85848, 123203, 7305, -900, 1716, 549, 57, 85848, 0, 1, 1, 85848, 123203
+                            , 7305, -900, 1716, 549, 57, 85848, 0, 1, 955506, 213312, 0, 2, 270652, 22588, 4, 1457325
+                            , 64566, 4, 20467, 1, 4, 0, 141992, 32, 100788, 420, 1, 1, 81663, 32, 59498, 32, 20142
+                            , 32, 24588, 32, 20744, 32, 25933, 32, 24623, 32, 43053543, 10, 53384111, 14333, 10
+                            , 43574283, 26308, 10, 16000, 100, 16000, 100, 962335, 18, 2780678, 6, 442008, 1, 52538055
+                            , 3756, 18, 267929, 18, 76433006, 8868, 18, 52948122, 18, 1995836, 36, 3227919, 12, 901022
+                            , 1, 166917843, 4307, 36, 284546, 36, 158221314, 26549, 36, 74698472, 36, 333849714, 1
+                            , 254006273, 72, 2174038, 72, 2261318, 64571, 4, 207616, 8310, 4, 1293828, 28716, 63, 0, 1
+                            , 1006041, 43623, 251, 0, 1
+                            ]
+
   in ProtocolParameters
       { protocolParamProtocolVersion = (7,0)
       , protocolParamDecentralization = Just (3 % 5)
@@ -144,7 +163,9 @@ protocolParameters =
       , protocolParamTreasuryCut = 1 % 5
       , protocolParamCostModels = fromList
         [ (AnyPlutusScriptVersion PlutusScriptV1, defaultV1CostModel)
-        , (AnyPlutusScriptVersion PlutusScriptV2, defaultV2CostModel) ]
+        , (AnyPlutusScriptVersion PlutusScriptV2, defaultV2CostModel)
+        , (AnyPlutusScriptVersion PlutusScriptV3, defaultV3CostModel)
+        ]
       , protocolParamPrices = Just (ExecutionUnitPrices {priceExecutionSteps = 721 % 10_000_000, priceExecutionMemory = 577 % 10_000})
       , protocolParamMaxTxExUnits = Just (ExecutionUnits {executionSteps = 1_0000_000_000, executionMemory = 16_000_000})
       , protocolParamMaxBlockExUnits = Just (ExecutionUnits {executionSteps = 4_0000_000_000, executionMemory = 80_000_000})
@@ -156,18 +177,18 @@ protocolParameters =
           in Just $ Coin coinsPerUTxOByte
       }
 
-ledgerProtocolParameters :: PParams StandardBabbage
+ledgerProtocolParameters :: PParams StandardConway
 ledgerProtocolParameters =
-  either (error . (<>) "ledgerProtocolParameters: toLedgerPParams failed with " . show) id $ toLedgerPParams ShelleyBasedEraBabbage protocolParameters
+  either (error . (<>) "ledgerProtocolParameters: toLedgerPParams failed with " . show) id $ toLedgerPParams ShelleyBasedEraConway protocolParameters
 
 globals :: NodeParams -> Globals
 globals params@NodeParams { npProtocolParameters, npSlotLength } = mkShelleyGlobals
   (genesisDefaultsFromParams params)
   (fixedEpochInfo epochSize npSlotLength)
-  (fromMaybe (error "globals: Invalid version") $ Version.mkVersion $ fst $ protocolParamProtocolVersion $ C.fromLedgerPParams C.ShelleyBasedEraBabbage $ C.unLedgerProtocolParameters npProtocolParameters)
+  (fromMaybe (error "globals: Invalid version") $ Version.mkVersion $ fst $ protocolParamProtocolVersion $ C.fromLedgerPParams C.ShelleyBasedEraConway $ C.unLedgerProtocolParameters npProtocolParameters)
 
 protVer :: NodeParams -> ProtVer
-protVer = lederPPProtVer . C.fromLedgerPParams C.ShelleyBasedEraBabbage . C.unLedgerProtocolParameters . npProtocolParameters
+protVer = lederPPProtVer . C.fromLedgerPParams C.ShelleyBasedEraConway . C.unLedgerProtocolParameters . npProtocolParameters
 
 lederPPProtVer :: ProtocolParameters -> ProtVer
 lederPPProtVer k =
@@ -185,13 +206,14 @@ genesisDefaultsFromParams params@NodeParams { npNetworkId } = shelleyGenesisDefa
       $ downgradePParams ()
       $ downgradePParams DowngradeAlonzoPParams{dappMinUTxOValue=Coin 0}
       $ downgradePParams DowngradeBabbagePParams{dbppD=d, dbppExtraEntropy=C.Ledger.NeutralNonce}
+      $ downgradePParams ()
       $ pParams params
   }
   where
     d = fromMaybe (error "3 % 5 should be valid UnitInterval") $ boundRational (3 % 5)
 
 -- | Convert `Params` to cardano-ledger `PParams`
-pParams :: NodeParams -> PParams Babbage
+pParams :: NodeParams -> PParams StandardConway
 pParams NodeParams { npProtocolParameters } = case npProtocolParameters of
   C.LedgerProtocolParameters p -> p
 
@@ -208,5 +230,5 @@ nodeParams =
     , npSlotLength = slotLength
     }
 
-bundledProtocolParameters :: C.LedgerProtocolParameters C.BabbageEra
-bundledProtocolParameters = C.LedgerProtocolParameters $ either (error . (<>) "toLedgerPParams failed: " . show) id $ C.toLedgerPParams C.ShelleyBasedEraBabbage protocolParameters
+bundledProtocolParameters :: C.LedgerProtocolParameters C.ConwayEra
+bundledProtocolParameters = C.LedgerProtocolParameters $ either (error . (<>) "toLedgerPParams failed: " . show) id $ C.toLedgerPParams C.ShelleyBasedEraConway protocolParameters

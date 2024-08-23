@@ -65,8 +65,7 @@ module Convex.MockChain(
   execMockchain0IO
   ) where
 
-import           Cardano.Api.Shelley                   (AddressInEra,
-                                                        BabbageEra,
+import           Cardano.Api.Shelley                   (AddressInEra, ConwayEra,
                                                         Hash (StakePoolKeyHash),
                                                         HashableScriptData,
                                                         ScriptData,
@@ -78,12 +77,12 @@ import           Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError,
                                                         collectPlutusScriptsWithContext,
                                                         evalPlutusScripts)
 import           Cardano.Ledger.Alonzo.TxWits          (unTxDats)
-import           Cardano.Ledger.Babbage                (Babbage)
-import           Cardano.Ledger.Babbage.Tx             (AlonzoTx (..),
-                                                        IsValid (..))
+import           Cardano.Ledger.Babbage.Tx             (IsValid (..))
 import           Cardano.Ledger.BaseTypes              (Globals (systemStart),
                                                         epochInfo, getVersion,
                                                         pvMajor)
+import           Cardano.Ledger.Conway                 (Conway)
+import           Cardano.Ledger.Conway.Tx              (AlonzoTx (..))
 import qualified Cardano.Ledger.Core                   as Core
 import           Cardano.Ledger.Crypto                 (StandardCrypto)
 import           Cardano.Ledger.Plutus.Evaluate        (PlutusWithContext (..),
@@ -227,7 +226,7 @@ legacyPlutusArgsToData = \case
 
 
 data ExUnitsError =
-  Phase1Error (C.TransactionValidityError BabbageEra)
+  Phase1Error (C.TransactionValidityError ConwayEra)
   | Phase2Error C.ScriptExecutionError
   deriving (Show)
 
@@ -248,7 +247,7 @@ data MockChainState =
     { mcsEnv                :: MempoolEnv ERA
     , mcsPoolState          :: MempoolState ERA
     , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
-    , mcsFailedTransactions :: [(Tx BabbageEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+    , mcsFailedTransactions :: [(Tx ConwayEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
     , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
     }
 
@@ -286,7 +285,7 @@ initialStateFor ::
   InitialUTXOs -> -- List of UTXOs at each wallet's address. Can have multiple entries per wallet.
   MockChainState
 initialStateFor params@NodeParams{npNetworkId} utxos =
-  let utxo = genesisUTxO @ERA @C.BabbageEra (fmap (first (addressInEra npNetworkId)) utxos)
+  let utxo = genesisUTxO @ERA @C.ConwayEra (fmap (first (addressInEra npNetworkId)) utxos)
   in MockChainState
       { mcsEnv =
           LedgerEnv
@@ -312,14 +311,14 @@ utxoEnv params slotNo = UtxoEnv slotNo (Defaults.pParams params) def
 getTxExUnits ::
   NodeParams ->
   UTxO ERA ->
-  C.Tx C.BabbageEra ->
+  C.Tx C.ConwayEra ->
   Either ExUnitsError (Map.Map C.ScriptWitnessIndex C.ExecutionUnits)
 getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo (C.getTxBody -> tx) =
-  case C.evaluateTransactionExecutionUnits C.BabbageEra npSystemStart (C.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO C.ShelleyBasedEraBabbage utxo) tx of
+  case C.evaluateTransactionExecutionUnits C.ConwayEra npSystemStart (C.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO C.ShelleyBasedEraConway utxo) tx of
     Left e      -> Left (Phase1Error e)
     Right rdmrs -> traverse (either (Left . Phase2Error) (Right . snd)) rdmrs
 
-applyTransaction :: NodeParams -> MockChainState -> C.Tx C.BabbageEra -> Either ValidationError (MockChainState, Validated (Core.Tx ERA))
+applyTransaction :: NodeParams -> MockChainState -> C.Tx C.ConwayEra -> Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTransaction params state tx'@(C.ShelleyTx _era tx) = do
   let currentSlot = state ^. env . L.slot
       utxoState_ = state ^. poolState . L.utxoState
@@ -334,7 +333,7 @@ applyTransaction params state tx'@(C.ShelleyTx _era tx) = do
 
 {-| Evaluate a transaction, returning all of its script contexts.
 -}
-evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> C.Tx C.BabbageEra -> Either ValidationError [PlutusWithContext StandardCrypto]
+evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> C.Tx C.ConwayEra -> Either ValidationError [PlutusWithContext StandardCrypto]
 evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
     (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
     _ <- applyTx params state vtx scripts
@@ -356,18 +355,18 @@ evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
 -- in https://github.com/input-output-hk/cardano-ledger/commit/721adb55b39885847562437a6fe7e998f8e48c03
 constructValidated ::
   forall m.
-  ( MonadError [CollectError Babbage] m
+  ( MonadError [CollectError Conway] m
   ) =>
   Globals ->
-  UtxoEnv Babbage ->
-  UTxOState Babbage ->
-  Core.Tx Babbage ->
-  m (AlonzoTx Babbage, [PlutusWithContext StandardCrypto])
+  UtxoEnv Conway ->
+  UTxOState Conway ->
+  Core.Tx Conway ->
+  m (AlonzoTx Conway, [PlutusWithContext StandardCrypto])
 constructValidated globals (UtxoEnv _ pp _) st tx =
   case collectPlutusScriptsWithContext ei sysS pp tx utxo of
     Left errs -> throwError errs
     Right sLst ->
-      let scriptEvalResult = evalPlutusScripts @(EraCrypto Babbage) sLst
+      let scriptEvalResult = evalPlutusScripts @(EraCrypto Conway) sLst
           vTx =
             AlonzoTx
               (body tx)
@@ -427,7 +426,7 @@ instance Monad m => MonadBlockchain (MockchainT m) where
         in put st' >> return (Right $ C.getTxId body)
   utxoByTxIn txIns = MockchainT $ do
     nps <- ask
-    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.ShelleyBasedEraBabbage))
+    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.ShelleyBasedEraConway))
     let mp' = Map.restrictKeys mp txIns
     pure (C.UTxO mp')
   queryProtocolParameters = MockchainT (asks npProtocolParameters)
@@ -503,9 +502,9 @@ instance Monad m => MonadDatumQuery (MockchainT m) where
 
 {-| Add all datums from the transaction to the map of known datums
 -}
-addDatumHashes :: MonadState MockChainState m => Tx BabbageEra -> m ()
-addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraBabbage txBody _scripts scriptData _auxData _) _witnesses) = do
-  let txOuts = C.fromLedgerTxOuts C.ShelleyBasedEraBabbage txBody scriptData
+addDatumHashes :: MonadState MockChainState m => Tx ConwayEra -> m ()
+addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraConway txBody _scripts scriptData _auxData _) _witnesses) = do
+  let txOuts = C.fromLedgerTxOuts C.ShelleyBasedEraConway txBody scriptData
 
   let insertHashableScriptData hashableScriptData =
         datums %= Map.insert (C.hashScriptDataBytes hashableScriptData) hashableScriptData
@@ -523,7 +522,7 @@ addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraBabbage txBody _scripts scr
 -}
 utxoSet :: MonadMockchain m => m (UtxoSet C.CtxUTxO ())
 utxoSet =
-  let f utxos = (utxos, fromApiUtxo () $ fromLedgerUTxO C.ShelleyBasedEraBabbage utxos)
+  let f utxos = (utxos, fromApiUtxo () $ C.inAnyCardanoEra C.cardanoEra $ fromLedgerUTxO C.ShelleyBasedEraConway utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain

@@ -40,7 +40,7 @@ module Convex.NodeParams(
   uTxOCostPerByte
 ) where
 
-import           Cardano.Api           (BabbageEra)
+import           Cardano.Api           (ConwayEra)
 import           Cardano.Api.Shelley   (EraHistory, LedgerProtocolParameters,
                                         NetworkId (..), PoolId,
                                         ProtocolParameters (..))
@@ -51,7 +51,7 @@ import           Data.Set              as Set (Set)
 data NodeParams =
   NodeParams
     { npNetworkId          :: NetworkId
-    , npProtocolParameters :: LedgerProtocolParameters BabbageEra
+    , npProtocolParameters :: LedgerProtocolParameters ConwayEra
     , npSystemStart        :: SystemStart
     , npEraHistory         :: EraHistory
     , npStakePools         :: Set PoolId
