@@ -117,7 +117,7 @@ import           Control.Lens                          (_1, _3, over, set, to,
                                                         (^.))
 import           Control.Lens.TH                       (makeLensesFor,
                                                         makePrisms)
-import           Control.Monad                  (forM)
+import           Control.Monad                         (forM)
 import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)

@@ -43,9 +43,8 @@ module Convex.Utils(
   toShelleyPaymentCredential
 ) where
 
-import           Cardano.Api                              (BabbageEra,
-                                                           BlockInMode (..),
-                                                           NetworkId,
+import           Cardano.Api                              (BlockInMode (..),
+                                                           ConwayEra, NetworkId,
                                                            PaymentCredential (..),
                                                            PlutusScript,
                                                            PlutusScriptV1,
@@ -96,10 +95,10 @@ unsafeScriptFromCborV1 = either error id . scriptFromCborV1
 
 {-| Script address without staking key
 -}
-scriptAddressV1 :: NetworkId -> PlutusScript PlutusScriptV1 -> C.AddressInEra C.BabbageEra
+scriptAddressV1 :: NetworkId -> PlutusScript PlutusScriptV1 -> C.AddressInEra C.ConwayEra
 scriptAddressV1 network script =
   let hash = C.hashScript (C.PlutusScript C.PlutusScriptV1 script)
-  in C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript hash) C.NoStakeAddress
+  in C.makeShelleyAddressInEra C.ShelleyBasedEraConway network (C.PaymentCredentialByScript hash) C.NoStakeAddress
 
 scriptFromCbor :: String -> Either String (PlutusScript PlutusScriptV2)
 scriptFromCbor cbor = do
@@ -107,24 +106,24 @@ scriptFromCbor cbor = do
   textEnvelope <- fromJSON vl & (\case { Error err -> Left (show err); Success e -> Right e })
   C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(PlutusScript PlutusScriptV2)) textEnvelope & first show
 
-txFromCbor :: String -> Either String (Tx BabbageEra)
+txFromCbor :: String -> Either String (Tx ConwayEra)
 txFromCbor cbor = do
-  let vl = object ["type" .= s "Tx BabbageEra", "description" .= s "", "cborHex" .= cbor]
+  let vl = object ["type" .= s "Tx ConwayEra", "description" .= s "", "cborHex" .= cbor]
   textEnvelope <- fromJSON vl & (\case { Error err -> Left (show err); Success e -> Right e })
-  C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(Tx BabbageEra)) textEnvelope & first show
+  C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(Tx ConwayEra)) textEnvelope & first show
 
 unsafeScriptFromCbor :: String -> PlutusScript PlutusScriptV2
 unsafeScriptFromCbor = either error id . scriptFromCbor
 
-unsafeTxFromCbor :: String -> Tx BabbageEra
+unsafeTxFromCbor :: String -> Tx ConwayEra
 unsafeTxFromCbor = either error id . txFromCbor
 
 {-| Script address without staking key
 -}
-scriptAddress :: NetworkId -> PlutusScript PlutusScriptV2 -> C.AddressInEra C.BabbageEra
+scriptAddress :: NetworkId -> PlutusScript PlutusScriptV2 -> C.AddressInEra C.ConwayEra
 scriptAddress network script =
   let hash = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-  in C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript hash) C.NoStakeAddress
+  in C.makeShelleyAddressInEra C.ShelleyBasedEraConway network (C.PaymentCredentialByScript hash) C.NoStakeAddress
 
 s :: String -> String
 s = id
@@ -133,13 +132,13 @@ s = id
 -}
 extractTx :: forall m. MonadIO m => Set C.TxId -> BlockInMode -> m ()
 extractTx txIds =
-  let extractTx' :: C.Tx C.BabbageEra -> m ()
+  let extractTx' :: C.Tx C.ConwayEra -> m ()
       extractTx' tx@(C.Tx txBody _) = do
         let txi = C.getTxId txBody
         when (txi `Set.member` txIds) $
           void $ liftIO $ C.writeFileTextEnvelope (C.File $ show txi <> ".json") Nothing tx
   in \case
-    BlockInMode C.BabbageEra (C.Block _ txns) ->
+    BlockInMode C.ConwayEra (C.Block _ txns) ->
       traverse_ extractTx' txns
     _                                                    -> pure ()
 

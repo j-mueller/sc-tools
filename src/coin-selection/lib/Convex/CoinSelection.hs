@@ -740,7 +740,7 @@ addInputsForAssets dbg txBal availableUtxo collateralUtxo txBuilder =
         let missingAssets = fmap (second abs) $ fst $ splitValue txBal
         traceWith dbg (MissingAssets $ C.valueFromList missingAssets)
         case Wallet.selectMixedInputsCovering availableUtxo missingAssets of
-          Nothing -> 
+          Nothing ->
             case Wallet.selectMixedInputsCovering (availableUtxo <> collateralUtxo) missingAssets of
               Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance availableUtxo) txBal)
               Just (total, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total)

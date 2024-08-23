@@ -181,9 +181,9 @@ unTransStakeAddressReference (Just (PV1.StakingHash credential)) =
 unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
   Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
-unTransAddressInEra :: C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra C.BabbageEra)
+unTransAddressInEra :: C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra C.ConwayEra)
 unTransAddressInEra networkId (PV1.Address cred staking) =
-  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) <$>
+  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) <$>
     (C.makeShelleyAddress networkId
       <$> unTransCredential cred
       <*> unTransStakeAddressReference staking
@@ -191,9 +191,9 @@ unTransAddressInEra networkId (PV1.Address cred staking) =
 
 -- | @cardano-api@ address to @plutus@ address. Returns 'Nothing' for
 -- | byron addresses.
-transAddressInEra :: C.AddressInEra C.BabbageEra -> Maybe PV1.Address
+transAddressInEra :: C.AddressInEra C.ConwayEra -> Maybe PV1.Address
 transAddressInEra = \case
-  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) (C.ShelleyAddress _ p s) ->
+  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) (C.ShelleyAddress _ p s) ->
     Just $ PV1.Address
       (transCredential $ C.fromShelleyPaymentCredential p)
       (transStakeAddressReference $ C.fromShelleyStakeReference s)
@@ -215,8 +215,8 @@ transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToF
 unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
 unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
 
-unTransTxOutValue :: PV1.Value -> Either C.SerialiseAsRawBytesError (C.TxOutValue C.BabbageEra)
-unTransTxOutValue value = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage . C.toMaryValue <$> unTransValue value
+unTransTxOutValue :: PV1.Value -> Either C.SerialiseAsRawBytesError (C.TxOutValue C.ConwayEra)
+unTransTxOutValue value = C.TxOutValueShelleyBased C.ShelleyBasedEraConway . C.toMaryValue <$> unTransValue value
 
 unTransValue :: PV1.Value -> Either C.SerialiseAsRawBytesError C.Value
 unTransValue =
@@ -244,5 +244,5 @@ unTransScriptDataHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.Has
 unTransScriptDataHash (P.DatumHash bs) =
   C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) (PlutusTx.fromBuiltin bs)
 
-unTransTxOutDatumHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx C.BabbageEra)
-unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage <$> unTransScriptDataHash datumHash
+unTransTxOutDatumHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx C.ConwayEra)
+unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.AlonzoEraOnwardsConway <$> unTransScriptDataHash datumHash

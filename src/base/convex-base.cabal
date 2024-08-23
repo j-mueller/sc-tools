@@ -65,6 +65,7 @@ library
       cardano-ledger-shelley,
       cardano-ledger-babbage,
       cardano-ledger-alonzo,
+      cardano-ledger-conway,
 
       ouroboros-consensus,
       ouroboros-consensus-cardano,
