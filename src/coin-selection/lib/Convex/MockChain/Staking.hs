@@ -1,6 +1,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 module Convex.MockChain.Staking (registerPool) where
 
+import qualified Cardano.Api.Ledger             as C
 import qualified Cardano.Api.Shelley            as C
 import           Control.Monad                  (void)
 import           Control.Monad.Except           (MonadError)
@@ -34,7 +35,7 @@ registerPool wallet = do
 
     stakeCert =
       C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationPreConway C.ShelleyToBabbageEraBabbage
+      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 10
       $ stakeCred
     stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
 
@@ -43,7 +44,7 @@ registerPool wallet = do
 
     delegationCert =
       C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
+      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (C.DelegStake $ C.unStakePoolKeyHash poolId)
 
     stakePoolParams =
      C.StakePoolParameters
@@ -59,7 +60,7 @@ registerPool wallet = do
 
     poolCert =
       C.makeStakePoolRegistrationCertificate
-      . C.StakePoolRegistrationRequirementsPreConway C.ShelleyToBabbageEraBabbage
+      . C.StakePoolRegistrationRequirementsConwayOnwards C.ConwayEraOnwardsConway
       . C.toShelleyPoolParams
       $ stakePoolParams
 

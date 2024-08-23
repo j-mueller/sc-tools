@@ -234,63 +234,63 @@ fromApiUtxo v = \case
 
 {-| Convert a utxo set to a @cardano-api@ 'UTxO BabbageEra'
 -}
-toApiUtxo :: UtxoSet C.CtxUTxO a -> UTxO C.BabbageEra
+toApiUtxo :: UtxoSet C.CtxUTxO a -> UTxO C.ConwayEra
 toApiUtxo (UtxoSet utxos) =
   UTxO (fmap (toTxOut . fst) utxos)
  where
-  toTxOut :: C.InAnyCardanoEra (C.TxOut C.CtxUTxO) -> C.TxOut C.CtxUTxO C.BabbageEra
+  toTxOut :: C.InAnyCardanoEra (C.TxOut C.CtxUTxO) -> C.TxOut C.CtxUTxO C.ConwayEra
   toTxOut (C.InAnyCardanoEra _era txOut) = utxoToLatestEra txOut
 
 -- FIXME (koslambrou) Move to proper package
-txOutToLatestEra :: C.TxOut C.CtxTx era -> C.TxOut C.CtxTx C.BabbageEra
+txOutToLatestEra :: C.TxOut C.CtxTx era -> C.TxOut C.CtxTx C.ConwayEra
 txOutToLatestEra (C.TxOut addrInEra txOutValue txOutDatum ref) =
   C.TxOut
     (convertAddrToLatestEra addrInEra)
-    (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $
-      C.toLedgerValue C.MaryEraOnwardsBabbage $ C.txOutValueToValue txOutValue)
+    (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $
+      C.toLedgerValue C.MaryEraOnwardsConway $ C.txOutValueToValue txOutValue)
     (convertDatumToLatestEra txOutDatum)
     (convertRefScriptToLatestEra ref)
  where
-  convertAddrToLatestEra :: C.AddressInEra era -> C.AddressInEra C.BabbageEra
+  convertAddrToLatestEra :: C.AddressInEra era -> C.AddressInEra C.ConwayEra
   convertAddrToLatestEra (C.AddressInEra C.ByronAddressInAnyEra addr) =
     C.AddressInEra C.ByronAddressInAnyEra addr
   convertAddrToLatestEra (C.AddressInEra (C.ShelleyAddressInEra _) addr) =
-    C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
+    C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) addr
 
-  convertDatumToLatestEra :: C.TxOutDatum C.CtxTx era -> C.TxOutDatum C.CtxTx C.BabbageEra
+  convertDatumToLatestEra :: C.TxOutDatum C.CtxTx era -> C.TxOutDatum C.CtxTx C.ConwayEra
   convertDatumToLatestEra C.TxOutDatumNone = C.TxOutDatumNone
-  convertDatumToLatestEra (C.TxOutDatumHash _ h) = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage h
-  convertDatumToLatestEra (C.TxOutDatumInTx _ d) = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage d
-  convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.BabbageEraOnwardsBabbage d
+  convertDatumToLatestEra (C.TxOutDatumHash _ h) = C.TxOutDatumHash C.AlonzoEraOnwardsConway h
+  convertDatumToLatestEra (C.TxOutDatumInTx _ d) = C.TxOutDatumInTx C.AlonzoEraOnwardsConway d
+  convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.BabbageEraOnwardsConway d
 
-  convertRefScriptToLatestEra :: CS.ReferenceScript era -> CS.ReferenceScript CS.BabbageEra
+  convertRefScriptToLatestEra :: CS.ReferenceScript era -> CS.ReferenceScript CS.ConwayEra
   convertRefScriptToLatestEra CS.ReferenceScriptNone = CS.ReferenceScriptNone
-  convertRefScriptToLatestEra (CS.ReferenceScript _ script) = CS.ReferenceScript CS.BabbageEraOnwardsBabbage script
+  convertRefScriptToLatestEra (CS.ReferenceScript _ script) = CS.ReferenceScript CS.BabbageEraOnwardsConway script
 
 -- FIXME (koslambrou) Move to proper package
-utxoToLatestEra :: C.TxOut C.CtxUTxO era -> C.TxOut C.CtxUTxO C.BabbageEra
+utxoToLatestEra :: C.TxOut C.CtxUTxO era -> C.TxOut C.CtxUTxO C.ConwayEra
 utxoToLatestEra (C.TxOut addrInEra txOutValue txOutDatum ref) =
   C.TxOut
     (convertAddrToLatestEra addrInEra)
-    (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $
-      C.toLedgerValue C.MaryEraOnwardsBabbage $ C.txOutValueToValue txOutValue)
+    (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $
+      C.toLedgerValue C.MaryEraOnwardsConway $ C.txOutValueToValue txOutValue)
     (convertDatumToLatestEra txOutDatum)
     (convertRefScriptToLatestEra ref)
  where
-  convertAddrToLatestEra :: C.AddressInEra era -> C.AddressInEra C.BabbageEra
+  convertAddrToLatestEra :: C.AddressInEra era -> C.AddressInEra C.ConwayEra
   convertAddrToLatestEra (C.AddressInEra C.ByronAddressInAnyEra addr) =
     C.AddressInEra C.ByronAddressInAnyEra addr
   convertAddrToLatestEra (C.AddressInEra (C.ShelleyAddressInEra _) addr) =
-    C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
+    C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) addr
 
-  convertDatumToLatestEra :: C.TxOutDatum C.CtxUTxO era -> C.TxOutDatum C.CtxUTxO C.BabbageEra
+  convertDatumToLatestEra :: C.TxOutDatum C.CtxUTxO era -> C.TxOutDatum C.CtxUTxO C.ConwayEra
   convertDatumToLatestEra C.TxOutDatumNone = C.TxOutDatumNone
-  convertDatumToLatestEra (C.TxOutDatumHash _ h) = C.TxOutDatumHash C.AlonzoEraOnwardsBabbage h
-  convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.BabbageEraOnwardsBabbage d
+  convertDatumToLatestEra (C.TxOutDatumHash _ h) = C.TxOutDatumHash C.AlonzoEraOnwardsConway h
+  convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.BabbageEraOnwardsConway d
 
-  convertRefScriptToLatestEra :: CS.ReferenceScript era -> CS.ReferenceScript CS.BabbageEra
+  convertRefScriptToLatestEra :: CS.ReferenceScript era -> CS.ReferenceScript CS.ConwayEra
   convertRefScriptToLatestEra CS.ReferenceScriptNone = CS.ReferenceScriptNone
-  convertRefScriptToLatestEra (CS.ReferenceScript _ script) = CS.ReferenceScript CS.BabbageEraOnwardsBabbage script
+  convertRefScriptToLatestEra (CS.ReferenceScript _ script) = CS.ReferenceScript CS.BabbageEraOnwardsConway script
 
 
 {-| Pick an unspent output from the 'UtxoSet', if there is one.

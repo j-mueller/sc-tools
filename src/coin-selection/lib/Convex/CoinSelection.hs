@@ -46,7 +46,7 @@ module Convex.CoinSelection(
   ) where
 
 import qualified Cardano.Api                   as Cardano.Api
-import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
+import           Cardano.Api.Shelley           (BuildTx, ConwayEra, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
 import qualified Cardano.Api.Shelley           as C
@@ -97,7 +97,7 @@ import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           GHC.Generics                  (Generic)
 
-type ERA = BabbageEra
+type ERA = ConwayEra
 
 {- Note [Change Output]
 
@@ -211,10 +211,10 @@ balanceTransactionBody
         TrailingChange -> txb & appendTxOut change
 
   txbody0 <-
-    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage $ csiTxBody & addChangeOutput changeOutputSmall
+    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraConway $ csiTxBody & addChangeOutput changeOutputSmall
 
   exUnitsMap <- balancingError . first C.TxBodyErrorValidityInterval $
-                C.evaluateTransactionExecutionUnits C.BabbageEra
+                C.evaluateTransactionExecutionUnits C.ConwayEra
                 systemStart (C.toLedgerEpochInfo eraHistory)
                 protocolParams
                 csiUtxo
@@ -232,20 +232,20 @@ balanceTransactionBody
   let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
   -- append output instead of prepending
-  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent1'
+  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraConway txbodycontent1'
 
-  let !t_fee = C.calculateMinTxFee C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) csiUtxo txbody1 numWits
+  let !t_fee = C.calculateMinTxFee C.ShelleyBasedEraConway (C.unLedgerProtocolParameters protocolParams) csiUtxo txbody1 numWits
   traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee}
 
   let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeLatestEraOutput
-  txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
+  txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraConway txbodycontent2
 
   -- TODO: If there are any stake pool unregistration certificates in the transaction
   -- then we need to provide a @Map StakeCredential Lovelace@ here.
   -- See https://github.com/input-output-hk/cardano-api/commit/d23f964d311282b1950b2fd840bcc57ae40a0998
   let unregPoolStakeBalance = mempty
 
-  let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)
+  let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraConway (C.unLedgerProtocolParameters protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)
 
   traceWith tracer TxRemainingBalance{remainingBalance = balance}
 
@@ -264,7 +264,7 @@ balanceTransactionBody
           & set L.txFee t_fee
           & addChangeOutput changeOutputBalance
 
-  txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage finalBodyContent
+  txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraConway finalBodyContent
 
   balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
@@ -330,8 +330,8 @@ handleExUnitsErrors C.ScriptInvalid failuresMap exUnitsMap
             _                                 -> True
 
 substituteExecutionUnits :: Map C.ScriptWitnessIndex C.ExecutionUnits
-                         -> C.TxBodyContent BuildTx C.BabbageEra
-                         -> Either (C.TxBodyErrorAutoBalance x) (C.TxBodyContent BuildTx C.BabbageEra)
+                         -> C.TxBodyContent BuildTx C.ConwayEra
+                         -> Either (C.TxBodyErrorAutoBalance x) (C.TxBodyContent BuildTx C.ConwayEra)
 substituteExecutionUnits exUnitsMap =
     mapTxScriptWitnesses f
   where
@@ -348,10 +348,10 @@ substituteExecutionUnits exUnitsMap =
 -- | same behaviour as in Cardano.Api.TxBody.
 mapTxScriptWitnesses
   :: forall x. (forall witctx. C.ScriptWitnessIndex
-                   -> C.ScriptWitness witctx C.BabbageEra
-                   -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx C.BabbageEra))
-  -> C.TxBodyContent BuildTx C.BabbageEra
-  -> Either (C.TxBodyErrorAutoBalance x) (TxBodyContent BuildTx C.BabbageEra)
+                   -> C.ScriptWitness witctx C.ConwayEra
+                   -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx C.ConwayEra))
+  -> C.TxBodyContent BuildTx C.ConwayEra
+  -> Either (C.TxBodyErrorAutoBalance x) (TxBodyContent BuildTx C.ConwayEra)
 mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
                          C.txIns,
                          C.txWithdrawals,
@@ -371,12 +371,12 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
       }
   where
     mapScriptWitnessesTxIns
-      :: [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
-      -> Either (C.TxBodyErrorAutoBalance x) [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))]
+      :: [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.ConwayEra))]
+      -> Either (C.TxBodyErrorAutoBalance x) [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.ConwayEra))]
     mapScriptWitnessesTxIns txins  =
       let mappedScriptWitnesses
             :: [ ( C.TxIn
-                 , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.BabbageEra))
+                 , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn C.ConwayEra))
                  )
                ]
           mappedScriptWitnesses =
@@ -396,14 +396,14 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
                   ) mappedScriptWitnesses
 
     mapScriptWitnessesWithdrawals
-      :: C.TxWithdrawals BuildTx C.BabbageEra
-      -> Either (C.TxBodyErrorAutoBalance x) (C.TxWithdrawals BuildTx C.BabbageEra)
+      :: C.TxWithdrawals BuildTx C.ConwayEra
+      -> Either (C.TxBodyErrorAutoBalance x) (C.TxWithdrawals BuildTx C.ConwayEra)
     mapScriptWitnessesWithdrawals C.TxWithdrawalsNone = Right C.TxWithdrawalsNone
     mapScriptWitnessesWithdrawals (C.TxWithdrawals supported withdrawals) =
       let mappedWithdrawals
             :: [( C.StakeAddress
                 , Coin
-                , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxStake C.BabbageEra))
+                , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxStake C.ConwayEra))
                 )]
           mappedWithdrawals =
               [ (addr, withdrawal, C.BuildTxWith <$> mappedWitness)
@@ -419,19 +419,19 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
                       ) mappedWithdrawals
       where
         adjustWitness
-          :: (C.ScriptWitness witctx C.BabbageEra -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx C.BabbageEra))
-          -> C.Witness witctx C.BabbageEra
-          -> Either (C.TxBodyErrorAutoBalance x) (C.Witness witctx C.BabbageEra)
+          :: (C.ScriptWitness witctx C.ConwayEra -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx C.ConwayEra))
+          -> C.Witness witctx C.ConwayEra
+          -> Either (C.TxBodyErrorAutoBalance x) (C.Witness witctx C.ConwayEra)
         adjustWitness _ (C.KeyWitness ctx) = Right $ C.KeyWitness ctx
         adjustWitness g (C.ScriptWitness ctx witness') = C.ScriptWitness ctx <$> g witness'
 
     mapScriptWitnessesCertificates
-      :: C.TxCertificates BuildTx C.BabbageEra
-      -> Either (C.TxBodyErrorAutoBalance x) (C.TxCertificates BuildTx C.BabbageEra)
+      :: C.TxCertificates BuildTx C.ConwayEra
+      -> Either (C.TxBodyErrorAutoBalance x) (C.TxCertificates BuildTx C.ConwayEra)
     mapScriptWitnessesCertificates C.TxCertificatesNone = Right C.TxCertificatesNone
     mapScriptWitnessesCertificates (C.TxCertificates supported certs (C.BuildTxWith witnesses)) =
       let mappedScriptWitnesses
-           :: [(C.StakeCredential, Either (C.TxBodyErrorAutoBalance x) (C.Witness C.WitCtxStake C.BabbageEra))]
+           :: [(C.StakeCredential, Either (C.TxBodyErrorAutoBalance x) (C.Witness C.WitCtxStake C.ConwayEra))]
           mappedScriptWitnesses =
               [ (stakecred, C.ScriptWitness ctx <$> witness')
                 -- The certs are indexed in list order
@@ -459,12 +459,12 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
       C.ConwayCertificate{} -> Nothing
 
     mapScriptWitnessesMinting
-      :: C.TxMintValue BuildTx C.BabbageEra
-      -> Either (C.TxBodyErrorAutoBalance x) (C.TxMintValue BuildTx C.BabbageEra)
+      :: C.TxMintValue BuildTx C.ConwayEra
+      -> Either (C.TxBodyErrorAutoBalance x) (C.TxMintValue BuildTx C.ConwayEra)
     mapScriptWitnessesMinting C.TxMintNone = Right C.TxMintNone
     mapScriptWitnessesMinting (C.TxMintValue supported value (C.BuildTxWith witnesses)) =
       let mappedScriptWitnesses
-            :: [(C.PolicyId, Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness C.WitCtxMint C.BabbageEra))]
+            :: [(C.PolicyId, Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness C.WitCtxMint C.ConwayEra))]
           mappedScriptWitnesses =
             [ (policyid, witness')
               -- The minting policies are indexed in policy id order in the value
@@ -505,7 +505,7 @@ balanceChanges (C.UTxO lookups) body = do
   inputs <- Utxos.invBalanceChange . foldMap (txOutChange . id) <$> traverse (\(txi, _) -> Map.lookup txi lookups) (body ^. L.txIns)
   pure (outputs <> inputs)
 
-txOutChange :: TxOut ctx C.BabbageEra -> BalanceChanges
+txOutChange :: TxOut ctx C.ConwayEra -> BalanceChanges
 txOutChange (view L._TxOut -> (fmap C.fromShelleyPaymentCredential . preview (L._AddressInEra . L._Address . _2) -> Just addr, view L._TxOutValue -> value, _, _)) =
   BalanceChanges (Map.singleton addr value)
 txOutChange _ = mempty
@@ -520,7 +520,7 @@ data BalanceTxError era =
 calls 'balanceTransactionBody' after preparing all the required inputs.
 -}
 balanceTx ::
-  (MonadBlockchain m, MonadError (BalanceTxError C.BabbageEra) m) =>
+  (MonadBlockchain m, MonadError (BalanceTxError C.ConwayEra) m) =>
 
   -- | Label
   Tracer m TxBalancingMessage ->
@@ -567,7 +567,7 @@ balanceTx dbg returnUTxO0 walletUtxo txb changePosition = do
 
 -- | Check the compatibility level of the transaction body
 --   and remove any incompatible UTxOs from the UTxO set.
-checkCompatibilityLevel :: Monad m => Tracer m TxBalancingMessage -> TxBuilder -> UtxoSet C.CtxUTxO a -> m (UTxO BabbageEra)
+checkCompatibilityLevel :: Monad m => Tracer m TxBalancingMessage -> TxBuilder -> UtxoSet C.CtxUTxO a -> m (UTxO ConwayEra)
 checkCompatibilityLevel tr (BuildTx.buildTx -> txB) utxoSet@(UtxoSet w) = do
   let compatibility = txCompatibility txB
       utxoIn = Utxos.toApiUtxo utxoSet
@@ -579,7 +579,7 @@ checkCompatibilityLevel tr (BuildTx.buildTx -> txB) utxoSet@(UtxoSet w) = do
 {-| Balance the transaction using the wallet's funds, then sign it.
 -}
 balanceForWallet ::
-  (MonadBlockchain m, MonadError (BalanceTxError C.BabbageEra) m) =>
+  (MonadBlockchain m, MonadError (BalanceTxError C.ConwayEra) m) =>
   Tracer m TxBalancingMessage ->
   Wallet ->
   UtxoSet C.CtxUTxO a ->
@@ -589,13 +589,13 @@ balanceForWallet ::
 balanceForWallet dbg wallet walletUtxo txb changePosition = do
   n <- networkId
   let walletAddress = Wallet.addressInEra n wallet
-      txOut = C.InAnyCardanoEra C.BabbageEra $ L.emptyTxOut walletAddress
+      txOut = C.InAnyCardanoEra C.ConwayEra $ L.emptyTxOut walletAddress
   balanceForWalletReturn dbg wallet walletUtxo txOut txb changePosition
 
 {-| Balance the transaction using the wallet's funds and the provided return output, then sign it.
 -}
 balanceForWalletReturn ::
-  (MonadBlockchain m, MonadError (BalanceTxError C.BabbageEra) m) =>
+  (MonadBlockchain m, MonadError (BalanceTxError C.ConwayEra) m) =>
   Tracer m TxBalancingMessage ->
   Wallet ->
   UtxoSet C.CtxUTxO a ->
@@ -688,7 +688,7 @@ balancePositive
   :: MonadError CoinSelectionError m
   => Tracer m TxBalancingMessage
   -> Set PoolId
-  -> C.LedgerProtocolParameters BabbageEra
+  -> C.LedgerProtocolParameters ConwayEra
   -> C.UTxO ERA
   -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
   -> UtxoSet ctx a
@@ -698,8 +698,8 @@ balancePositive
   -> m (TxBuilder, C.InAnyCardanoEra (C.TxOut C.CtxTx))
 balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo collateralUTxOs txBuilder0 = do
   let txBodyContent0 = BuildTx.buildTx txBuilder0
-  txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txBodyContent0)
-  let bal = C.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
+  txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.ShelleyBasedEraConway txBodyContent0)
+  let bal = C.evaluateTransactionBalance C.ShelleyBasedEraConway (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
 
   -- minimum positive balance (in lovelace) that must be available to cover
@@ -751,7 +751,7 @@ to the provided change output. If the positive part only contains Ada then the
 change output is returned unmodified.
 -}
 addOutputForNonAdaAssets ::
-  C.LedgerProtocolParameters BabbageEra ->
+  C.LedgerProtocolParameters ConwayEra ->
   -- ^ Protocol parameters (for computing the minimum lovelace amount in the output)
   C.InAnyCardanoEra (C.TxOut C.CtxTx) ->
   -- ^ Change output. Overflow non-Ada assets will be added to this output's value.
@@ -766,7 +766,7 @@ addOutputForNonAdaAssets pparams returnUTxO (C.valueFromList . snd . splitValue 
           output =
             setMinAdaDeposit pparams
             $ returnUTxOLatestEra & L._TxOut . _2 . L._TxOutValue <>~ vlWithoutAda
-      in (C.InAnyCardanoEra C.BabbageEra output, output ^. L._TxOut . _2 . L._TxOutValue . to (C.lovelaceToQuantity . C.selectLovelace))
+      in (C.InAnyCardanoEra C.ConwayEra output, output ^. L._TxOut . _2 . L._TxOutValue . to (C.lovelaceToQuantity . C.selectLovelace))
   | otherwise = (returnUTxO, C.Quantity 0)
 
 splitValue :: C.Value -> ([(C.AssetId, C.Quantity)], [(C.AssetId, C.Quantity)])
@@ -806,7 +806,7 @@ requiredTxIns body =
 lookupTxIns :: MonadBlockchain m => Set C.TxIn -> m (C.UTxO ERA)
 lookupTxIns = utxoByTxIn
 
-keyWitnesses :: MonadBlockchain m => C.TxBodyContent v C.BabbageEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
+keyWitnesses :: MonadBlockchain m => C.TxBodyContent v C.ConwayEra -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
 keyWitnesses (requiredTxIns -> inputs) = do
   C.UTxO utxos <- utxoByTxIn inputs
   pure $ Set.fromList $ mapMaybe (publicKeyCredential . snd) $ Map.toList utxos

@@ -25,7 +25,7 @@ module Convex.Query(
   runWalletAPIQueryT
 ) where
 
-import           Cardano.Api                (BabbageEra, BalancedTxBody,
+import           Cardano.Api                (BalancedTxBody, ConwayEra,
                                              PaymentCredential (..))
 import qualified Cardano.Api                as C
 import           Control.Monad.Except       (MonadError)
@@ -68,7 +68,7 @@ balanceTx
   -> C.InAnyCardanoEra (C.TxOut C.CtxTx)
   -> TxBuilder
   -> ChangeOutputPosition
-  -> m (Either (BalanceTxError C.BabbageEra) (BalancedTxBody BabbageEra, BalanceChanges))
+  -> m (Either (BalanceTxError C.ConwayEra) (BalancedTxBody ConwayEra, BalanceChanges))
 balanceTx dbg inputCredentials changeOutput txBody changePosition = do
   o <- utxosByPaymentCredentials (Set.fromList inputCredentials)
   runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody changePosition)
@@ -95,40 +95,40 @@ deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT m)
 {-| Balance a transaction body using the funds locked by one of a list of payment credentials
 -}
 balancePaymentCredentials ::
-  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m) =>
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.ConwayEra) m) =>
   Tracer m TxBalancingMessage ->
   C.PaymentCredential -> -- ^ Primary payment credential, used for return output
   [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
-  Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
+  Maybe (C.TxOut C.CtxTx C.ConwayEra) ->
   TxBuilder ->
   ChangeOutputPosition ->
-  m (C.Tx C.BabbageEra)
+  m (C.Tx C.ConwayEra)
 balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody changePosition = do
-  output <- fmap (C.InAnyCardanoEra C.BabbageEra) $ maybe (returnOutputFor primaryCred) pure returnOutput
+  output <- fmap (C.InAnyCardanoEra C.ConwayEra) $ maybe (returnOutputFor primaryCred) pure returnOutput
   (C.BalancedTxBody _ txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody changePosition)
   pure (C.makeSignedTransaction [] txbody)
 
 {-| Balance a transaction body using the funds locked by the payment credential
 -}
 balancePaymentCredential ::
-  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m) =>
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.ConwayEra) m) =>
   Tracer m TxBalancingMessage ->
   C.PaymentCredential ->
-  Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
+  Maybe (C.TxOut C.CtxTx C.ConwayEra) ->
   TxBuilder ->
   ChangeOutputPosition ->
-  m (C.Tx C.BabbageEra)
+  m (C.Tx C.ConwayEra)
 balancePaymentCredential dbg cred = balancePaymentCredentials dbg cred []
 
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
 balanceAndSubmitOperator ::
-  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.BabbageEra) m) =>
+  (MonadBlockchain m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError C.ConwayEra) m) =>
   Tracer m TxBalancingMessage ->
   Operator Signing ->
-  Maybe (C.TxOut C.CtxTx C.BabbageEra) ->
+  Maybe (C.TxOut C.CtxTx C.ConwayEra) ->
   TxBuilder ->
   ChangeOutputPosition ->
-  m (C.Tx C.BabbageEra)
+  m (C.Tx C.ConwayEra)
 balanceAndSubmitOperator dbg op changeOut txBody changePosition =
   balancePaymentCredential dbg (operatorPaymentCredential op) changeOut txBody changePosition
     >>= signAndSubmitOperator op
@@ -136,10 +136,10 @@ balanceAndSubmitOperator dbg op changeOut txBody changePosition =
 {-| Add the operator's signature to the transaction and send it to the blockchain
 -}
 signAndSubmitOperator
-  :: (MonadBlockchain m, MonadError (BalanceAndSubmitError C.BabbageEra) m)
+  :: (MonadBlockchain m, MonadError (BalanceAndSubmitError C.ConwayEra) m)
   => Operator Signing
-  -> C.Tx C.BabbageEra
-  -> m (C.Tx C.BabbageEra)
+  -> C.Tx C.ConwayEra
+  -> m (C.Tx C.ConwayEra)
 signAndSubmitOperator op tx = do
   let finalTx = signTxOperator op tx
   liftResult SubmitError (sendTx finalTx) $> finalTx
