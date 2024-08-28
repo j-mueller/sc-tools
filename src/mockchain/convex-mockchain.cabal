@@ -32,7 +32,6 @@ library
       Convex.MockChain.Gen
       Convex.MockChain.Utils
       Convex.MockChain
-      Convex.NodeParams
     hs-source-dirs: lib
     build-depends:
       base >= 4.14.0,

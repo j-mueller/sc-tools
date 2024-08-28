@@ -97,9 +97,8 @@ instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
   balanceTx addr utxos txb changePosition = runExceptT (Convex.CoinSelection.balanceTx mempty (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb changePosition)
 
 instance MonadMockchain m => MonadMockchain (BalancingT m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadUtxoQuery m => MonadUtxoQuery (BalancingT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -123,9 +122,8 @@ instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
     runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (C.InAnyCardanoEra C.BabbageEra $ emptyTxOut addr) utxos txb changePosition)
 
 instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadUtxoQuery m => MonadUtxoQuery (TracingBalancingT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
