@@ -242,9 +242,6 @@ balanceTransactionBody
   let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeLatestEraOutput
   txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
 
-  -- TODO: If there are any stake pool unregistration certificates in the transaction
-  -- then we need to provide a @Map StakeCredential Lovelace@ here.
-  -- See https://github.com/input-output-hk/cardano-api/commit/d23f964d311282b1950b2fd840bcc57ae40a0998
   let unregPoolStakeBalance = unregBalance protocolParams txbodycontent2
 
   let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)

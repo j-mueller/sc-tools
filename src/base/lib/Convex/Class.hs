@@ -356,8 +356,7 @@ setUtxo u = modifyUtxo (const (u, ()))
 
 {-| Return all Tx's from the ledger state -}
 getTxs :: MonadMockchain m => m [Core.Tx ERA]
--- getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . extractTx))
-getTxs = getMockChainState <&> view (transactions . traverse . _1 . to (pure . extractTx))
+getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . extractTx))
 
 {-| Return all Tx's from the ledger state -}
 

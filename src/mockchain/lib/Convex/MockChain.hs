@@ -357,7 +357,7 @@ applyTx ::
   Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
-  return (oldState & poolState .~ newMempool & over transactions (: (vtx, context)), vtx)
+  return (oldState & poolState .~ newMempool & over transactions ((vtx,context) :) , vtx)
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
