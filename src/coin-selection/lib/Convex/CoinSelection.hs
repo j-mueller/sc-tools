@@ -46,10 +46,12 @@ module Convex.CoinSelection(
   ) where
 
 import qualified Cardano.Api                   as Cardano.Api
+import qualified Cardano.Api.Ledger            as CLedger
 import           Cardano.Api.Shelley           (BabbageEra, BuildTx, EraHistory,
                                                 PoolId, TxBodyContent, TxOut,
                                                 UTxO (..))
 import qualified Cardano.Api.Shelley           as C
+import           Cardano.Ledger.Core           (PParams (..), hkdKeyDepositL)
 import           Cardano.Ledger.Crypto         (StandardCrypto)
 import qualified Cardano.Ledger.Keys           as Keys
 import           Cardano.Ledger.Shelley.API    (Coin (..), Credential (..),
@@ -240,10 +242,7 @@ balanceTransactionBody
   let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeLatestEraOutput
   txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.ShelleyBasedEraBabbage txbodycontent2
 
-  -- TODO: If there are any stake pool unregistration certificates in the transaction
-  -- then we need to provide a @Map StakeCredential Lovelace@ here.
-  -- See https://github.com/input-output-hk/cardano-api/commit/d23f964d311282b1950b2fd840bcc57ae40a0998
-  let unregPoolStakeBalance = mempty
+  let unregPoolStakeBalance = unregBalance protocolParams txbodycontent2
 
   let !balance = view L._TxOutValue (Cardano.Api.evaluateTransactionBalance C.ShelleyBasedEraBabbage (C.unLedgerProtocolParameters protocolParams) stakePools unregPoolStakeBalance mempty csiUtxo txbody2)
 
@@ -505,6 +504,19 @@ balanceChanges (C.UTxO lookups) body = do
   inputs <- Utxos.invBalanceChange . foldMap (txOutChange . id) <$> traverse (\(txi, _) -> Map.lookup txi lookups) (body ^. L.txIns)
   pure (outputs <> inputs)
 
+unregBalance :: C.LedgerProtocolParameters ERA -> TxBodyContent BuildTx ERA -> Map.Map C.StakeCredential Coin
+unregBalance (C.unLedgerProtocolParameters -> PParams phkd) txbodycontent =
+  let (deposit :: Coin) = (view hkdKeyDepositL phkd)
+      certs = txbodycontent ^. L.txCertificates
+      toUnregCert :: C.Certificate ERA -> Maybe (C.StakeCredential, Coin)
+      toUnregCert (C.ConwayCertificate _ (CLedger.ConwayTxCertDeleg (CLedger.ConwayUnRegCert cred (CLedger.SJust a)))) = Just (C.fromShelleyStakeCredential cred, a)
+      toUnregCert (C.ConwayCertificate _ (CLedger.ConwayTxCertDeleg (CLedger.ConwayUnRegCert cred CLedger.SNothing))) = Just (C.fromShelleyStakeCredential cred, deposit)
+      toUnregCert (C.ShelleyRelatedCertificate _ (CLedger.ShelleyTxCertDelegCert (CLedger.ShelleyUnRegCert cred))) = Just (C.fromShelleyStakeCredential cred, deposit)
+      toUnregCert _ = Nothing
+  in case certs of
+        C.TxCertificatesNone    -> mempty
+        C.TxCertificates _ cs _ -> Map.fromList $ mapMaybe toUnregCert cs
+
 txOutChange :: TxOut ctx C.BabbageEra -> BalanceChanges
 txOutChange (view L._TxOut -> (fmap C.fromShelleyPaymentCredential . preview (L._AddressInEra . L._Address . _2) -> Just addr, view L._TxOutValue -> value, _, _)) =
   BalanceChanges (Map.singleton addr value)
@@ -740,7 +752,7 @@ addInputsForAssets dbg txBal availableUtxo collateralUtxo txBuilder =
         let missingAssets = fmap (second abs) $ fst $ splitValue txBal
         traceWith dbg (MissingAssets $ C.valueFromList missingAssets)
         case Wallet.selectMixedInputsCovering availableUtxo missingAssets of
-          Nothing -> 
+          Nothing ->
             case Wallet.selectMixedInputsCovering (availableUtxo <> collateralUtxo) missingAssets of
               Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance availableUtxo) txBal)
               Just (total, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total)

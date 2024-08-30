@@ -1,5 +1,7 @@
+{-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell    #-}
+
 module Convex.NodeParams(
   NodeParams(..),
   networkId,
@@ -9,6 +11,7 @@ module Convex.NodeParams(
   eraHistory,
   stakePools,
   slotLength,
+  pParams,
 
   -- * Lenses for @ProtocolParameters@
   -- See https://input-output-hk.github.io/cardano-node/cardano-api/lib/Cardano-Api-Shelley.html#t:ProtocolParameters
@@ -37,16 +40,19 @@ module Convex.NodeParams(
   maxValueSize,
   collateralPercent,
   maxCollateralInputs,
-  uTxOCostPerByte
+  uTxOCostPerByte,
 ) where
 
-import           Cardano.Api           (BabbageEra)
-import           Cardano.Api.Shelley   (EraHistory, LedgerProtocolParameters,
-                                        NetworkId (..), PoolId,
-                                        ProtocolParameters (..))
-import           Cardano.Slotting.Time (SlotLength, SystemStart)
-import           Control.Lens.TH       (makeLensesFor)
-import           Data.Set              as Set (Set)
+import           Cardano.Api            (BabbageEra)
+import           Cardano.Api.Shelley    (EraHistory,
+                                         LedgerProtocolParameters (..),
+                                         NetworkId (..), PoolId,
+                                         ProtocolParameters (..))
+import           Cardano.Ledger.Babbage (Babbage)
+import           Cardano.Ledger.Core    (PParams)
+import           Cardano.Slotting.Time  (SlotLength, SystemStart)
+import           Control.Lens.TH        (makeLensesFor)
+import           Data.Set               as Set (Set)
 
 data NodeParams =
   NodeParams
@@ -99,3 +105,8 @@ makeLensesFor
   , ("protocolParamMaxCollateralInputs", "maxCollateralInputs")
   , ("protocolParamUTxOCostPerByte", "uTxOCostPerByte")
   ] ''ProtocolParameters
+
+-- | Convert `Params` to cardano-ledger `PParams`
+pParams :: NodeParams -> PParams Babbage
+pParams NodeParams { npProtocolParameters } = case npProtocolParameters of
+  LedgerProtocolParameters p -> p
