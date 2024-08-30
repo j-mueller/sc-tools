@@ -29,6 +29,8 @@ library
     import: lang
     exposed-modules:
       Convex.BuildTx
+      Convex.BuildTx.BodyContentResolved
+      Convex.BuildTx.Error
       Convex.Class
       Convex.Constants
       Convex.MonadLog
