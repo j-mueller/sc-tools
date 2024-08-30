@@ -23,7 +23,7 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api                     (AddressInEra, BabbageEra,
+import           Cardano.Api                     (AddressInEra, ConwayEra,
                                                   Quantity, Tx)
 import qualified Cardano.Api                     as C
 import           Control.Monad                   (replicateM)
@@ -61,11 +61,11 @@ faucet = Wallet . snd <$> keysFor "faucet"
 -}
 walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO ())
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
-  Utxos.fromApiUtxo () <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
+  Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}
-sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra BabbageEra -> Int -> Quantity -> IO (Tx BabbageEra)
+sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra ConwayEra -> Int -> Quantity -> IO (Tx ConwayEra)
 sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
   balanceAndSubmit tracer node fct (BuildTx.execBuildTx $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) TrailingChange []
@@ -96,7 +96,7 @@ runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx BabbageEra)
+balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx ConwayEra)
 balanceAndSubmit tracer node wallet tx changePosition keys = do
   n <- runningNodeBlockchain @String tracer node networkId
   let walletAddress = Wallet.addressInEra n wallet
@@ -109,17 +109,17 @@ balanceAndSubmitReturn
   :: Tracer IO WalletLog
   -> RunningNode
   -> Wallet
-  -> C.TxOut C.CtxTx C.BabbageEra
+  -> C.TxOut C.CtxTx C.ConwayEra
   -> TxBuilder
   -> ChangeOutputPosition
   -> [C.ShelleyWitnessSigningKey]
-  -> IO (Tx BabbageEra)
+  -> IO (Tx ConwayEra)
 balanceAndSubmitReturn tracer node wallet returnOutput tx changePosition keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain @String tracer node $ do
-    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos (C.InAnyCardanoEra C.BabbageEra returnOutput) tx changePosition)
+    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn mempty wallet utxos (C.InAnyCardanoEra C.ConwayEra returnOutput) tx changePosition)
 
-    let wit' = (C.makeShelleyKeyWitness C.ShelleyBasedEraBabbage body <$> keys) ++ wit
+    let wit' = (C.makeShelleyKeyWitness C.ShelleyBasedEraConway body <$> keys) ++ wit
         tx'  = C.makeSignedTransaction wit' body
 
     _ <- sendTx tx'

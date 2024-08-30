@@ -22,7 +22,6 @@ module Convex.Devnet.NodeQueries(
 ) where
 
 import           Cardano.Api                                        (Address,
-                                                                     BabbageEra,
                                                                      BlockNo,
                                                                      EraHistory (..),
                                                                      LocalNodeConnectInfo (..),
@@ -114,7 +113,7 @@ queryEpoch :: NetworkId -> FilePath -> IO C.EpochNo
 queryEpoch nid path = do
   result <- queryLocalState
              (C.QueryInEra
-                (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryEpoch)
+                (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryEpoch)
              )
              nid path
   case result of
@@ -153,12 +152,12 @@ queryTipSlotNo networkId socket = queryTip networkId socket >>= (\(s, l, _) -> p
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxOFilter :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.BabbageEra)
+queryUTxOFilter :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.ConwayEra)
 queryUTxOFilter networkId socket flt =
   let query =
         C.QueryInEra
           ( C.QueryInShelleyBasedEra
-              C.ShelleyBasedEraBabbage
+              C.ShelleyBasedEraConway
               ( C.QueryUTxO flt)
           )
    in queryLocalState query networkId socket >>= throwOnEraMismatch
@@ -166,14 +165,14 @@ queryUTxOFilter networkId socket flt =
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO C.BabbageEra)
+queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO C.ConwayEra)
 queryUTxO networkId socket addresses =
   queryUTxOFilter networkId socket (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
 
 -- | Query the entire UTxO set
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxOWhole :: NetworkId -> FilePath -> IO (UTxO C.BabbageEra)
+queryUTxOWhole :: NetworkId -> FilePath -> IO (UTxO C.ConwayEra)
 queryUTxOWhole networkId socket = queryUTxOFilter networkId socket C.QueryUTxOWhole
 
 throwOnEraMismatch :: (MonadThrow m, MonadIO m) => Either EraMismatch a -> m a
@@ -189,19 +188,19 @@ waitForTxIn networkId socket txIn = do
   let query =
         C.QueryInEra
           ( C.QueryInShelleyBasedEra
-              C.ShelleyBasedEraBabbage
+              C.ShelleyBasedEraConway
               ( C.QueryUTxO
                   (C.QueryUTxOByTxIn (Set.singleton txIn))
               )
           )
       go = do
-        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        utxo <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
         when (utxo == mempty) $ do
           threadDelay 2_000_000
           go
   go
 
-waitForTxn :: NetworkId -> FilePath -> Tx BabbageEra -> IO ()
+waitForTxn :: forall era. NetworkId -> FilePath -> Tx era -> IO ()
 waitForTxn network socket (head . fmap fst . txnUtxos -> txi) = waitForTxIn network socket txi
 
 {-| Wait until the 'TxIn' is not part of the utxo set anymore
@@ -211,13 +210,13 @@ waitForTxInSpend networkId socket txIn = do
   let query =
         C.QueryInEra
           ( C.QueryInShelleyBasedEra
-              C.ShelleyBasedEraBabbage
+              C.ShelleyBasedEraConway
               ( C.QueryUTxO
                   (C.QueryUTxOByTxIn (Set.singleton txIn))
               )
           )
       go = do
-        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        utxo <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
         unless (utxo == mempty) $ do
           threadDelay 2_000_000
           go

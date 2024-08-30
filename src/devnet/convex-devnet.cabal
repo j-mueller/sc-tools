@@ -84,6 +84,7 @@ library
       , cardano-ledger-core
       , cardano-ledger-shelley
       , cardano-slotting
+      , cardano-ledger-conway
       , io-classes
       , ouroboros-consensus
       , ouroboros-consensus-cardano

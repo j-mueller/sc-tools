@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE NumericUnderscores   #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Building transactions
@@ -571,7 +572,9 @@ minAdaDeposit (C.LedgerProtocolParameters params) txOut =
             -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
             & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minAdaValue) (Just . max minAdaValue))
   in fromMaybe (C.Quantity 0) $ do
-        let l = C.calculateMinimumUTxO C.ShelleyBasedEraConway txo params
+        let l  = C.calculateMinimumUTxO C.ShelleyBasedEraConway txo params
+            -- dummyTxIn = C.TxIn "abc" (C.TxIx 0)
+            -- l2 = Core.getMinCoinTxOut params (_ $ C.toLedgerUTxO C.ShelleyBasedEraConway $ C.UTxO $ Map.singleton dummyTxIn $ C.toCtxUTxOTxOut txo)
         pure (C.lovelaceToQuantity l)
 
 {-| Apply 'setMinAdaDeposit' to all outputs

@@ -37,6 +37,8 @@ import           Cardano.Api.Shelley             (KESPeriod (..),
                                                   StakePoolParameters (..),
                                                   StakePoolRegistrationRequirements (..),
                                                   toShelleyPoolParams)
+import qualified Cardano.Api.Shelley             as C
+import qualified Cardano.Ledger.Conway.TxCert    as L
 import           Cardano.Slotting.Slot           (withOriginToMaybe)
 import           Cardano.Slotting.Time           (diffRelativeTime,
                                                   getRelativeTime,
@@ -501,6 +503,8 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
   C.SlotNo slotNo <- fst <$> Q.queryTipSlotNo rnNetworkId rnNodeSocket
 
   let
+    minDeposit = 500_000_000
+
     vrfHash =
       C.verificationKeyHash . C.getVerificationKey $ vrfKey
 
@@ -511,13 +515,13 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
 
     stakeCert =
       C.makeStakeAddressRegistrationCertificate
-      . StakeAddrRegistrationPreConway C.ShelleyToBabbageEraBabbage
+      . StakeAddrRegistrationConway C.ConwayEraOnwardsConway minDeposit
       $ stakeCred
     stakeAddress = C.makeStakeAddress rnNetworkId stakeCred
 
     paymentAddress =
       C.makeShelleyAddressInEra
-        C.ShelleyBasedEraBabbage
+        C.ShelleyBasedEraConway
         rnNetworkId
         (paymentCredential wallet)
         (StakeAddressByValue stakeCred)
@@ -527,7 +531,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
 
     delegationCert =
       C.makeStakeAddressDelegationCertificate
-      $ StakeDelegationRequirementsPreConway C.ShelleyToBabbageEraBabbage stakeCred poolId
+      $ StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (L.DelegStake $ C.unStakePoolKeyHash poolId)
 
     stakePoolParams =
      StakePoolParameters
@@ -543,7 +547,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
 
     poolCert =
       C.makeStakePoolRegistrationCertificate
-      . StakePoolRegistrationRequirementsPreConway C.ShelleyToBabbageEraBabbage
+      . StakePoolRegistrationRequirementsConwayOnwards C.ConwayEraOnwardsConway
       . toShelleyPoolParams
       $ stakePoolParams
 

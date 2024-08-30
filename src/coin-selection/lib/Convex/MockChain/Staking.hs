@@ -35,7 +35,7 @@ registerPool wallet = do
 
     stakeCert =
       C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 10
+      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
       $ stakeCred
     stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
 
@@ -73,7 +73,7 @@ registerPool wallet = do
     delegCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate delegationCert
 
-  void $ tryBalanceAndSubmit mempty wallet stakeCertTx TrailingChange []
+  void $ tryBalanceAndSubmit mempty wallet stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
   void $ tryBalanceAndSubmit mempty wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
   void $ tryBalanceAndSubmit mempty wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 

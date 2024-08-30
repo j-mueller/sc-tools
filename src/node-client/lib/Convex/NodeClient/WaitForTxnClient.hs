@@ -53,18 +53,17 @@ waitForTxnClient tmv cp txId env =
 applyBlock :: TMVar BlockInMode -> TxId -> CatchingUp -> () -> LedgerStateUpdate 'NoLedgerState -> BlockInMode -> IO (Maybe ())
 applyBlock tmv txi _ () _ block = do
   case block of
-    C.BlockInMode C.BabbageEra blck ->
+    C.BlockInMode _era blck ->
       if checkTxIds txi blck
         then do
           liftIO $ atomically $ putTMVar tmv block
           pure Nothing
         else pure (Just ())
-    _ -> pure (Just ())
 
-checkTxIds :: TxId -> C.Block C.BabbageEra -> Bool
+checkTxIds :: TxId -> C.Block era -> Bool
 checkTxIds txi ((C.Block _ txns)) = any (checkTxId txi) txns
 
-checkTxId :: TxId -> C.Tx C.BabbageEra -> Bool
+checkTxId :: TxId -> C.Tx era -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
 newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }

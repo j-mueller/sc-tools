@@ -82,6 +82,7 @@ test-suite convex-coin-selection-test
     cardano-ledger-api,
     cardano-ledger-alonzo,
     cardano-ledger-babbage,
+    cardano-ledger-conway,
     cardano-ledger-shelley,
     convex-coin-selection,
     convex-mockchain,
