@@ -580,7 +580,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     delegCertTx = execBuildTx $ do
       addCertificate delegationCert
 
-  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx TrailingChange []
+  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
   _ <- waitForNextBlock node
 
   _ <- W.balanceAndSubmit mempty node wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]

@@ -85,7 +85,7 @@ startLocalNode = do
               Left err -> failure (show err)
               Right{}  -> do
                 Queries.queryEra rnNetworkId rnNodeSocket
-                  >>= assertBool "Should be in babbage era" . (==) (C.anyCardanoEra C.BabbageEra)
+                  >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
 transitionToConway :: IO ()
 transitionToConway = do
