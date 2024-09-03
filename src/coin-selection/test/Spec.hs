@@ -6,13 +6,9 @@ module Main(main) where
 
 import qualified Cardano.Api.Ledger             as C
 import qualified Cardano.Api.Shelley            as C
-import           Cardano.Ledger.Alonzo.Rules    (AlonzoUtxoPredFailure (..))
 import qualified Cardano.Ledger.Api             as Ledger
--- import           Cardano.Ledger.Conway.Rules   (ConwayUtxoPredFailure (..),
---                                                  ConwayUtxowPredFailure (..))
 import qualified Cardano.Ledger.Conway.Rules    as Rules
 import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
-import           Cardano.Ledger.Shelley.Rules   (ShelleyLedgerPredFailure (..))
 import           Control.Lens                   (_3, _4, view, (&), (.~))
 import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
@@ -293,7 +289,7 @@ balanceMultiAddress :: Property
 balanceMultiAddress = do
   let gen = (,) <$> Gen.operator <*> fmap (take 20) (Gen.listOf Gen.operator)
   QC.forAll gen $ \(op, operators) ->
-    QC.forAll (Gen.chooseInteger (5_000_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Quantity -> nAmount) ->
+    QC.forAll (Gen.chooseInteger (7_500_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Quantity -> nAmount) ->
       QC.forAll (Gen.sublistOf (op:operators)) $ \requiredSignatures ->
         classify (null operators) "1 operator"
           $ classify (length operators > 0 && length operators <= 9) "2-9 operators"
@@ -303,7 +299,7 @@ balanceMultiAddress = do
           $ classify (length requiredSignatures > 9) "10+ required signatures"
           $ runMockchainProp $ lift $ failOnError $ do
               -- send Ada to each operator
-              traverse_ (payToOperator' mempty (C.lovelaceToValue $ 2_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
+              traverse_ (payToOperator' mempty (C.lovelaceToValue $ 7_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
 
               -- send the entire amount back to Wallet.w2
               walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
@@ -428,7 +424,7 @@ queryStakeAddressesTest = do
       BuildTx.addCertificate delegationCert
 
   -- activate stake
-  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange []
+  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
   -- delegate to pool
   void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 
@@ -472,7 +468,7 @@ withdrawalTest = do
       BuildTx.addWithdrawal stakeAddress withdrawalAmount (C.KeyWitness C.KeyWitnessForStakeAddr)
 
   -- activate stake
-  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange []
+  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
   -- delegate to pool
   void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 

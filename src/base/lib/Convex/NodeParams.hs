@@ -1,5 +1,7 @@
+{-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell    #-}
+
 module Convex.NodeParams(
   NodeParams(..),
   networkId,
@@ -9,6 +11,7 @@ module Convex.NodeParams(
   eraHistory,
   stakePools,
   slotLength,
+  pParams,
 
   -- * Lenses for @ProtocolParameters@, re-exported from cardano-ledger.
   -- See 'Cardano.Api.Ledger' for an explanation of the fields and a full list
@@ -29,15 +32,17 @@ module Convex.NodeParams(
   L.hkdCostModelsL
 ) where
 
-import           Cardano.Api                   (ConwayEra)
-import qualified Cardano.Api.Ledger            as L
-import           Cardano.Api.Shelley           (EraHistory,
-                                                LedgerProtocolParameters,
-                                                NetworkId (..), PoolId)
-import qualified Cardano.Ledger.Alonzo.PParams as L
-import           Cardano.Slotting.Time         (SlotLength, SystemStart)
-import           Control.Lens.TH               (makeLensesFor)
-import           Data.Set                      as Set (Set)
+import           Cardano.Api                      (ConwayEra)
+import           Cardano.Api.Ledger               (PParams)
+import qualified Cardano.Api.Ledger               as L
+import           Cardano.Api.Shelley              (EraHistory,
+                                                   LedgerProtocolParameters (..),
+                                                   NetworkId (..), PoolId)
+import qualified Cardano.Ledger.Alonzo.PParams    as L
+import           Cardano.Slotting.Time            (SlotLength, SystemStart)
+import           Control.Lens.TH                  (makeLensesFor)
+import           Data.Set                         as Set (Set)
+import           Ouroboros.Consensus.Shelley.Eras (StandardConway)
 
 data NodeParams =
   NodeParams
@@ -62,3 +67,7 @@ makeLensesFor
   [ ("unLedgerProtocolParameters", "protocolParameters")
   ] ''LedgerProtocolParameters
 
+-- | Convert `Params` to cardano-ledger `PParams`
+pParams :: NodeParams -> PParams StandardConway
+pParams NodeParams { npProtocolParameters } = case npProtocolParameters of
+  LedgerProtocolParameters p -> p

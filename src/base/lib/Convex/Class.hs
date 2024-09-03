@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Typeclasses for blockchain operations
@@ -19,13 +20,38 @@ module Convex.Class(
   -- * Monad mockchain
   MonadMockchain(..),
   MonadBlockchainError(..),
+
+  -- * Mockchain state & lenses
+  MockChainState (..),
+  env,
+  poolState,
+  transactions,
+  failedTransactions,
+  datums,
+  _Phase1Error,
+  _Phase2Error,
+
+  -- * Other types
+  ExUnitsError(..),
+  ValidationError(..),
+  _VExUnits,
+  _PredicateFailures,
+  _ApplyTxFailure,
+
+  -- * Utilities
+  getMockChainState,
+  putMockChainState,
+  setReward,
+  modifySlot,
   getSlot,
   setSlot,
   setPOSIXTime,
   nextSlot,
   setTimeToValidRange,
+  modifyUtxo,
   getUtxo,
   setUtxo,
+  getTxs,
 
   -- * MonadUtxoQuery
   MonadUtxoQuery(..),
@@ -52,11 +78,31 @@ import           Cardano.Api.Shelley                               (ConwayEra,
                                                                     ScriptData,
                                                                     SlotNo, Tx,
                                                                     TxId)
-import           Cardano.Ledger.Shelley.API                        (Coin (..),
-                                                                    UTxO)
+import qualified Cardano.Api.Shelley                               as C
+import           Cardano.Ledger.Alonzo.Plutus.Evaluate             (CollectError)
+import qualified Cardano.Ledger.Core                               as Core
+import           Cardano.Ledger.Crypto                             (StandardCrypto)
+import           Cardano.Ledger.Plutus.Evaluate                    (PlutusWithContext (..))
+import           Cardano.Ledger.Shelley.API                        (ApplyTxError,
+                                                                    Coin (..),
+                                                                    MempoolEnv,
+                                                                    MempoolState,
+                                                                    UTxO (..),
+                                                                    Validated,
+                                                                    extractTx)
+import           Cardano.Ledger.Shelley.LedgerState                (certDStateL,
+                                                                    dsUnifiedL,
+                                                                    lsCertStateL,
+                                                                    rewards)
+import           Cardano.Ledger.UMap                               (RDPair (..),
+                                                                    adjust,
+                                                                    compactCoinOrError)
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
-import           Control.Lens                                      (_1, view)
+import           Control.Lens                                      (_1, set, to,
+                                                                    view, (^.))
+import           Control.Lens.TH                                   (makeLensesFor,
+                                                                    makePrisms)
 import           Control.Monad.Except                              (MonadError,
                                                                     catchError,
                                                                     runExceptT,
@@ -70,18 +116,22 @@ import qualified Control.Monad.State                               as LazyState
 import qualified Control.Monad.State.Strict                        as StrictState
 import           Control.Monad.Trans.Except                        (ExceptT (..))
 import           Control.Monad.Trans.Except.Result                 (ResultT)
+import qualified Convex.CardanoApi.Lenses                          as L
 import           Convex.Constants                                  (ERA)
 import           Convex.MonadLog                                   (MonadLog (..),
                                                                     MonadLogIgnoreT (..),
                                                                     logInfoS,
                                                                     logWarn,
                                                                     logWarnS)
+import           Convex.NodeParams                                 (NodeParams,
+                                                                    pParams)
 import           Convex.Utils                                      (posixTimeToSlotUnsafe,
                                                                     slotToUtcTime)
 import           Convex.Utxos                                      (UtxoSet)
 import           Data.Aeson                                        (FromJSON,
                                                                     ToJSON)
 import           Data.Bifunctor                                    (Bifunctor (..))
+import           Data.Functor                                      ((<&>))
 import           Data.Map                                          (Map)
 import qualified Data.Map                                          as Map
 import           Data.Set                                          (Set)
@@ -182,39 +232,106 @@ singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
   C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
   _ -> pure Nothing
 
+
+{- Note [sendTx Failure]
+
+It would be nice to return a more accurate error type than 'SendTxFailed',
+but our two implementations of 'MonadBlockchain' (mockchain and cardano-node backend)
+have different errors and it does not seem possible to find a common type.
+
+-}
+
+-- | Error message obtained when a transaction was not accepted by the node.
+--
+newtype SendTxFailed = SendTxFailed { unSendTxFailed :: String }
+  deriving stock (Eq, Ord, Show)
+
+instance Pretty SendTxFailed where
+  pretty (SendTxFailed msg) = "sendTx: Submission failed:" <+> pretty msg
+
+data ExUnitsError =
+  Phase1Error (C.TransactionValidityError ConwayEra)
+  | Phase2Error C.ScriptExecutionError
+  deriving (Show)
+
+makePrisms ''ExUnitsError
+
+data ValidationError =
+  VExUnits ExUnitsError
+  | PredicateFailures [CollectError ERA]
+  | ApplyTxFailure (ApplyTxError ERA)
+  deriving (Show)
+
+makePrisms ''ValidationError
+{-| State of the mockchain
+-}
+data MockChainState =
+  MockChainState
+    { mcsEnv                :: MempoolEnv ERA
+    , mcsPoolState          :: MempoolState ERA
+    , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
+    , mcsFailedTransactions :: [(Tx ConwayEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+    , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
+    }
+
+makeLensesFor
+  [ ("mcsEnv", "env")
+  , ("mcsPoolState", "poolState")
+  , ("mcsTransactions", "transactions")
+  , ("mcsFailedTransactions", "failedTransactions")
+  , ("mcsDatums", "datums")
+  ] ''MockChainState
+
 {-| Modify the mockchain internals
 -}
 class MonadBlockchain m => MonadMockchain m where
-  setReward :: C.StakeCredential -> Coin -> m ()
-  modifySlot :: (SlotNo -> (SlotNo, a)) -> m a
-  modifyUtxo :: (UTxO ERA -> (UTxO ERA, a)) -> m a
+  modifyMockChainState :: (MockChainState -> (MockChainState, a)) -> m a
+  askNodeParams :: m NodeParams
 
 deriving newtype instance MonadMockchain m => MonadMockchain (MonadLogIgnoreT m)
 
 instance MonadMockchain m => MonadMockchain (ResultT m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadMockchain m => MonadMockchain (ReaderT e m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadMockchain m => MonadMockchain (ExceptT e m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadMockchain m => MonadMockchain (StrictState.StateT e m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadMockchain m => MonadMockchain (LazyState.StateT e m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
+
+getMockChainState :: MonadMockchain m => m MockChainState
+getMockChainState = modifyMockChainState (\s -> (s, s))
+
+putMockChainState :: MonadMockchain m => MockChainState -> m ()
+putMockChainState s = modifyMockChainState (const (s, ()))
+
+setReward :: MonadMockchain m => C.StakeCredential -> Coin -> m ()
+setReward cred coin = do
+  mcs <- getMockChainState
+  let
+    dState = mcs ^. poolState . lsCertStateL . certDStateL
+    umap =
+      adjust
+        (\rd -> rd {rdReward=compactCoinOrError coin})
+        (C.toShelleyStakeCredential cred)
+        (rewards dState)
+  putMockChainState (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap mcs)
+
+modifySlot :: MonadMockchain m => (SlotNo -> (SlotNo, a)) -> m a
+modifySlot f = modifyMockChainState $ \s ->
+  let (s', a) = f (s ^. env . L.slot)
+  in (set (env . L.slot) s' s, a)
 
 {-| Get the current slot number
 -}
@@ -226,6 +343,11 @@ getSlot = modifySlot (\s -> (s, s))
 setSlot :: MonadMockchain m => SlotNo -> m ()
 setSlot s = modifySlot (\_ -> (s, ()))
 
+modifyUtxo :: MonadMockchain m => (UTxO ERA -> (UTxO ERA, a)) -> m a
+modifyUtxo f = askNodeParams >>= \np -> modifyMockChainState $ \s ->
+  let (u', a) = f (s ^. poolState . L.utxoState . L._UTxOState (pParams np) . _1)
+  in (set (poolState . L.utxoState . L._UTxOState (pParams np) . _1) u' s, a)
+
 {-| Get the UTxO set |-}
 getUtxo :: MonadMockchain m => m (UTxO ERA)
 getUtxo = modifyUtxo (\s -> (s, s))
@@ -233,6 +355,12 @@ getUtxo = modifyUtxo (\s -> (s, s))
 {-| Set the UTxO set |-}
 setUtxo :: MonadMockchain m => UTxO ERA -> m ()
 setUtxo u = modifyUtxo (const (u, ()))
+
+{-| Return all Tx's from the ledger state -}
+getTxs :: MonadMockchain m => m [Core.Tx ERA]
+getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . extractTx))
+
+{-| Return all Tx's from the ledger state -}
 
 {-| Set the slot number to the slot that contains the given POSIX time.
 -}
@@ -344,21 +472,6 @@ instance MonadDatumQuery m => MonadDatumQuery (MonadLogIgnoreT m) where
 instance MonadDatumQuery m => MonadDatumQuery (PropertyM m) where
   queryDatumFromHash= lift . queryDatumFromHash
 
-{- Note [sendTx Failure]
-
-It would be nice to return a more accurate error type than 'SendTxFailed',
-but our two implementations of 'MonadBlockchain' (mockchain and cardano-node backend)
-have different errors and it does not seem possible to find a common type.
-
--}
-
--- | Error message obtained when a transaction was not accepted by the node.
---
-newtype SendTxFailed = SendTxFailed { unSendTxFailed :: String }
-  deriving stock (Eq, Ord, Show)
-
-instance Pretty SendTxFailed where
-  pretty (SendTxFailed msg) = "sendTx: Submission failed:" <+> pretty msg
 
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}

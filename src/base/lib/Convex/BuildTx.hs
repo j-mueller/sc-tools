@@ -276,9 +276,8 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
   networkId = lift networkId
 
 instance MonadMockchain m => MonadMockchain (BuildTxT m) where
-  setReward cred = lift . setReward cred
-  modifySlot = lift . modifySlot
-  modifyUtxo = lift . modifyUtxo
+  modifyMockChainState = lift . modifyMockChainState
+  askNodeParams = lift askNodeParams
 
 instance MonadDatumQuery m => MonadDatumQuery (BuildTxT m) where
   queryDatumFromHash = lift . queryDatumFromHash

@@ -67,8 +67,6 @@ module Convex.MockChain(
 
 import           Cardano.Api.Shelley                   (AddressInEra, ConwayEra,
                                                         Hash (StakePoolKeyHash),
-                                                        HashableScriptData,
-                                                        ScriptData,
                                                         ShelleyLedgerEra,
                                                         SlotNo, Tx,
                                                         TxBody (ShelleyTxBody))
@@ -93,29 +91,24 @@ import           Cardano.Ledger.Plutus.Language        (LegacyPlutusArgs (..),
                                                         unPlutusBinary)
 import qualified Cardano.Ledger.Plutus.Language        as Plutus.Language
 import           Cardano.Ledger.Shelley.API            (AccountState (..),
-                                                        ApplyTxError, Coin (..),
+                                                        Coin (..),
                                                         LedgerEnv (..),
-                                                        MempoolEnv,
-                                                        MempoolState, UTxO (..),
-                                                        UtxoEnv (..), Validated,
+                                                        UTxO (..), UtxoEnv (..),
+                                                        Validated,
                                                         initialFundsPseudoTxIn)
 import qualified Cardano.Ledger.Shelley.API
 import           Cardano.Ledger.Shelley.LedgerState    (LedgerState (..),
                                                         UTxOState (..),
                                                         certDStateL,
-                                                        delegations, dsUnifiedL,
+                                                        delegations,
                                                         lsCertStateL, rewards,
                                                         smartUTxOState)
-import           Cardano.Ledger.UMap                   (RDPair (..), adjust,
-                                                        compactCoinOrError,
+import           Cardano.Ledger.UMap                   (RDPair (..),
                                                         domRestrictedMap,
                                                         fromCompact)
 import qualified Cardano.Ledger.Val                    as Val
-import           Control.Lens                          (_1, _3, over, set, to,
-                                                        view, (%=), (&), (.~),
-                                                        (^.))
-import           Control.Lens.TH                       (makeLensesFor,
-                                                        makePrisms)
+import           Control.Lens                          (_1, _3, over, to, view,
+                                                        (%=), (&), (.~), (^.))
 import           Control.Monad                         (forM)
 import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
@@ -125,15 +118,25 @@ import           Control.Monad.Reader                  (MonadReader, ReaderT,
                                                         ask, asks, local,
                                                         runReaderT)
 import           Control.Monad.State                   (MonadState, StateT, get,
-                                                        gets, modify, put,
-                                                        runStateT)
+                                                        gets, put, runStateT)
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import qualified Convex.CardanoApi.Lenses              as L
-import           Convex.Class                          (MonadBlockchain (..),
+import           Convex.Class                          (ExUnitsError (..),
+                                                        MockChainState (..),
+                                                        MonadBlockchain (..),
                                                         MonadDatumQuery (..),
                                                         MonadMockchain (..),
                                                         MonadUtxoQuery (..),
-                                                        SendTxFailed (..))
+                                                        SendTxFailed (..),
+                                                        ValidationError (..),
+                                                        _ApplyTxFailure,
+                                                        _Phase1Error,
+                                                        _Phase2Error,
+                                                        _PredicateFailures,
+                                                        _VExUnits, datums, env,
+                                                        failedTransactions,
+                                                        modifyUtxo, poolState,
+                                                        transactions)
 import           Convex.Constants                      (ERA)
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
@@ -150,7 +153,6 @@ import           Data.Bifunctor                        (Bifunctor (..))
 import           Data.Default                          (Default (def))
 import           Data.Foldable                         (for_, traverse_)
 import           Data.Functor.Identity                 (Identity (..))
-import           Data.Map                              (Map)
 import qualified Data.Map                              as Map
 import qualified Data.Set                              as Set
 import           Ouroboros.Consensus.Shelley.Eras      (EraCrypto)
@@ -223,41 +225,6 @@ legacyPlutusArgsToData :: Plutus.ToData (PlutusScriptContext l) => LegacyPlutusA
 legacyPlutusArgsToData = \case
   LegacyPlutusArgs2 redeemer scriptContext -> [redeemer, PV3.toData scriptContext]
   LegacyPlutusArgs3 datum redeemer scriptContext -> [datum, redeemer, PV3.toData scriptContext]
-
-
-data ExUnitsError =
-  Phase1Error (C.TransactionValidityError ConwayEra)
-  | Phase2Error C.ScriptExecutionError
-  deriving (Show)
-
-makePrisms ''ExUnitsError
-
-data ValidationError =
-  VExUnits ExUnitsError
-  | PredicateFailures [CollectError ERA]
-  | ApplyTxFailure (ApplyTxError ERA)
-  deriving (Show)
-
-makePrisms ''ValidationError
-
-{-| State of the mockchain
--}
-data MockChainState =
-  MockChainState
-    { mcsEnv                :: MempoolEnv ERA
-    , mcsPoolState          :: MempoolState ERA
-    , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
-    , mcsFailedTransactions :: [(Tx ConwayEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
-    , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
-    }
-
-makeLensesFor
-  [ ("mcsEnv", "env")
-  , ("mcsPoolState", "poolState")
-  , ("mcsTransactions", "transactions")
-  , ("mcsFailedTransactions", "failedTransactions")
-  , ("mcsDatums", "datums")
-  ] ''MockChainState
 
 initialState :: NodeParams -> MockChainState
 initialState params = initialStateFor params []
@@ -389,7 +356,7 @@ applyTx ::
   Either ValidationError (MockChainState, Validated (Core.Tx ERA))
 applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
-  return (oldState & poolState .~ newMempool & over transactions ((:) (vtx, context)), vtx)
+  return (oldState & poolState .~ newMempool & over transactions ((vtx,context) :) , vtx)
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
@@ -462,26 +429,8 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     return (slotNo, npSlotLength, utime)
 
 instance Monad m => MonadMockchain (MockchainT m) where
-  setReward cred coin = MockchainT $ do
-    dState <- gets (view $ poolState . lsCertStateL . certDStateL)
-    let
-      umap =
-        adjust
-          (\rd -> rd {rdReward=compactCoinOrError coin})
-          (C.toShelleyStakeCredential cred)
-          (rewards dState)
-    modify (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap)
-  modifySlot f = MockchainT $ do
-    s <- gets (view $ env . L.slot)
-    let (s', a) = f s
-    modify (set (env . L.slot) s')
-    pure a
-  modifyUtxo f = MockchainT $ do
-    nps <- ask
-    u <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1)
-    let (u', a) = f u
-    modify (set (poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1) u')
-    pure a
+  modifyMockChainState f = MockchainT $ get >>= \st -> let (s, a) = f st in put s >> pure a
+  askNodeParams = ask
 
 instance Monad m => MonadUtxoQuery (MockchainT m) where
   utxosByPaymentCredentials cred = do
