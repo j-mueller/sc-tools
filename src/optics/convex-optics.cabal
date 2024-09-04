@@ -29,6 +29,7 @@ library
     import: lang
     exposed-modules:
       Convex.Scripts
+      Convex.CardanoApi
       Convex.CardanoApi.Lenses
       Convex.PlutusLedgerApi.Optics
     hs-source-dirs: lib
@@ -38,6 +39,7 @@ library
       cardano-ledger-core,
       cardano-ledger-shelley,
       cardano-ledger-mary,
+      cardano-ledger-alonzo,
       containers,
       lens,
       ouroboros-consensus-cardano,

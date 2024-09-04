@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-| Lenses for @cardano-api@ types
 -}
 module Convex.CardanoApi.Lenses(
@@ -13,6 +14,13 @@ module Convex.CardanoApi.Lenses(
   IsMaryEraOnwards (..),
   IsAlonzoEraOnwards (..),
   IsBabbageEraOnwards (..),
+  -- * Tx lenses
+  txBody,
+  -- * Tx body lenses
+  txBodyContent,
+  txBodyScriptData,
+  datums,
+  redeemers,
   -- * Tx body content lenses
   emptyTx,
   emptyTxOut,
@@ -132,6 +140,8 @@ import           Cardano.Ledger.Shelley.LedgerState (LedgerState (..),
 import           Control.Lens                       (Getter, Iso', Lens',
                                                      Prism', iso, lens, prism')
 import qualified Control.Lens                       as L
+import           Convex.CardanoApi                  (txBodyScriptDataDatums,
+                                                     txBodyScriptDataRedeemers)
 import qualified Convex.Scripts                     as Scripts
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
@@ -207,6 +217,24 @@ instance IsBabbageEraOnwards C.BabbageEra where
 
 instance IsBabbageEraOnwards C.ConwayEra where
    babbageEraOnwards = C.BabbageEraOnwardsConway
+
+txBody :: Getter (C.Tx era) (C.TxBody era)
+txBody = L.to get_ where
+  get_ (C.Tx txb _) = txb
+
+txBodyContent :: Getter (C.TxBody era) (C.TxBodyContent C.ViewTx era)
+txBodyContent = L.to get_ where
+  get_ (C.TxBody txbc) = txbc
+
+txBodyScriptData :: Getter (C.TxBody era) (C.TxBodyScriptData era)
+txBodyScriptData = L.to get_ where
+  get_ (C.ShelleyTxBody _ _ _ scriptData _ _) = scriptData
+
+datums :: Getter (C.TxBodyScriptData era) (Map (C.Hash C.ScriptData) C.HashableScriptData)
+datums = L.to txBodyScriptDataDatums
+
+redeemers :: Getter (C.TxBodyScriptData era) (Map C.ScriptWitnessIndex C.HashableScriptData)
+redeemers = L.to txBodyScriptDataRedeemers
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 TODO Remove and replace with C.defaultTxBodyContent

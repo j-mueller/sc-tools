@@ -232,7 +232,6 @@ singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
   C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
   _ -> pure Nothing
 
-
 {- Note [sendTx Failure]
 
 It would be nice to return a more accurate error type than 'SendTxFailed',
