@@ -88,7 +88,8 @@ import           Cardano.Ledger.Shelley.API                        (ApplyTxError
                                                                     MempoolEnv,
                                                                     MempoolState,
                                                                     UTxO (..),
-                                                                    Validated, extractTx)
+                                                                    Validated,
+                                                                    extractTx)
 import           Cardano.Ledger.Shelley.LedgerState                (certDStateL,
                                                                     dsUnifiedL,
                                                                     lsCertStateL,
@@ -98,7 +99,8 @@ import           Cardano.Ledger.UMap                               (RDPair (..),
                                                                     compactCoinOrError)
 import           Cardano.Slotting.Time                             (SlotLength,
                                                                     SystemStart)
-import           Control.Lens                                      (_1, set, view, (^.), to)
+import           Control.Lens                                      (_1, set, to,
+                                                                    view, (^.))
 import           Control.Lens.TH                                   (makeLensesFor,
                                                                     makePrisms)
 import           Control.Monad.Except                              (MonadError,
@@ -355,8 +357,8 @@ setUtxo :: MonadMockchain m => UTxO ERA -> m ()
 setUtxo u = modifyUtxo (const (u, ()))
 
 {-| Return all Tx's from the ledger state -}
-getTxs :: MonadMockchain m => m [Core.Tx ERA]
-getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . extractTx))
+getTxs :: MonadMockchain m => m [C.Tx C.BabbageEra] --  [Core.Tx ERA]
+getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . C.ShelleyTx C.ShelleyBasedEraBabbage . extractTx))
 
 {-| Return all Tx's from the ledger state -}
 
