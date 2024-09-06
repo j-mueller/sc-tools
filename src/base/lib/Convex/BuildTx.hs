@@ -481,13 +481,13 @@ mintPlutusV2Ref refTxIn sh red assetName quantity =
 
 mintSimpleScriptAssets :: MonadBuildTx m => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
 mintSimpleScriptAssets sscript assets =
-  let wit = C.SimpleScriptWitness C.SimpleScriptInBabbage (C.SScript sscript)
+  let wit = C.SimpleScriptWitness C.SimpleScriptInConway (C.SScript sscript)
       policyId = C.scriptPolicyId . C.SimpleScript $ sscript
   in traverse_ (\(an,q) -> addMintWithTxBody policyId an q (const wit)) assets
 
 spendSimpleScript :: MonadBuildTx m => C.TxIn -> C.SimpleScript -> m ()
 spendSimpleScript txIn sscript =
-  let wit = C.SimpleScriptWitness C.SimpleScriptInBabbage (C.SScript sscript)
+  let wit = C.SimpleScriptWitness C.SimpleScriptInConway (C.SScript sscript)
   in addBtx (over L.txIns ((txIn, C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending wit) :))
 
 addCollateral :: MonadBuildTx m => C.TxIn -> m ()
