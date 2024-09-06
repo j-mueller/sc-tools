@@ -56,6 +56,7 @@ module Convex.BuildTx(
   spendPlutusV2RefWithoutInRef,
   spendPlutusV2RefWithoutInRefInlineDatum,
   spendPlutusV2InlineDatum,
+  spendSimpleScript,
 
   -- ** Adding outputs
   payToAddress,
@@ -82,6 +83,7 @@ module Convex.BuildTx(
   mintPlutusV1,
   mintPlutusV2,
   mintPlutusV2Ref,
+  mintSimpleScriptAssets,
 
   -- ** Constructing script witness
   buildV1ScriptWitness,
@@ -125,6 +127,7 @@ import           Convex.Class                  (MonadBlockchain (..),
 import           Convex.MonadLog               (MonadLog (..), MonadLogIgnoreT,
                                                 MonadLogKatipT)
 import           Convex.Scripts                (toHashableScriptData)
+import           Data.Foldable                 (traverse_)
 import           Data.Functor.Identity         (Identity (..))
 import           Data.List                     (nub)
 import qualified Data.Map                      as Map
@@ -475,6 +478,17 @@ mintPlutusV2Ref refTxIn sh red assetName quantity =
   in  setScriptsValid
       >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
       >> addReference refTxIn
+
+mintSimpleScriptAssets :: MonadBuildTx m => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
+mintSimpleScriptAssets sscript assets =
+  let wit = C.SimpleScriptWitness C.SimpleScriptInBabbage (C.SScript sscript)
+      policyId = C.scriptPolicyId . C.SimpleScript $ sscript
+  in traverse_ (\(an,q) -> addMintWithTxBody policyId an q (const wit)) assets
+
+spendSimpleScript :: MonadBuildTx m => C.TxIn -> C.SimpleScript -> m ()
+spendSimpleScript txIn sscript =
+  let wit = C.SimpleScriptWitness C.SimpleScriptInBabbage (C.SScript sscript)
+  in addBtx (over L.txIns ((txIn, C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending wit) :))
 
 addCollateral :: MonadBuildTx m => C.TxIn -> m ()
 addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateralIso) ((:) i)
