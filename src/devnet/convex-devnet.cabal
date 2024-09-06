@@ -84,6 +84,7 @@ library
       , cardano-ledger-core
       , cardano-ledger-shelley
       , cardano-slotting
+      , cardano-ledger-conway
       , io-classes
       , ouroboros-consensus
       , ouroboros-consensus-cardano
@@ -113,6 +114,7 @@ test-suite convex-devnet-test
     , convex-devnet
     , convex-base
     , cardano-api
+    , contra-tracer
     , cardano-ledger-api
     , cardano-ledger-core -any
     , lens

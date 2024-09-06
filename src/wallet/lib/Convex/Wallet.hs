@@ -75,8 +75,8 @@ verificationKeyHash = C.verificationKeyHash . C.getVerificationKey . getWallet
 
 shelleyPaymentCredential :: Wallet -> Shelley.PaymentCredential StandardCrypto
 shelleyPaymentCredential =
-  fromMaybe (error "shelleyPaymentCredential: Expected ShelleyAddress in Babbage era")
-  . preview (L._AddressInEra @C.BabbageEra . L._Address . _2)
+  fromMaybe (error "shelleyPaymentCredential: Expected ShelleyAddress in Conway era")
+  . preview (L._AddressInEra @C.ConwayEra . L._Address . _2)
   . addressInEra C.Mainnet
 
 {-| Sign the transaction body with the signing key and attach the signature

@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE NumericUnderscores   #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Building transactions
@@ -134,7 +135,7 @@ import           Data.Maybe                    (fromJust, fromMaybe)
 import qualified Data.Set                      as Set
 import qualified PlutusLedgerApi.V1            as Plutus
 
-type TxBody = C.TxBodyContent C.BuildTx C.BabbageEra
+type TxBody = C.TxBodyContent C.BuildTx C.ConwayEra
 
 {-| Look up the index of the @TxIn@ in the list of spending inputs
 -}
@@ -211,7 +212,7 @@ instance Semigroup TxBuilder where
     -- note that the order here is reversed, compared to @Data.Monoid.Endo@.
     -- This is so that @addBtx a >> addBtx b@ will result in a transaction
     -- where @a@ has been applied before @b@.
-  (TxBuilder l) <> (TxBuilder r) = TxBuilder $ \k -> (r k . l k)
+  (TxBuilder l) <> (TxBuilder r) = TxBuilder $ \k -> r k . l k
 
 instance Monoid TxBuilder where
   mempty = TxBuilder $ const id
@@ -324,29 +325,29 @@ constructing the witness, make sure that the witness does not depend on
 itself. For example: @addInputWithTxBody txi (\body -> find (\in -> in == txi) (txInputs body))@
 is going to loop.
 -}
-addInputWithTxBody :: MonadBuildTx m => C.TxIn -> (TxBody -> C.Witness WitCtxTxIn C.BabbageEra) -> m ()
-addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> (over L.txIns ((txIn, C.BuildTxWith $ f body) :)))
+addInputWithTxBody :: MonadBuildTx m => C.TxIn -> (TxBody -> C.Witness WitCtxTxIn C.ConwayEra) -> m ()
+addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, C.BuildTxWith $ f body) :))
 
-addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody -> C.ScriptWitness C.WitCtxMint C.BabbageEra) -> m ()
+addMintWithTxBody :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody -> C.ScriptWitness C.WitCtxMint C.ConwayEra) -> m ()
 addMintWithTxBody policy assetName quantity f =
   let v = assetValue (C.unPolicyId policy) assetName quantity
-  in addTxBuilder (TxBuilder $ \body -> (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f body)))))
+  in addTxBuilder (TxBuilder $ \body -> over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f body))))
 
-addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addWithdrawalWithTxBody ::  MonadBuildTx m => C.StakeAddress -> C.Quantity -> (TxBody -> C.Witness C.WitCtxStake C.ConwayEra) -> m ()
 addWithdrawalWithTxBody address amount f =
-  addTxBuilder (TxBuilder $ \body -> (over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f body) :)))
+  addTxBuilder (TxBuilder $ \body -> over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f body) :))
 
 {- | Like @addStakeWitness@ but uses a function that takes a @TxBody@ to build the witness.
 -}
-addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (TxBody -> C.Witness C.WitCtxStake C.BabbageEra) -> m ()
+addStakeWitnessWithTxBody :: MonadBuildTx m => C.StakeCredential -> (TxBody -> C.Witness C.WitCtxStake C.ConwayEra) -> m ()
 addStakeWitnessWithTxBody credential buildWitness =
-  addTxBuilder (TxBuilder $ \body -> (set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just $ buildWitness body)))
+  addTxBuilder (TxBuilder $ \body -> set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just $ buildWitness body))
 
 {-| Spend an output locked by a public key
 -}
 spendPublicKeyOutput :: MonadBuildTx m => C.TxIn -> m ()
 spendPublicKeyOutput txIn = do
-  let wit = C.BuildTxWith (C.KeyWitness (C.KeyWitnessForSpending))
+  let wit = C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending)
   addBtx (over L.txIns ((txIn, wit) :))
 
 {-| Utility function to build a v1 script witness
@@ -355,10 +356,10 @@ buildV1ScriptWitness :: forall redeemer witctx . Plutus.ToData redeemer =>
   C.PlutusScript C.PlutusScriptV1 ->
   C.ScriptDatum witctx ->
   redeemer ->
-  C.ScriptWitness witctx C.BabbageEra
+  C.ScriptWitness witctx C.ConwayEra
 buildV1ScriptWitness script datum redeemer =
   C.PlutusScriptWitness
-    C.PlutusScriptV1InBabbage
+    C.PlutusScriptV1InConway
     C.PlutusScriptV1
     (C.PScript script)
     datum
@@ -371,10 +372,10 @@ buildV2ScriptWitness :: forall redeemer witctx . Plutus.ToData redeemer =>
   C.PlutusScript C.PlutusScriptV2 ->
   C.ScriptDatum witctx ->
   redeemer ->
-  C.ScriptWitness witctx C.BabbageEra
+  C.ScriptWitness witctx C.ConwayEra
 buildV2ScriptWitness script datum redeemer =
   C.PlutusScriptWitness
-    C.PlutusScriptV2InBabbage
+    C.PlutusScriptV2InConway
     C.PlutusScriptV2
     (C.PScript script)
     datum
@@ -388,10 +389,10 @@ buildV2RefScriptWitness :: forall redeemer witctx . Plutus.ToData redeemer =>
   Maybe C.ScriptHash ->
   C.ScriptDatum witctx ->
   redeemer ->
-  C.ScriptWitness witctx C.BabbageEra
+  C.ScriptWitness witctx C.ConwayEra
 buildV2RefScriptWitness refTxIn mbSh datum redeemer =
   C.PlutusScriptWitness
-    C.PlutusScriptV2InBabbage
+    C.PlutusScriptV2InConway
     C.PlutusScriptV2
     (C.PReferenceScript refTxIn mbSh)
     datum
@@ -429,12 +430,12 @@ spendPlutusV2RefBaseWithInRef :: forall redeemer m. (MonadBuildTx m, Plutus.ToDa
 spendPlutusV2RefBaseWithInRef txIn refTxIn sh dat red = spendPlutusV2RefBase txIn refTxIn sh dat (const red) >> addReference refTxIn
 
 spendPlutusV2Ref :: forall datum redeemer m. (MonadBuildTx m, Plutus.ToData datum, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> datum -> redeemer -> m ()
-spendPlutusV2Ref txIn refTxIn sh (toHashableScriptData -> dat) red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh (C.ScriptDatumForTxIn $ Just dat) red
+spendPlutusV2Ref txIn refTxIn sh (toHashableScriptData -> dat) = spendPlutusV2RefBaseWithInRef txIn refTxIn sh (C.ScriptDatumForTxIn $ Just dat)
 
 {-| same as spendPlutusV2Ref but considers inline datum at the spent utxo
 -}
 spendPlutusV2RefWithInlineDatum :: forall redeemer m. (MonadBuildTx m, Plutus.ToData redeemer) => C.TxIn -> C.TxIn -> Maybe C.ScriptHash -> redeemer -> m ()
-spendPlutusV2RefWithInlineDatum txIn refTxIn sh red = spendPlutusV2RefBaseWithInRef txIn refTxIn sh C.InlineScriptDatum red
+spendPlutusV2RefWithInlineDatum txIn refTxIn sh = spendPlutusV2RefBaseWithInRef txIn refTxIn sh C.InlineScriptDatum
 
 {-| same as spendPlutusV2Ref but does not add the reference script in the reference input list
 This is to cover the case whereby the reference script utxo is expected to be consumed in the same tx.
@@ -480,13 +481,13 @@ mintPlutusV2Ref refTxIn sh red assetName quantity =
 
 mintSimpleScriptAssets :: MonadBuildTx m => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
 mintSimpleScriptAssets sscript assets =
-  let wit = C.SimpleScriptWitness C.SimpleScriptInBabbage (C.SScript sscript)
+  let wit = C.SimpleScriptWitness C.SimpleScriptInConway (C.SScript sscript)
       policyId = C.scriptPolicyId . C.SimpleScript $ sscript
   in traverse_ (\(an,q) -> addMintWithTxBody policyId an q (const wit)) assets
 
 spendSimpleScript :: MonadBuildTx m => C.TxIn -> C.SimpleScript -> m ()
 spendSimpleScript txIn sscript =
-  let wit = C.SimpleScriptWitness C.SimpleScriptInBabbage (C.SScript sscript)
+  let wit = C.SimpleScriptWitness C.SimpleScriptInConway (C.SScript sscript)
   in addBtx (over L.txIns ((txIn, C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending wit) :))
 
 addCollateral :: MonadBuildTx m => C.TxIn -> m ()
@@ -495,27 +496,27 @@ addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateralIso) ((:)
 addReference :: MonadBuildTx m => C.TxIn -> m ()
 addReference i = addBtx $ over (L.txInsReference . L._TxInsReferenceIso) ((:) i)
 
-addAuxScript :: MonadBuildTx m => C.ScriptInEra C.BabbageEra -> m ()
+addAuxScript :: MonadBuildTx m => C.ScriptInEra C.ConwayEra -> m ()
 addAuxScript s = addBtx (over (L.txAuxScripts . L._TxAuxScripts) ((:) s))
 
-payToAddressTxOut :: C.AddressInEra C.BabbageEra -> C.Value -> C.TxOut C.CtxTx C.BabbageEra
-payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl) C.TxOutDatumNone C.ReferenceScriptNone
+payToAddressTxOut :: C.AddressInEra C.ConwayEra -> C.Value -> C.TxOut C.CtxTx C.ConwayEra
+payToAddressTxOut addr vl = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue vl) C.TxOutDatumNone C.ReferenceScriptNone
 
-payToAddress :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> C.Value -> m ()
+payToAddress :: MonadBuildTx m => C.AddressInEra C.ConwayEra -> C.Value -> m ()
 payToAddress addr vl = addBtx $ over L.txOuts ((:) (payToAddressTxOut addr vl))
 
 payToPublicKey :: MonadBuildTx m => NetworkId -> Hash PaymentKey -> C.Value -> m ()
 payToPublicKey network pk vl =
-  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl
-      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByKey pk) C.NoStakeAddress
+  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue vl
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraConway network (C.PaymentCredentialByKey pk) C.NoStakeAddress
       txo = C.TxOut addr val C.TxOutDatumNone C.ReferenceScriptNone
   in prependTxOut txo
 
 payToScriptHash :: MonadBuildTx m => NetworkId -> ScriptHash -> HashableScriptData -> C.StakeAddressReference -> C.Value -> m ()
 payToScriptHash network script datum stakeAddress vl =
-  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl
-      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript script) stakeAddress
-      dat = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage datum
+  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue vl
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraConway network (C.PaymentCredentialByScript script) stakeAddress
+      dat = C.TxOutDatumInTx C.AlonzoEraOnwardsConway datum
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in prependTxOut txo
 
@@ -531,44 +532,44 @@ payToPlutusV2 network s datum stakeRef vl =
       dt = toHashableScriptData datum
   in payToScriptHash network sh dt stakeRef vl
 
-payToPlutusV2InlineBase :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> C.TxOutDatum C.CtxTx C.BabbageEra -> C.Value -> m ()
+payToPlutusV2InlineBase :: MonadBuildTx m => C.AddressInEra C.ConwayEra -> C.PlutusScript C.PlutusScriptV2 -> C.TxOutDatum C.CtxTx C.ConwayEra -> C.Value -> m ()
 payToPlutusV2InlineBase addr script dat vl =
-  let refScript = C.ReferenceScript C.BabbageEraOnwardsBabbage (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script)
-      txo = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl) dat refScript
+  let refScript = C.ReferenceScript C.BabbageEraOnwardsConway (C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script)
+      txo = C.TxOut addr (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue vl) dat refScript
   in prependTxOut txo
 
-payToPlutusV2Inline :: MonadBuildTx m => C.AddressInEra C.BabbageEra -> PlutusScript PlutusScriptV2 -> C.Value -> m ()
-payToPlutusV2Inline addr script vl = payToPlutusV2InlineBase addr script C.TxOutDatumNone vl
+payToPlutusV2Inline :: MonadBuildTx m => C.AddressInEra C.ConwayEra -> PlutusScript PlutusScriptV2 -> C.Value -> m ()
+payToPlutusV2Inline addr script = payToPlutusV2InlineBase addr script C.TxOutDatumNone
 
 {-| same as payToPlutusV2Inline but also specify an inline datum -}
-payToPlutusV2InlineWithInlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
+payToPlutusV2InlineWithInlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.ConwayEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
 payToPlutusV2InlineWithInlineDatum addr script datum vl =
-  let dat = C.TxOutDatumInline C.BabbageEraOnwardsBabbage (toHashableScriptData datum)
+  let dat = C.TxOutDatumInline C.BabbageEraOnwardsConway (toHashableScriptData datum)
   in payToPlutusV2InlineBase addr script dat vl
 
 {-| same as payToPlutusV2Inline but also specify a datum -}
-payToPlutusV2InlineWithDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.BabbageEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
+payToPlutusV2InlineWithDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => C.AddressInEra C.ConwayEra -> C.PlutusScript C.PlutusScriptV2 -> a -> C.Value -> m ()
 payToPlutusV2InlineWithDatum addr script datum vl =
-  let dat = C.TxOutDatumInTx C.AlonzoEraOnwardsBabbage (toHashableScriptData datum)
+  let dat = C.TxOutDatumInTx C.AlonzoEraOnwardsConway (toHashableScriptData datum)
   in payToPlutusV2InlineBase addr script dat vl
 
 payToPlutusV2InlineDatum :: forall a m. (MonadBuildTx m, Plutus.ToData a) => NetworkId -> PlutusScript PlutusScriptV2 -> a -> C.StakeAddressReference -> C.Value -> m ()
 payToPlutusV2InlineDatum network script datum stakeRef vl =
-  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage $ C.toMaryValue vl
+  let val = C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue vl
       sh  = C.hashScript (C.PlutusScript C.PlutusScriptV2 script)
-      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraBabbage network (C.PaymentCredentialByScript sh) stakeRef
-      dat = C.TxOutDatumInline C.BabbageEraOnwardsBabbage (toHashableScriptData datum)
+      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraConway network (C.PaymentCredentialByScript sh) stakeRef
+      dat = C.TxOutDatumInline C.BabbageEraOnwardsConway (toHashableScriptData datum)
       txo = C.TxOut addr val dat C.ReferenceScriptNone
   in prependTxOut txo
 -- TODO: Functions for building outputs (Output -> Output)
 
 setScriptsValid :: MonadBuildTx m => m ()
-setScriptsValid = addBtx $ set L.txScriptValidity (C.TxScriptValidity C.AlonzoEraOnwardsBabbage C.ScriptValid)
+setScriptsValid = addBtx $ set L.txScriptValidity (C.TxScriptValidity C.AlonzoEraOnwardsConway C.ScriptValid)
 
 {-| Set the Ada component in an output's value to at least the amount needed to cover the
 minimum UTxO deposit for this output
 -}
-setMinAdaDeposit :: C.LedgerProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra
+setMinAdaDeposit :: C.LedgerProtocolParameters C.ConwayEra -> C.TxOut C.CtxTx C.ConwayEra -> C.TxOut C.CtxTx C.ConwayEra
 setMinAdaDeposit params txOut =
   let minUtxo = minAdaDeposit params txOut
   in txOut & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minUtxo) (Just . max minUtxo))
@@ -576,7 +577,7 @@ setMinAdaDeposit params txOut =
 {-| Calculate the minimum amount of Ada that must be locked in the given UTxO to
 satisfy the ledger's minimum Ada constraint.
 -}
-minAdaDeposit :: C.LedgerProtocolParameters C.BabbageEra -> C.TxOut C.CtxTx C.BabbageEra -> C.Quantity
+minAdaDeposit :: C.LedgerProtocolParameters C.ConwayEra -> C.TxOut C.CtxTx C.ConwayEra -> C.Quantity
 minAdaDeposit (C.LedgerProtocolParameters params) txOut =
   let minAdaValue = C.Quantity 3_000_000
       txo = txOut
@@ -584,12 +585,14 @@ minAdaDeposit (C.LedgerProtocolParameters params) txOut =
             -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
             & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minAdaValue) (Just . max minAdaValue))
   in fromMaybe (C.Quantity 0) $ do
-        let l = C.calculateMinimumUTxO C.ShelleyBasedEraBabbage txo params
+        let l  = C.calculateMinimumUTxO C.ShelleyBasedEraConway txo params
+            -- dummyTxIn = C.TxIn "abc" (C.TxIx 0)
+            -- l2 = Core.getMinCoinTxOut params (_ $ C.toLedgerUTxO C.ShelleyBasedEraConway $ C.UTxO $ Map.singleton dummyTxIn $ C.toCtxUTxOTxOut txo)
         pure (C.lovelaceToQuantity l)
 
 {-| Apply 'setMinAdaDeposit' to all outputs
 -}
-setMinAdaDepositAll :: MonadBuildTx m => C.LedgerProtocolParameters C.BabbageEra -> m ()
+setMinAdaDepositAll :: MonadBuildTx m => C.LedgerProtocolParameters C.ConwayEra -> m ()
 setMinAdaDepositAll params = addBtx $ over (L.txOuts . mapped) (setMinAdaDeposit params)
 
 {-| Add a public key hash to the list of required signatures.
@@ -600,17 +603,17 @@ addRequiredSignature sig =
 
 {-| Add a transaction output to the start of the list of transaction outputs.
 -}
-prependTxOut :: MonadBuildTx m => C.TxOut C.CtxTx C.BabbageEra -> m ()
+prependTxOut :: MonadBuildTx m => C.TxOut C.CtxTx C.ConwayEra -> m ()
 prependTxOut txOut = addBtx (over L.txOuts ((:) txOut))
 
 {-| Add a transaction output to the end of the list of transaction outputs.
 -}
-addOutput :: MonadBuildTx m => C.TxOut C.CtxTx C.BabbageEra -> m ()
+addOutput :: MonadBuildTx m => C.TxOut C.CtxTx C.ConwayEra -> m ()
 addOutput txOut = addBtx (over (L.txOuts . L.reversed) ((:) txOut))
 
 {-| Add a stake rewards withdrawal to the transaction
 -}
-addWithdrawal :: MonadBuildTx m => C.StakeAddress -> C.Quantity -> C.Witness C.WitCtxStake C.BabbageEra -> m ()
+addWithdrawal :: MonadBuildTx m => C.StakeAddress -> C.Quantity -> C.Witness C.WitCtxStake C.ConwayEra -> m ()
 addWithdrawal address amount witness =
   let withdrawal = (address, C.quantityToLovelace amount, C.BuildTxWith witness)
   in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
@@ -618,7 +621,7 @@ addWithdrawal address amount witness =
 {- Like `addWithdrawal` but the stake address is built from the supplied script hash. This is an utility to make withdrawals guarded by
 scripts easier to trigger
 -}
-addScriptWithdrawal :: (MonadBlockchain m, MonadBuildTx m) => ScriptHash -> C.Quantity -> C.ScriptWitness C.WitCtxStake C.BabbageEra -> m ()
+addScriptWithdrawal :: (MonadBlockchain m, MonadBuildTx m) => ScriptHash -> C.Quantity -> C.ScriptWitness C.WitCtxStake C.ConwayEra -> m ()
 addScriptWithdrawal sh quantity witness = do
   n <- networkId
   let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript sh
@@ -642,7 +645,7 @@ addWithdrawZeroPlutusV2Reference refTxIn script redeemer = addScriptWithdrawal s
 {-| Add a certificate (stake delegation, stake pool registration, etc)
 to the transaction
 -}
-addCertificate :: MonadBuildTx m => C.Certificate C.BabbageEra -> m ()
+addCertificate :: MonadBuildTx m => C.Certificate C.ConwayEra -> m ()
 addCertificate cert =
   addBtx (over (L.txCertificates . L._TxCertificates . _1) ((:) cert))
 
@@ -650,10 +653,10 @@ addCertificate cert =
 -}
 addStakeCredentialCertificate :: MonadBuildTx m => C.StakeCredential -> m ()
 addStakeCredentialCertificate =
-  addCertificate . C.ShelleyRelatedCertificate C.ShelleyToBabbageEraBabbage . TxCert.RegTxCert . C.toShelleyStakeCredential
+  addCertificate . C.ConwayCertificate C.conwayBasedEra . TxCert.RegTxCert . C.toShelleyStakeCredential
 
 {-| Add a stake witness to the transaction
 -}
-addStakeWitness :: MonadBuildTx m => C.StakeCredential -> C.Witness C.WitCtxStake C.BabbageEra -> m ()
+addStakeWitness :: MonadBuildTx m => C.StakeCredential -> C.Witness C.WitCtxStake C.ConwayEra -> m ()
 addStakeWitness credential witness =
   addBtx (set (L.txCertificates . L._TxCertificates . _2 . at credential) (Just witness))

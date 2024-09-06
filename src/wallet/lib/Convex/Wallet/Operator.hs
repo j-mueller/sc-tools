@@ -36,7 +36,7 @@ module Convex.Wallet.Operator(
   loadOperatorFilesVerification
 ) where
 
-import           Cardano.Api              (BabbageEra, CtxTx, PaymentCredential,
+import           Cardano.Api              (ConwayEra, CtxTx, PaymentCredential,
                                            TxOut)
 import qualified Cardano.Api.Shelley      as C
 import           Convex.CardanoApi.Lenses (emptyTxOut)
@@ -96,7 +96,7 @@ signTx = \case
 
 {-| Add a signature to the transaction
 -}
-signTxOperator :: Operator Signing -> C.Tx C.BabbageEra -> C.Tx C.BabbageEra
+signTxOperator :: Operator Signing -> C.Tx C.ConwayEra -> C.Tx C.ConwayEra
 signTxOperator Operator{oPaymentKey} = signTx oPaymentKey
 
 {-| An entity that can match orders
@@ -155,18 +155,18 @@ operatorShelleyWitnessSigningKey Operator { oPaymentKey } =
 
 {-| An empty output locked by the operator's payment credential
 -}
-operatorReturnOutput :: MonadBlockchain m => Operator k -> m (TxOut CtxTx BabbageEra)
+operatorReturnOutput :: MonadBlockchain m => Operator k -> m (TxOut CtxTx ConwayEra)
 operatorReturnOutput = returnOutputFor . operatorPaymentCredential
 
 {- An empty output locked by the payment credential
 -}
-returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut ctx BabbageEra)
+returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut ctx ConwayEra)
 returnOutputFor cred = do
   addr <- C.makeShelleyAddress
     <$> networkId
     <*> pure cred
     <*> pure C.NoStakeAddress
-  pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr
+  pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) addr
 
 {-| Loading operator files for signing from disk
 -}

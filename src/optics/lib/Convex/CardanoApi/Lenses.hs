@@ -13,6 +13,7 @@ module Convex.CardanoApi.Lenses(
   IsMaryEraOnwards (..),
   IsAlonzoEraOnwards (..),
   IsBabbageEraOnwards (..),
+  IsConwayEraOnwards(..),
   -- * Tx body content lenses
   emptyTx,
   emptyTxOut,
@@ -197,7 +198,7 @@ instance IsAlonzoEraOnwards C.BabbageEra where
 instance IsAlonzoEraOnwards C.ConwayEra where
    alonzoEraOnwards = C.AlonzoEraOnwardsConway
 
--- | The class of eras that are after Alonzo.
+-- | The class of eras that are after babbage.
 -- TODO Move to cardano-api
 class C.IsCardanoEra era => IsBabbageEraOnwards era where
    babbageEraOnwards :: C.BabbageEraOnwards era
@@ -207,6 +208,14 @@ instance IsBabbageEraOnwards C.BabbageEra where
 
 instance IsBabbageEraOnwards C.ConwayEra where
    babbageEraOnwards = C.BabbageEraOnwardsConway
+
+-- | The class of eras that are after conway.
+-- TODO Move to cardano-api
+class C.IsCardanoEra era => IsConwayEraOnwards era where
+   conwayEraOnwards :: C.ConwayEraOnwards era
+
+instance IsConwayEraOnwards C.ConwayEra where
+   conwayEraOnwards = C.ConwayEraOnwardsConway
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 TODO Remove and replace with C.defaultTxBodyContent

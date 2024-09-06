@@ -66,7 +66,7 @@ module Convex.Class(
 ) where
 
 import qualified Cardano.Api                                       as C
-import           Cardano.Api.Shelley                               (BabbageEra,
+import           Cardano.Api.Shelley                               (ConwayEra,
                                                                     EraHistory (..),
                                                                     Hash,
                                                                     HashableScriptData,
@@ -151,9 +151,9 @@ import           Test.QuickCheck.Monadic                           (PropertyM)
 -}
 class Monad m => MonadBlockchain m where
   -- see note Note [sendTx Failure]
-  sendTx                  :: Tx BabbageEra -> m (Either SendTxFailed TxId) -- ^ Submit a transaction to the network
-  utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.BabbageEra) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m (LedgerProtocolParameters C.BabbageEra) -- ^ Get the protocol parameters
+  sendTx                  :: Tx ConwayEra -> m (Either SendTxFailed TxId) -- ^ Submit a transaction to the network
+  utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.ConwayEra) -- ^ Resolve tx inputs
+  queryProtocolParameters :: m (LedgerProtocolParameters C.ConwayEra) -- ^ Get the protocol parameters
   queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
   queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
@@ -166,7 +166,7 @@ class Monad m => MonadBlockchain m where
 {-| Try sending the transaction to the node, failing with 'error' if 'sendTx'
   was not successful.
 -}
-trySendTx :: MonadBlockchain m => Tx BabbageEra -> m TxId
+trySendTx :: MonadBlockchain m => Tx ConwayEra -> m TxId
 trySendTx = fmap (either (error . show) id) . sendTx
 
 deriving newtype instance MonadBlockchain m => MonadBlockchain (MonadLogIgnoreT m)
@@ -227,7 +227,7 @@ instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   networkId = lift networkId
 
 -- | Look up  a single UTxO
-singleUTxO :: MonadBlockchain m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO C.BabbageEra))
+singleUTxO :: MonadBlockchain m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO C.ConwayEra))
 singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
   C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
   _ -> pure Nothing
@@ -250,7 +250,7 @@ instance Pretty SendTxFailed where
   pretty (SendTxFailed msg) = "sendTx: Submission failed:" <+> pretty msg
 
 data ExUnitsError =
-  Phase1Error (C.TransactionValidityError BabbageEra)
+  Phase1Error (C.TransactionValidityError ConwayEra)
   | Phase2Error C.ScriptExecutionError
   deriving (Show)
 
@@ -270,7 +270,7 @@ data MockChainState =
     { mcsEnv                :: MempoolEnv ERA
     , mcsPoolState          :: MempoolState ERA
     , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
-    , mcsFailedTransactions :: [(Tx BabbageEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+    , mcsFailedTransactions :: [(Tx ConwayEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
     , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
     }
 
@@ -357,8 +357,8 @@ setUtxo :: MonadMockchain m => UTxO ERA -> m ()
 setUtxo u = modifyUtxo (const (u, ()))
 
 {-| Return all Tx's from the ledger state -}
-getTxs :: MonadMockchain m => m [C.Tx C.BabbageEra] --  [Core.Tx ERA]
-getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . C.ShelleyTx C.ShelleyBasedEraBabbage . extractTx))
+getTxs :: MonadMockchain m => m [C.Tx C.ConwayEra]
+getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . C.ShelleyTx C.ShelleyBasedEraConway . extractTx))
 
 {-| Return all Tx's from the ledger state -}
 
@@ -371,7 +371,7 @@ setPOSIXTime tm =
 {-| Change the clock so that the current slot time is within the given validity range.
 This MAY move the clock backwards!
 -}
-setTimeToValidRange :: MonadMockchain m => (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra) -> m ()
+setTimeToValidRange :: MonadMockchain m => (C.TxValidityLowerBound C.ConwayEra, C.TxValidityUpperBound C.ConwayEra) -> m ()
 setTimeToValidRange = \case
   (C.TxValidityLowerBound _ lowerSlot, _)        -> setSlot lowerSlot
   (_, C.TxValidityUpperBound _ (Just upperSlot)) -> setSlot (pred upperSlot)
@@ -509,7 +509,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
   sendTx tx = MonadBlockchainCardanoNodeT $ do
     let txId = C.getTxId (C.getTxBody tx)
     info <- ask
-    result <- liftIO (C.submitTxToNodeLocal info (C.TxInMode C.ShelleyBasedEraBabbage tx))
+    result <- liftIO (C.submitTxToNodeLocal info (C.TxInMode C.ShelleyBasedEraConway tx))
     case result of
       SubmitSuccess -> do
         logInfoS ("sendTx: Submitted " <> show txId)
@@ -520,16 +520,16 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
         pure (Left msg)
 
   utxoByTxIn txIns =
-    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
+    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
 
   queryProtocolParameters = do
-    LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryProtocolParameters))
+    LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryProtocolParameters))
 
   queryStakeAddresses creds nid =
-    first (fmap C.lovelaceToQuantity) <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage (C.QueryStakeAddresses creds nid)))
+    first (fmap C.lovelaceToQuantity) <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway (C.QueryStakeAddresses creds nid)))
 
   queryStakePools =
-    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraBabbage C.QueryStakePools))
+    runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryStakePools))
 
   querySystemStart = runQuery C.QuerySystemStart
 

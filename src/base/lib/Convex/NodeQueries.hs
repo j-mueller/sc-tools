@@ -45,7 +45,7 @@ import qualified Ouroboros.Consensus.Cardano.CanHardFork            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator            as Consensus
 import qualified Ouroboros.Consensus.HardFork.Combinator.AcrossEras as HFC
 import qualified Ouroboros.Consensus.HardFork.Combinator.Basics     as HFC
-import           Ouroboros.Consensus.Shelley.Eras                   (StandardBabbage)
+import           Ouroboros.Consensus.Shelley.Eras                   (StandardConway)
 import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type    as T
 
 {-| Load the node config file and create 'LocalNodeConnectInfo' and 'Env' values that can be used to talk to the node.
@@ -103,7 +103,7 @@ queryTip = queryLocalState CAPI.QueryChainPoint
 queryStakePools :: LocalNodeConnectInfo -> IO (Set PoolId)
 queryStakePools connectInfo = do
   result <- queryLocalState
-              (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryStakePools))
+              (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraConway CAPI.QueryStakePools))
               connectInfo
   case result of
     Left err -> do
@@ -113,7 +113,7 @@ queryStakePools connectInfo = do
 queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> NetworkId -> IO (Map StakeAddress Quantity, Map StakeAddress PoolId)
 queryStakeAddresses info creds nid = do
   result <- queryLocalState
-              (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage (CAPI.QueryStakeAddresses creds nid)))
+              (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraConway (CAPI.QueryStakeAddresses creds nid)))
               info
   case result of
     Left err -> do
@@ -129,9 +129,9 @@ queryLocalState query connectInfo = do
     Right result -> pure result
 
 -- | Get the protocol parameters from the local cardano node
-queryProtocolParameters :: LocalNodeConnectInfo -> IO (PParams StandardBabbage)
+queryProtocolParameters :: LocalNodeConnectInfo -> IO (PParams StandardConway)
 queryProtocolParameters connectInfo = do
-  result <- queryLocalState (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraBabbage CAPI.QueryProtocolParameters)) connectInfo
+  result <- queryLocalState (CAPI.QueryInEra (CAPI.QueryInShelleyBasedEra CAPI.ShelleyBasedEraConway CAPI.QueryProtocolParameters)) connectInfo
   case result of
     Left err -> do
       fail ("queryProtocolParameters: failed with: " <> show err)

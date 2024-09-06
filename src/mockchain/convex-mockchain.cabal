@@ -49,15 +49,17 @@ library
       bytestring,
       sop-extras,
       strict-sop-core,
-      sop-core
+      sop-core,
+      template-haskell,
+      aeson
 
     -- cardano dependencies
     build-depends:
       cardano-api,
       cardano-ledger-babbage,
+      cardano-ledger-conway,
       cardano-crypto-class >= 2.1.1.0,
       cardano-slotting -any,
-      cardano-ledger-binary,
       ouroboros-consensus -any,
       ouroboros-consensus-cardano -any,
       cardano-ledger-core -any,

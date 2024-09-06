@@ -14,7 +14,7 @@ module Convex.Devnet.WalletServer(
   sendFundsToOperator
 ) where
 
-import           Cardano.Api                     (BabbageEra, CtxTx, Quantity,
+import           Cardano.Api                     (ConwayEra, CtxTx, Quantity,
                                                   Tx)
 import qualified Cardano.Api                     as C
 import           Control.Concurrent              (threadDelay)
@@ -182,7 +182,7 @@ waitUntilAvailable tr RunningWalletServer{rwsClient} =
 
 {-| Send faucet funds to the operator
 -}
-sendFundsToOperator :: Tracer IO WalletLog -> RunningNode -> Operator k -> Quantity -> IO (Tx BabbageEra)
+sendFundsToOperator :: Tracer IO WalletLog -> RunningNode -> Operator k -> Quantity -> IO (Tx ConwayEra)
 sendFundsToOperator tr node@RunningNode{rnNetworkId} op lvl = do
   let opAddress = operatorAddress rnNetworkId op
-  Wallet.sendFaucetFundsTo (contramap WWallet tr) node (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) opAddress) 10 lvl
+  Wallet.sendFaucetFundsTo (contramap WWallet tr) node (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) opAddress) 10 lvl
