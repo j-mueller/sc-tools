@@ -49,7 +49,9 @@ library
       bytestring,
       sop-extras,
       strict-sop-core,
-      sop-core
+      sop-core,
+      template-haskell,
+      aeson
 
     -- cardano dependencies
     build-depends:
