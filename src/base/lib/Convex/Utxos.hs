@@ -44,6 +44,7 @@ module Convex.Utxos(
   extract,
   extract_,
   extractBabbageTxn,
+  extractConwayTxn,
   txId,
 
   -- * Changes to utxo sets
@@ -603,6 +604,16 @@ mkI txid tx (aueTxIn, (aueTxOut, aueEvent)) = AddUtxoEvent{aueEvent, aueTxOut, a
 
 mkO :: TxId -> CS.InAnyCardanoEra Tx -> (TxIn, ((CS.InAnyCardanoEra (CS.TxOut CS.CtxTx), a), Maybe (HashableScriptData, ExecutionUnits))) -> RemoveUtxoEvent a
 mkO txid tx (rueTxIn, ((rueTxOut, rueEvent), rueRedeemer)) = RemoveUtxoEvent{rueEvent, rueTxOut, rueTxIn, rueTxId = txid, rueTx = tx, rueRedeemer}
+
+{-| Extract from a conway-era transaction the UTXO changes at the given address
+ -}
+extractConwayTxn
+  :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
+  -> Maybe AddressCredential
+  -> UtxoSet C.CtxTx a
+  -> C.Tx ConwayEra
+  -> [UtxoChangeEvent a]
+extractConwayTxn ex cred state = DList.toList . extractConwayTxn' ex state cred
 
 extractConwayTxn'
   :: forall a. (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a)
