@@ -77,6 +77,7 @@ module Convex.BuildTx(
   addWithdrawZeroPlutusV2Reference,
   addCertificate,
   addStakeCredentialCertificate,
+  addStakeCredentialUnregCertificate,
   addStakeWitness,
 
   -- ** Minting and burning tokens
@@ -654,6 +655,11 @@ addCertificate cert =
 addStakeCredentialCertificate :: MonadBuildTx m => C.StakeCredential -> m ()
 addStakeCredentialCertificate =
   addCertificate . C.ConwayCertificate C.conwayBasedEra . TxCert.RegTxCert . C.toShelleyStakeCredential
+
+addStakeCredentialUnregCertificate :: MonadBuildTx m => C.StakeCredential -> m ()
+addStakeCredentialUnregCertificate =
+  addCertificate . C.ConwayCertificate C.conwayBasedEra . TxCert.UnRegTxCert . C.toShelleyStakeCredential
+
 
 {-| Add a stake witness to the transaction
 -}
