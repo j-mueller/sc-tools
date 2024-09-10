@@ -455,7 +455,12 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
         TxCert.ShelleyTxCertPool{} -> Nothing
         TxCert.ShelleyTxCertGenesisDeleg{} -> Nothing
         TxCert.ShelleyTxCertMir{} -> Nothing
-      C.ConwayCertificate{} -> Nothing
+      C.ConwayCertificate _era cert -> case cert of
+        CLedger.ConwayTxCertDeleg (CLedger.ConwayRegCert k _) -> Just (C.fromShelleyStakeCredential k)
+        CLedger.ConwayTxCertDeleg (CLedger.ConwayUnRegCert k _) -> Just (C.fromShelleyStakeCredential k)
+        CLedger.ConwayTxCertDeleg (CLedger.ConwayDelegCert k _) -> Just (C.fromShelleyStakeCredential k)
+        CLedger.ConwayTxCertDeleg (CLedger.ConwayRegDelegCert k _dlgte _deposit) -> Just (C.fromShelleyStakeCredential k)
+        _ -> Nothing
 
     mapScriptWitnessesMinting
       :: C.TxMintValue BuildTx C.ConwayEra
