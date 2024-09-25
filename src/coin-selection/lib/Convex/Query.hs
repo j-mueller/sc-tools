@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Custom class to encapsulate the general purpose
 queries that we need for building transactions
@@ -30,6 +31,7 @@ import           Cardano.Api                (BalancedTxBody, ConwayEra,
 import qualified Cardano.Api                as C
 import           Control.Monad.Except       (MonadError)
 import           Control.Monad.IO.Class     (MonadIO (..))
+import           Control.Monad.Primitive    (PrimMonad (..))
 import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
 import           Control.Monad.Trans.Class  (MonadTrans (..))
 import           Control.Monad.Trans.Except (runExceptT)
@@ -74,7 +76,12 @@ balanceTx dbg inputCredentials changeOutput txBody changePosition = do
   runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody changePosition)
 
 newtype WalletAPIQueryT m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain, MonadLog, MonadTrans)
+
+instance PrimMonad m => PrimMonad (WalletAPIQueryT m) where
+  type PrimState (WalletAPIQueryT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 runWalletAPIQueryT :: ClientEnv -> WalletAPIQueryT m a -> m a
 runWalletAPIQueryT env (WalletAPIQueryT action) = runReaderT action env

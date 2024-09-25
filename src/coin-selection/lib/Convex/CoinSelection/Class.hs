@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| An effect for balancing transactions
 -}
@@ -19,6 +20,7 @@ import           Control.Monad.Catch              (MonadCatch, MonadMask,
 import           Control.Monad.Except             (ExceptT, MonadError,
                                                    runExceptT)
 import           Control.Monad.IO.Class           (MonadIO)
+import           Control.Monad.Primitive          (PrimMonad (..))
 import           Control.Monad.Reader             (ReaderT (runReaderT), ask)
 import           Control.Monad.Trans.Class        (MonadTrans (..))
 import qualified Control.Monad.Trans.State        as StrictState
@@ -73,6 +75,11 @@ class Monad m => MonadBalance m where
 newtype BalancingT m a = BalancingT{runBalancingT :: m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, MonadBlockchain)
 
+instance PrimMonad m => PrimMonad (BalancingT m) where
+  type PrimState (BalancingT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
+
 instance MonadTrans BalancingT where
   lift = BalancingT
 
@@ -110,6 +117,11 @@ instance MonadDatumQuery m => MonadDatumQuery (BalancingT m) where
 -}
 newtype TracingBalancingT m a = TracingBalancingT{ runTracingBalancingT' :: ReaderT (Tracer m TxBalancingMessage) m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, MonadBlockchain)
+
+instance PrimMonad m => PrimMonad (TracingBalancingT m) where
+  type PrimState (TracingBalancingT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 instance MonadTrans TracingBalancingT where
   lift = TracingBalancingT . lift
