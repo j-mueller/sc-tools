@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Simple logging
 -}
@@ -27,6 +28,7 @@ import           Control.Monad.Catch        (MonadCatch, MonadMask, MonadThrow,
                                              bracket)
 import           Control.Monad.Except       (MonadError)
 import           Control.Monad.IO.Class     (MonadIO (..))
+import           Control.Monad.Primitive    (PrimMonad (..))
 import           Control.Monad.Reader       (ReaderT (..))
 import           Control.Monad.State        (StateT (..))
 import qualified Control.Monad.State.Strict as State.Strict
@@ -119,6 +121,12 @@ instance Monad m => MonadLog (MonadLogIgnoreT m) where
   logWarn' _ = pure ()
   logDebug' _ = pure ()
 
+instance PrimMonad m => PrimMonad (MonadLogIgnoreT m) where
+  type PrimState (MonadLogIgnoreT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
+
+
 -- | 'MonadLog' implementation that uses a @katip@ backend
 newtype MonadLogKatipT m a = MonadLogKatipT { runMonadLogKatipT :: KatipContextT m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadThrow, MonadMask, MonadFail)
@@ -129,6 +137,11 @@ runMonadLogKatip (env, context, ns) (MonadLogKatipT action) =
   Katip.runKatipContextT env context ns action
 
 deriving newtype instance MonadError e m => MonadError e (MonadLogKatipT m)
+
+instance PrimMonad m => PrimMonad (MonadLogKatipT m) where
+  type PrimState (MonadLogKatipT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 instance MonadTrans MonadLogKatipT where
   lift = MonadLogKatipT . lift

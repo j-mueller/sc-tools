@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Typeclasses for blockchain operations
@@ -108,6 +109,7 @@ import           Control.Monad.Except                              (MonadError,
                                                                     runExceptT,
                                                                     throwError)
 import           Control.Monad.IO.Class                            (MonadIO (..))
+import           Control.Monad.Primitive                           (PrimMonad (..))
 import           Control.Monad.Reader                              (MonadTrans,
                                                                     ReaderT (..),
                                                                     ask, asks,
@@ -481,6 +483,11 @@ newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMona
 instance Monad m => MonadError e (MonadBlockchainCardanoNodeT e m) where
   throwError = MonadBlockchainCardanoNodeT . throwError . MonadBlockchainError
   catchError (MonadBlockchainCardanoNodeT action) handler = MonadBlockchainCardanoNodeT $ catchError action (\case { MonadBlockchainError e -> unMonadBlockchainCardanoNodeT (handler e); e' -> throwError e' })
+
+instance PrimMonad m => PrimMonad (MonadBlockchainCardanoNodeT e m) where
+  type PrimState (MonadBlockchainCardanoNodeT e m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runExceptT (runReaderT action info)

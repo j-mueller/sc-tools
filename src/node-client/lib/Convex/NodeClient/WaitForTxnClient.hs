@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| A node client that waits for a transaction to appear on the chain
 -}
@@ -19,6 +20,7 @@ import           Control.Concurrent.STM     (TMVar, atomically, newEmptyTMVar,
                                              putTMVar, takeTMVar)
 import           Control.Monad.Except       (MonadError (..))
 import           Control.Monad.IO.Class     (MonadIO (..))
+import           Control.Monad.Primitive    (PrimMonad (..))
 import           Control.Monad.Reader       (MonadTrans, ReaderT (..), ask,
                                              lift)
 import           Convex.Class               (MonadBlockchain (..),
@@ -68,6 +70,11 @@ checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
 newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail, MonadUtxoQuery, MonadDatumQuery)
+
+instance PrimMonad m => PrimMonad (MonadBlockchainWaitingT m) where
+  type PrimState (MonadBlockchainWaitingT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT m a -> m a
 runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)

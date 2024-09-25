@@ -43,7 +43,8 @@ library
       containers,
       aeson,
       stm,
-      mtl
+      mtl,
+      primitive
 
     build-depends:
       convex-base

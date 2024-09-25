@@ -51,7 +51,8 @@ library
       strict-sop-core,
       sop-core,
       template-haskell,
-      aeson
+      aeson,
+      primitive
 
     -- cardano dependencies
     build-depends:

@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE TypeFamilies       #-}
 {-# LANGUAGE TypeOperators      #-}
 {-# LANGUAGE ViewPatterns       #-}
 {-| Minimal mockchain
@@ -114,6 +115,7 @@ import           Control.Monad.Except                  (ExceptT,
                                                         MonadError (throwError),
                                                         runExceptT)
 import           Control.Monad.IO.Class                (MonadIO)
+import           Control.Monad.Primitive               (PrimMonad (..))
 import           Control.Monad.Reader                  (MonadReader, ReaderT,
                                                         ask, asks, local,
                                                         runReaderT)
@@ -360,6 +362,11 @@ applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
 
 newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
+
+instance PrimMonad m => PrimMonad (MockchainT m) where
+  type PrimState (MockchainT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 instance MonadTrans MockchainT where
   lift = MockchainT . lift . lift . lift

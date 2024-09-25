@@ -4,6 +4,7 @@
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE NumericUnderscores   #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-| Building transactions
@@ -111,6 +112,7 @@ import           Control.Lens                  (_1, _2, at, mapped, over, set,
                                                 view, (&))
 import qualified Control.Lens                  as L
 import           Control.Monad.Except          (MonadError (..))
+import           Control.Monad.Primitive       (PrimMonad (..))
 import           Control.Monad.Reader.Class    (MonadReader (..))
 import qualified Control.Monad.State           as LazyState
 import           Control.Monad.State.Class     (MonadState (..))
@@ -253,6 +255,11 @@ addBtx = addTxBuilder . TxBuilder . const
 -}
 newtype BuildTxT m a = BuildTxT{unBuildTxT :: WriterT TxBuilder m a }
   deriving newtype (Functor, Applicative, Monad)
+
+instance PrimMonad m => PrimMonad (BuildTxT m) where
+  type PrimState (BuildTxT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
 
 instance MonadTrans BuildTxT where
   lift = BuildTxT . lift

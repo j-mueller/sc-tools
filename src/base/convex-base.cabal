@@ -52,6 +52,7 @@ library
       exceptions,
       time,
       either-result,
+      primitive,
       QuickCheck
 
     build-depends:
