@@ -36,8 +36,7 @@ module Convex.Wallet.Operator(
   loadOperatorFilesVerification
 ) where
 
-import           Cardano.Api              (ConwayEra, CtxTx, PaymentCredential,
-                                           TxOut)
+import           Cardano.Api              (CtxTx, PaymentCredential, TxOut)
 import qualified Cardano.Api.Shelley      as C
 import           Convex.CardanoApi.Lenses (emptyTxOut)
 import           Convex.Class             (MonadBlockchain (queryNetworkId))
@@ -96,7 +95,7 @@ signTx = \case
 
 {-| Add a signature to the transaction
 -}
-signTxOperator :: Operator Signing -> C.Tx C.ConwayEra -> C.Tx C.ConwayEra
+signTxOperator :: C.IsShelleyBasedEra era => Operator Signing -> C.Tx era -> C.Tx era
 signTxOperator Operator{oPaymentKey} = signTx oPaymentKey
 
 {-| An entity that can match orders
@@ -155,18 +154,18 @@ operatorShelleyWitnessSigningKey Operator { oPaymentKey } =
 
 {-| An empty output locked by the operator's payment credential
 -}
-operatorReturnOutput :: MonadBlockchain m => Operator k -> m (TxOut CtxTx ConwayEra)
+operatorReturnOutput :: (MonadBlockchain era m, C.IsShelleyBasedEra era) => Operator k -> m (TxOut CtxTx era)
 operatorReturnOutput = returnOutputFor . operatorPaymentCredential
 
 {- An empty output locked by the payment credential
 -}
-returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut ctx ConwayEra)
+returnOutputFor :: (MonadBlockchain era m, C.IsShelleyBasedEra era) => PaymentCredential -> m (TxOut ctx era)
 returnOutputFor cred = do
   addr <- C.makeShelleyAddress
     <$> queryNetworkId
     <*> pure cred
     <*> pure C.NoStakeAddress
-  pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) addr
+  pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.shelleyBasedEra) addr
 
 {-| Loading operator files for signing from disk
 -}

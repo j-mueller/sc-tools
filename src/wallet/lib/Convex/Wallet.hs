@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 {-| Primitive wallet
 -}
 module Convex.Wallet(
@@ -127,14 +128,14 @@ parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAdaInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
+selectAdaInputsCovering :: UtxoSet ctx era a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
 selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSet) target
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
-selectAnyInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
+selectAnyInputsCovering :: UtxoSet ctx era a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
 selectAnyInputsCovering UtxoSet{_utxos} (C.Quantity target) =
-  let append (C.Quantity total_, txIns) (txIn, C.InAnyCardanoEra _ (C.TxOut _ (C.lovelaceToQuantity . C.selectLovelace . C.txOutValueToValue -> C.Quantity coin_) _ _)) =
+  let append (C.Quantity total_, txIns) (txIn, C.TxOut _ (C.lovelaceToQuantity . C.selectLovelace . C.txOutValueToValue -> C.Quantity coin_) _ _) =
         (C.Quantity (total_ + coin_), txIn : txIns)
    in
      find (\(C.Quantity c, _) -> c >= target)
@@ -145,13 +146,13 @@ selectAnyInputsCovering UtxoSet{_utxos} (C.Quantity target) =
 {-| Select inputs that cover the given amount of non-Ada
 assets.
 -}
-selectMixedInputsCovering :: UtxoSet ctx a -> [(C.AssetId, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
+selectMixedInputsCovering :: UtxoSet ctx era a -> [(C.AssetId, C.Quantity)] -> Maybe (C.Value, [C.TxIn])
 selectMixedInputsCovering UtxoSet{_utxos} xs =
   let append (vl, txIns) (vl', txIn) = (vl <> vl', txIn : txIns)
       coversTarget (candidateVl, _txIns) =
         all (\(assetId, quantity) -> C.selectAsset candidateVl assetId >= quantity) xs
       requiredAssets = foldMap (\(a, _) -> Set.singleton a) xs
-      relevantValue (txIn, C.InAnyCardanoEra _ (C.TxOut _ (C.txOutValueToValue -> value) _ _)) =
+      relevantValue (txIn, C.TxOut _ (C.txOutValueToValue -> value) _ _) =
         let providedAssets = foldMap (Set.singleton . fst) (C.valueToList value)
         in if Set.null (Set.intersection requiredAssets providedAssets)
           then Nothing

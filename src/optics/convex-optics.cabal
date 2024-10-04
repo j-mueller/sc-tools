@@ -34,10 +34,9 @@ library
     hs-source-dirs: lib
     build-depends:
       base >= 4.14 && < 4.20,
-      cardano-api == 9.1.0.0,
+      cardano-api == 9.3.0.0,
       cardano-ledger-core,
       cardano-ledger-shelley,
-      cardano-ledger-mary,
       containers,
       lens,
       ouroboros-consensus-cardano,

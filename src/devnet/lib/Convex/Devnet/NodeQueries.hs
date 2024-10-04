@@ -152,12 +152,12 @@ queryTipSlotNo networkId socket = queryTip networkId socket >>= (\(s, l, _) -> p
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxOFilter :: NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO C.ConwayEra)
+queryUTxOFilter :: forall era. C.IsShelleyBasedEra era => NetworkId -> FilePath -> QueryUTxOFilter -> IO (UTxO era)
 queryUTxOFilter networkId socket flt =
   let query =
         C.QueryInEra
           ( C.QueryInShelleyBasedEra
-              C.ShelleyBasedEraConway
+              C.shelleyBasedEra
               ( C.QueryUTxO flt)
           )
    in queryLocalState query networkId socket >>= throwOnEraMismatch
@@ -165,7 +165,7 @@ queryUTxOFilter networkId socket flt =
 -- | Query UTxO for all given addresses at given point.
 --
 -- Throws at least 'QueryException' if query fails.
-queryUTxO :: NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO C.ConwayEra)
+queryUTxO :: forall era. C.IsShelleyBasedEra era => NetworkId -> FilePath -> [Address ShelleyAddr] -> IO (UTxO era)
 queryUTxO networkId socket addresses =
   queryUTxOFilter networkId socket (C.QueryUTxOByAddress (Set.fromList $ map C.AddressShelley addresses))
 
@@ -194,7 +194,7 @@ waitForTxIn networkId socket txIn = do
               )
           )
       go = do
-        utxo <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
         when (utxo == mempty) $ do
           threadDelay 2_000_000
           go
@@ -216,7 +216,7 @@ waitForTxInSpend networkId socket txIn = do
               )
           )
       go = do
-        utxo <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
         unless (utxo == mempty) $ do
           threadDelay 2_000_000
           go

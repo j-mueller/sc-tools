@@ -2,7 +2,6 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
-{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| A node client that waits for a transaction to appear on the chain
 -}
@@ -16,11 +15,11 @@ import           Cardano.Api                (BlockInMode, ChainPoint, Env,
                                              LocalNodeConnectInfo, TxId)
 import qualified Cardano.Api                as C
 import           Control.Concurrent         (forkIO)
-import           Control.Concurrent.STM     (TMVar, atomically, newEmptyTMVar,
+import           Control.Concurrent.STM     (TMVar, atomically, newEmptyTMVarIO,
                                              putTMVar, takeTMVar)
 import           Control.Monad.Except       (MonadError (..))
 import           Control.Monad.IO.Class     (MonadIO (..))
-import           Control.Monad.Primitive    (PrimMonad (..))
+import           Control.Monad.Primitive    (PrimMonad)
 import           Control.Monad.Reader       (MonadTrans, ReaderT (..), ask,
                                              lift)
 import           Convex.Class               (MonadBlockchain (..),
@@ -41,7 +40,7 @@ transaction.
 runWaitForTxn :: LocalNodeConnectInfo -> Env -> TxId -> IO (TMVar BlockInMode)
 runWaitForTxn connectInfo env txi = do
   tip' <- NodeQueries.queryTip connectInfo
-  tmv <- atomically newEmptyTMVar
+  tmv <- newEmptyTMVarIO
   _ <- forkIO $ C.connectToLocalNode connectInfo (protocols $ waitForTxnClient tmv tip' txi env)
   pure tmv
 
@@ -68,30 +67,16 @@ checkTxIds txi ((C.Block _ txns)) = any (checkTxId txi) txns
 checkTxId :: TxId -> C.Tx era -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
-newtype MonadBlockchainWaitingT m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail, MonadUtxoQuery, MonadDatumQuery)
+newtype MonadBlockchainWaitingT era m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail, MonadUtxoQuery era, MonadDatumQuery, MonadError e, MonadLog, PrimMonad)
 
-instance PrimMonad m => PrimMonad (MonadBlockchainWaitingT m) where
-  type PrimState (MonadBlockchainWaitingT m) = PrimState m
-  {-# INLINEABLE primitive #-}
-  primitive f = lift (primitive f)
-
-runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT m a -> m a
+runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT era m a -> m a
 runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)
 
-instance MonadError e m => MonadError e (MonadBlockchainWaitingT m) where
-  throwError = lift . throwError
-  catchError m _ = m
-
-instance MonadTrans MonadBlockchainWaitingT where
+instance MonadTrans (MonadBlockchainWaitingT era) where
   lift = MonadBlockchainWaitingT . lift
 
-instance (MonadLog m) => MonadLog (MonadBlockchainWaitingT m) where
-  logInfo' = lift . logInfo'
-  logWarn' = lift . logWarn'
-  logDebug' = lift . logDebug'
-
-instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlockchainWaitingT m) where
+instance (MonadIO m, MonadBlockchain era m, MonadLog m) => MonadBlockchain era (MonadBlockchainWaitingT era m) where
   sendTx tx = MonadBlockchainWaitingT $ do
     let txi = C.getTxId (C.getTxBody tx)
     (info, env) <- ask
@@ -104,19 +89,3 @@ instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlo
         _ <- liftIO (atomically $ takeTMVar tmv)
         logInfoS $ "MonadBlockchainWaitingT.sendTx: Found " <> show txi
         pure $ Right x
-
-  utxoByTxIn txIns = MonadBlockchainWaitingT (utxoByTxIn txIns)
-
-  queryProtocolParameters = MonadBlockchainWaitingT queryProtocolParameters
-
-  queryStakeAddresses creds = MonadBlockchainWaitingT . queryStakeAddresses creds
-
-  queryStakePools = MonadBlockchainWaitingT queryStakePools
-
-  querySystemStart = MonadBlockchainWaitingT querySystemStart
-
-  queryEraHistory = MonadBlockchainWaitingT queryEraHistory
-
-  querySlotNo = MonadBlockchainWaitingT querySlotNo
-
-  queryNetworkId = MonadBlockchainWaitingT queryNetworkId
