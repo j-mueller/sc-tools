@@ -54,9 +54,9 @@ matchingIndexMPScript = compiledCodeToScript matchingIndexMPCompiled
 {-| Spend an output locked by 'matchingIndexValidatorScript', setting
 the redeemer to the index of the input in the final transaction
 -}
-spendMatchingIndex :: MonadBuildTx m => TxIn -> m ()
+spendMatchingIndex :: forall era m. (C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => MonadBuildTx era m => TxIn -> m ()
 spendMatchingIndex txi =
-  let witness txBody = C.ScriptWitness C.ScriptWitnessForSpending $ BuildTx.buildV2ScriptWitness
+  let witness txBody = C.ScriptWitness C.ScriptWitnessForSpending $ BuildTx.buildScriptWitness
         matchingIndexValidatorScript
         (C.ScriptDatumForTxIn $ Just $ toHashableScriptData ())
         (fromIntegral @Int @Integer $ BuildTx.findIndexSpending txi txBody)
@@ -65,10 +65,10 @@ spendMatchingIndex txi =
 {-| Mint a token from the 'matchingIndexMPScript', setting
 the redeemer to the index of its currency symbol in the final transaction mint
 -}
-mintMatchingIndex :: MonadBuildTx m => C.PolicyId -> C.AssetName -> C.Quantity -> m ()
+mintMatchingIndex :: forall era m. (C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => MonadBuildTx era m => C.PolicyId -> C.AssetName -> C.Quantity -> m ()
 mintMatchingIndex policy assetName quantity =
-  let witness txBody = BuildTx.buildV2ScriptWitness
+  let witness txBody = BuildTx.buildScriptWitness
         matchingIndexMPScript
-        (C.NoScriptDatumForMint)
+        C.NoScriptDatumForMint
         (fromIntegral @Int @Integer $ BuildTx.findIndexMinted policy txBody)
   in BuildTx.setScriptsValid >> BuildTx.addMintWithTxBody policy assetName quantity witness

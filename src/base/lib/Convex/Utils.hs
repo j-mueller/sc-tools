@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-| Conversion functions and other conveniences
@@ -40,7 +41,12 @@ module Convex.Utils(
   utcTimeToPosixTime,
   posixTimeToSlot,
   posixTimeToSlotUnsafe,
-  toShelleyPaymentCredential
+  toShelleyPaymentCredential,
+  alonzoEraUtxo,
+  inMary,
+  inAlonzo,
+  inBabbage,
+  inConway
 ) where
 
 import           Cardano.Api                              (BlockInMode (..),
@@ -51,6 +57,7 @@ import           Cardano.Api                              (BlockInMode (..),
                                                            PlutusScriptV2,
                                                            SlotNo, Tx, TxIn)
 import qualified Cardano.Api.Shelley                      as C
+import qualified Cardano.Ledger.Alonzo.UTxO               as L
 import qualified Cardano.Ledger.Credential                as Shelley
 import           Cardano.Ledger.Crypto                    (StandardCrypto)
 import           Cardano.Slotting.EpochInfo.API           (epochInfoSlotToUTCTime,
@@ -245,3 +252,43 @@ toShelleyPaymentCredential (PaymentCredentialByKey (C.PaymentKeyHash kh)) =
     Shelley.KeyHashObj kh
 toShelleyPaymentCredential (PaymentCredentialByScript sh) =
     Shelley.ScriptHashObj (C.toShelleyScriptHash sh)
+
+inMary :: forall era a
+  .  C.IsMaryBasedEra era
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era) => a)
+  -> a
+inMary f = case C.maryBasedEra @era of
+  C.MaryEraOnwardsMary    -> f
+  C.MaryEraOnwardsAlonzo  -> f
+  C.MaryEraOnwardsBabbage -> f
+  C.MaryEraOnwardsConway  -> f
+
+inAlonzo :: forall era a
+  .  C.IsAlonzoBasedEra era
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era) => a)
+  -> a
+inAlonzo f = case C.alonzoBasedEra @era of
+  C.AlonzoEraOnwardsAlonzo  -> f
+  C.AlonzoEraOnwardsBabbage -> f
+  C.AlonzoEraOnwardsConway  -> f
+
+inBabbage :: forall era a
+  .  C.IsBabbageBasedEra era
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era) => a)
+  -> a
+inBabbage f = case C.babbageBasedEra @era of
+  C.BabbageEraOnwardsBabbage -> f
+  C.BabbageEraOnwardsConway  -> f
+
+inConway :: forall era a
+  .  C.IsConwayBasedEra era
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.IsBabbageBasedEra era) => a)
+  -> a
+inConway f = case C.conwayBasedEra @era of
+  C.ConwayEraOnwardsConway -> f
+
+alonzoEraUtxo :: forall era a. C.IsAlonzoBasedEra era => (L.AlonzoEraUTxO (C.ShelleyLedgerEra era) => a) -> a
+alonzoEraUtxo f = case C.alonzoBasedEra @era of
+  C.AlonzoEraOnwardsAlonzo  -> f
+  C.AlonzoEraOnwardsBabbage -> f
+  C.AlonzoEraOnwardsConway  -> f

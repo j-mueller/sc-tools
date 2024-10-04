@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs              #-}
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell    #-}
@@ -725,39 +726,57 @@ v3CostModel = unsafeMkCostModel PlutusV3
             1
         ]
 
-globals :: NodeParams -> Globals
+globals :: C.IsShelleyBasedEra era => NodeParams era -> Globals
 globals params@NodeParams { npSlotLength } = mkShelleyGlobals
   (genesisDefaultsFromParams params)
   (fixedEpochInfo epochSize npSlotLength)
   (C.Ledger.pvMajor $ view L.ppProtocolVersionL protocolParameters)
 
-protVer :: NodeParams -> ProtVer
-protVer = view (L.ppProtocolVersionL @(ConwayEra StandardCrypto)) . C.unLedgerProtocolParameters . npProtocolParameters
+protVer :: L.EraPParams (C.ShelleyLedgerEra era) => NodeParams era -> ProtVer
+protVer = view L.ppProtocolVersionL . C.unLedgerProtocolParameters . npProtocolParameters
 
-genesisDefaultsFromParams :: NodeParams -> ShelleyGenesis StandardCrypto
+genesisDefaultsFromParams :: forall era. C.IsShelleyBasedEra era => NodeParams era -> ShelleyGenesis StandardCrypto
 genesisDefaultsFromParams params@NodeParams { npNetworkId } = shelleyGenesisDefaults
   { sgSystemStart = startTime
   , sgNetworkMagic = case npNetworkId of Testnet (NetworkMagic nm) -> nm; _ -> 0
   , sgNetworkId = case npNetworkId of Testnet _ -> C.Ledger.Testnet; Mainnet -> C.Ledger.Mainnet
-  , sgProtocolParams =
-      downgradePParams ()
-      $ downgradePParams ()
-      $ downgradePParams DowngradeAlonzoPParams{dappMinUTxOValue=Coin 0}
-      $ downgradePParams DowngradeBabbagePParams{dbppD=d, dbppExtraEntropy=C.Ledger.NeutralNonce}
-      $ downgradePParams ()
-      $ pParams params
+  , sgProtocolParams = ($ pParams params) $ case C.shelleyBasedEra @era of
+      C.ShelleyBasedEraShelley -> id
+      C.ShelleyBasedEraAllegra -> downgradeAllegra
+      C.ShelleyBasedEraMary    -> downgradeMary
+      C.ShelleyBasedEraAlonzo  -> downgradeAlonzo
+      C.ShelleyBasedEraBabbage -> downgradeBabbage
+      C.ShelleyBasedEraConway  -> downgradeConway
+
   }
   where
     d = fromMaybe (error "3 % 5 should be valid UnitInterval") $ boundRational (3 % 5)
 
+    downgradeAllegra :: PParams (C.ShelleyLedgerEra C.AllegraEra) -> PParams (C.ShelleyLedgerEra C.ShelleyEra)
+    downgradeAllegra = downgradePParams ()
+
+    downgradeMary :: PParams (C.ShelleyLedgerEra C.MaryEra) -> PParams (C.ShelleyLedgerEra C.ShelleyEra)
+    downgradeMary = downgradeAllegra . downgradePParams ()
+
+    downgradeAlonzo :: PParams (C.ShelleyLedgerEra C.AlonzoEra) -> PParams (C.ShelleyLedgerEra C.ShelleyEra)
+    downgradeAlonzo = downgradeMary . downgradePParams DowngradeAlonzoPParams{dappMinUTxOValue=Coin 0}
+
+    downgradeBabbage :: PParams (C.ShelleyLedgerEra C.BabbageEra) -> PParams (C.ShelleyLedgerEra C.ShelleyEra)
+    downgradeBabbage = downgradeAlonzo . downgradePParams DowngradeBabbagePParams{dbppD=d, dbppExtraEntropy=C.Ledger.NeutralNonce}
+
+    downgradeConway :: PParams (C.ShelleyLedgerEra C.ConwayEra) -> PParams (C.ShelleyLedgerEra C.ShelleyEra)
+    downgradeConway = downgradeBabbage . downgradePParams ()
+
+
+
 -- | Convert `Params` to cardano-ledger `PParams`
-pParams :: NodeParams -> PParams StandardConway
+pParams :: NodeParams era -> PParams (C.ShelleyLedgerEra era)
 pParams NodeParams { npProtocolParameters } = case npProtocolParameters of
   C.LedgerProtocolParameters p -> p
 
 {-| 'NodeParams' with default values for testing
 -}
-nodeParams :: NodeParams
+nodeParams :: NodeParams C.ConwayEra
 nodeParams =
   NodeParams
     { npNetworkId = networkId
