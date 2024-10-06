@@ -226,6 +226,7 @@ instance MonadBlockchain era m => MonadBlockchain era (ExceptT e m)
 instance MonadBlockchain era m => MonadBlockchain era (ReaderT e m)
 instance MonadBlockchain era m => MonadBlockchain era (StrictState.StateT e m)
 instance MonadBlockchain era m => MonadBlockchain era (LazyState.StateT e m)
+instance MonadBlockchain era m => MonadBlockchain era (PropertyM m)
 
 -- | Look up  a single UTxO
 singleUTxO :: MonadBlockchain era m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO era))
@@ -271,6 +272,7 @@ instance MonadMockchain era m => MonadMockchain era (ReaderT e m)
 instance MonadMockchain era m => MonadMockchain era (ExceptT e m)
 instance MonadMockchain era m => MonadMockchain era (StrictState.StateT e m)
 instance MonadMockchain era m => MonadMockchain era (LazyState.StateT e m)
+instance MonadMockchain era m => MonadMockchain era (PropertyM m)
 
 getMockChainState :: MonadMockchain era m => m (MockChainState era)
 getMockChainState = modifyMockChainState (\s -> (s, s))
@@ -303,7 +305,7 @@ getSlot = modifySlot (\s -> (s, s))
 {-| Get the current slot number
 -}
 setSlot :: MonadMockchain era m => SlotNo -> m ()
-setSlot s = modifySlot (\_ -> (s, ()))
+setSlot s = modifySlot (const (s, ()))
 
 modifyUtxo :: forall era m a.
   (C.IsShelleyBasedEra era, MonadMockchain era m)

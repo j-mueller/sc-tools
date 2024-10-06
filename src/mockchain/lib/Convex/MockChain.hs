@@ -379,7 +379,7 @@ instance Monad m => MonadState (MockChainState era) (MockchainT era m) where
   get = MockchainT $ lift get
   put = MockchainT . lift . put
 
-instance (MonadFail m, C.IsAlonzoBasedEra era) => MonadBlockchain era (MockchainT era m) where
+instance (Monad m, C.IsAlonzoBasedEra era) => MonadBlockchain era (MockchainT era m) where
   sendTx tx = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
     nps <- ask
     addDatumHashes tx
@@ -426,14 +426,15 @@ instance (MonadFail m, C.IsAlonzoBasedEra era) => MonadBlockchain era (Mockchain
     st <- get
     NodeParams{npSystemStart, npEraHistory, npSlotLength} <- ask
     let slotNo = st ^. env . L.slot
-    utime <- either fail pure (slotToUtcTime npEraHistory npSystemStart slotNo)
+    -- FIXME: Propagate this to user?
+    let utime  = either (error . (<>) "MockchainT: slotToUtcTime failed ") id (slotToUtcTime npEraHistory npSystemStart slotNo)
     return (slotNo, npSlotLength, utime)
 
-instance (MonadFail m, C.IsAlonzoBasedEra era) => MonadMockchain era (MockchainT era m) where
+instance (Monad m, C.IsAlonzoBasedEra era) => MonadMockchain era (MockchainT era m) where
   modifyMockChainState f = MockchainT $ state f
   askNodeParams = ask
 
-instance (MonadFail m, C.IsAlonzoBasedEra era) => MonadUtxoQuery era (MockchainT era m) where
+instance (Monad m, C.IsAlonzoBasedEra era) => MonadUtxoQuery era (MockchainT era m) where
   utxosByPaymentCredentials cred = inAlonzo @era $ do
     UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
     let

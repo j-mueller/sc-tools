@@ -13,21 +13,23 @@ module Convex.MockChain.Utils(
 
   -- * Running mockchain actions in QuickCheck tests
   runMockchainProp,
+  runMockchainPropErr,
   runMockchainPropWith
   ) where
 
 import qualified Cardano.Api               as C
 import           Control.Exception         (SomeException, try)
-import           Convex.MockChain          (InitialUTXOs, 
-                                            MockchainIO, MockchainT,
-                                            initialStateFor, runMockchain,
-                                            runMockchain0IOWith)
+import           Control.Monad.Except      (ExceptT, MonadError, runExceptT)
+import           Convex.MockChain          (InitialUTXOs, MockchainIO,
+                                            MockchainT, initialStateFor,
+                                            runMockchain, runMockchain0IOWith)
 import qualified Convex.MockChain.Defaults as Defaults
 import           Convex.NodeParams         (NodeParams)
 import qualified Convex.Wallet.MockWallet  as Wallet
 import           Data.Functor.Identity     (Identity)
 import           Test.HUnit                (Assertion)
-import           Test.QuickCheck           (Property, Testable)
+import           Test.QuickCheck           (Property, Testable (..),
+                                            counterexample)
 import           Test.QuickCheck.Monadic   (PropertyM (..), monadic)
 
 {-| Run the 'Mockchain' action and fail if there is an error
@@ -63,7 +65,7 @@ mockchainFailsWith params action handleError =
 as test failures.
 -}
 runMockchainPropWith ::
-  forall era a. (Testable a, C.IsShelleyBasedEra era)
+  forall era e a. (Testable a, C.IsShelleyBasedEra era)
   => NodeParams era
   -- ^ Node parameters to use for the mockchain
   -> InitialUTXOs
@@ -80,3 +82,17 @@ runMockchainPropWith nodeParams utxos =
 -}
 runMockchainProp :: forall a. (Testable a) => PropertyM (MockchainT C.ConwayEra Identity) a -> Property
 runMockchainProp = runMockchainPropWith Defaults.nodeParams Wallet.initialUTxOs
+
+newtype TestableErr e a = TestableErr (Either e a)
+
+instance (Show e, Testable a) => Testable (TestableErr e a) where
+  property (TestableErr v) = case v of
+    Left err -> counterexample (show err) False
+    Right k  -> property k
+
+{-| Run the 'Mockchain' action as a QuickCheck property, using the default node params
+    and initial distribution, and considering all 'MockchainError's as test failures.
+-}
+runMockchainPropErr :: forall e a. (Show e, Testable a) => ExceptT e (PropertyM (MockchainT C.ConwayEra Identity)) a -> Property
+runMockchainPropErr =
+  runMockchainPropWith Defaults.nodeParams Wallet.initialUTxOs . fmap TestableErr . runExceptT

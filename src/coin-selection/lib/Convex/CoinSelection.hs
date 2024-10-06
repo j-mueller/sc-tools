@@ -36,6 +36,7 @@ module Convex.CoinSelection(
   balanceForWalletReturn,
   balanceTx,
   signForWallet,
+  signBalancedTxBody,
   -- * Balance changes
   balanceChanges,
   requiredTxIns,
@@ -188,7 +189,7 @@ data ChangeOutputPosition
 -}
 balanceTransactionBody ::
   forall era m.
-  (MonadError (BalancingError era) m, C.IsMaryBasedEra era) =>
+  (MonadError (BalancingError era) m, C.IsBabbageBasedEra era) =>
   Tracer m TxBalancingMessage ->
   SystemStart ->
   EraHistory ->
@@ -204,7 +205,7 @@ balanceTransactionBody
     protocolParams
     stakePools
     CSInputs{csiUtxo, csiTxBody, csiChangeOutput, csiNumWitnesses=TransactionSignatureCount numWits}
-    changePosition = inMary @era $ do
+    changePosition = inBabbage @era $ do
 
   let csiChangeLatestEraOutput = csiChangeOutput
       mkChangeOutputFor i = csiChangeLatestEraOutput & L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId ?~ i
@@ -269,12 +270,12 @@ balanceTransactionBody
           & set L.txFee t_fee
           & addChangeOutput changeOutputBalance
 
-  txbody3 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.shelleyBasedEra finalBodyContent
+  unsingnedTx <- balancingError . first C.TxBodyError $ C.Experimental.makeUnsignedTx (C.Experimental.babbageEraOnwardsToEra $ C.babbageBasedEra @era) finalBodyContent
 
   balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
-  let mkBalancedBody b = C.BalancedTxBody finalBodyContent b changeOutputBalance t_fee
-  return (mkBalancedBody (C.Experimental.UnsignedTx txbody3), balances)
+  let finalBody = C.BalancedTxBody finalBodyContent unsingnedTx changeOutputBalance t_fee
+  return (finalBody, balances)
 
 checkMinUTxOValue
   :: (C.IsShelleyBasedEra era, MonadError (BalancingError era) m)
@@ -444,10 +445,10 @@ mapTxScriptWitnesses f txbodycontent@C.TxBodyContent {
                 -- The certs are indexed in list order
               | (ix, cert) <- zip [0..] certs
               , stakecred <- maybeToList (C.shelleyBasedEraConstraints @era C.shelleyBasedEra selectStakeCredential cert)
-              , C.ScriptWitness ctx witness <- maybeToList (Map.lookup stakecred witnesses)
+              , C.ScriptWitness ctx witness <- maybeToList (List.lookup stakecred witnesses)
               , let witness' = f (C.ScriptWitnessIndexCertificate ix) witness
               ]
-      in C.TxCertificates supported certs . C.BuildTxWith . Map.fromList <$>
+      in C.TxCertificates supported certs . C.BuildTxWith <$>
            traverse ( \(sCred, eScriptWitness) ->
                         case eScriptWitness of
                           Left e    -> Left e
@@ -636,10 +637,19 @@ balanceForWalletReturn dbg wallet walletUtxo returnOutput txb changePosition = i
 
 {-| Sign a transaction with the wallet's key
 -}
-signForWallet :: C.IsShelleyBasedEra era => Wallet -> C.BalancedTxBody era -> C.Tx era
-signForWallet wallet (C.BalancedTxBody _ txbody _changeOutput _fee) =
-  let wit = [C.makeShelleyKeyWitness C.shelleyBasedEra txbody $ C.WitnessPaymentKey (Wallet.getWallet wallet)]
-  in C.makeSignedTransaction wit txbody
+signForWallet :: forall era. (C.IsBabbageBasedEra era) => Wallet -> C.BalancedTxBody era -> C.Tx era
+signForWallet wallet = signBalancedTxBody [C.WitnessPaymentKey (Wallet.getWallet wallet)]
+
+{-| Sign the tx body with the given keys
+-}
+signBalancedTxBody :: forall era. (C.IsBabbageBasedEra era) => [C.ShelleyWitnessSigningKey] -> C.BalancedTxBody era -> C.Tx era
+signBalancedTxBody witnesses (C.BalancedTxBody _ txbody _changeOutput _fee) =
+  let era  = C.babbageBasedEra @era
+      era2 = C.Experimental.babbageEraOnwardsToEra era
+  in C.Experimental.obtainCommonConstraints era2 $
+      let wit = C.Experimental.makeKeyWitness era2 txbody <$> witnesses
+      in C.ShelleyTx (C.babbageEraOnwardsToShelleyBasedEra era) (C.Experimental.signTx era2 [] wit txbody)
+
 
 -- | If the transaction body has no inputs then we add one from the wallet's UTxO set.
 --   (we have to do this because 'C.evaluateTransactionBalance' fails on a tx body with
@@ -702,7 +712,7 @@ runsScripts :: forall era. C.IsMaryBasedEra era => TxBodyContent BuildTx era -> 
 runsScripts body = inMary @era $
   let scriptIns   = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
       minting     = body ^. (L.txMintValue . L._TxMintValue . _2)
-      certificates = body ^.. (L.txCertificates . L._TxCertificates . _2 . traversed . L._ScriptWitness)
+      certificates = body ^.. (L.txCertificates . L._TxCertificates . _2 . traversed . _2 . L._ScriptWitness)
       withdrawals  = body ^.. (L.txWithdrawals . L._TxWithdrawals . traversed . _3 . L._BuildTxWith . L._ScriptWitness)
 
   in

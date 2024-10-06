@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-} -- 1.1.0.0 will be enabled in conway
+{-# OPTIONS_GHC -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fplugin-opt PlutusTx.Plugin:target-version=1.1.0.0 #-} -- 1.1.0.0 will be enabled in conway
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE TemplateHaskell  #-}
