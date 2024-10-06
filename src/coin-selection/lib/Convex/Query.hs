@@ -107,8 +107,8 @@ balancePaymentCredentials ::
   m (C.Tx era)
 balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody changePosition = do
   output <- maybe (inBabbage @era returnOutputFor primaryCred) pure returnOutput
-  (C.BalancedTxBody _ txbody _changeOutput _fee, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody changePosition)
-  pure (C.makeSignedTransaction [] txbody)
+  (body, _) <- liftEither BalanceError (balanceTx dbg (primaryCred:otherCreds) output txBody changePosition)
+  pure $ Convex.CoinSelection.signBalancedTxBody [] body
 
 {-| Balance a transaction body using the funds locked by the payment credential
 -}

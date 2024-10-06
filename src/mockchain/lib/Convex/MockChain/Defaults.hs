@@ -91,6 +91,8 @@ epochSize = EpochSize 432_000
 slotLength :: SlotLength
 slotLength = mkSlotLength 1 -- 1 second
 
+-- FIXME: Make this era independent
+
 protocolParameters :: PParams StandardConway
 protocolParameters = L.PParams $
     L.emptyPParamsIdentity @(ConwayEra StandardCrypto)
