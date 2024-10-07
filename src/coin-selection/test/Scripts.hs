@@ -21,6 +21,7 @@ import           Convex.BuildTx                (MonadBuildTx)
 import qualified Convex.BuildTx                as BuildTx
 import           Convex.PlutusTx               (compiledCodeToScript)
 import           Convex.Scripts                (toHashableScriptData)
+import           Convex.Utils                  (inAlonzo)
 import           PlutusLedgerApi.Common        (SerialisedScript)
 import           PlutusLedgerApi.Test.Examples (alwaysSucceedingNAryFunction)
 import           PlutusTx                      (BuiltinData, CompiledCode)
@@ -38,10 +39,10 @@ v2StakingScript :: C.PlutusScript C.PlutusScriptV2
 v2StakingScript = C.PlutusScriptSerialised $ alwaysSucceedingNAryFunction 2
 
 matchingIndexValidatorCompiled :: CompiledCode (BuiltinData -> BuiltinUnit)
-matchingIndexValidatorCompiled =  $$(PlutusTx.compile [|| \c -> MatchingIndex.validator c ||])
+matchingIndexValidatorCompiled =  $$(PlutusTx.compile [|| MatchingIndex.validator ||])
 
 matchingIndexMPCompiled :: CompiledCode (BuiltinData -> BuiltinUnit)
-matchingIndexMPCompiled = $$(PlutusTx.compile [|| \c -> MatchingIndex.mintingPolicy c ||])
+matchingIndexMPCompiled = $$(PlutusTx.compile [|| MatchingIndex.mintingPolicy ||])
 
 {-| Script that passes if the input's index (in the list of transaction inputs)
   matches the number passed as the redeemer
@@ -66,8 +67,8 @@ spendMatchingIndex txi =
 {-| Mint a token from the 'matchingIndexMPScript', setting
 the redeemer to the index of its currency symbol in the final transaction mint
 -}
-mintMatchingIndex :: forall era m. (C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV3 era) => MonadBuildTx era m => C.PolicyId -> C.AssetName -> C.Quantity -> m ()
-mintMatchingIndex policy assetName quantity =
+mintMatchingIndex :: forall era m. (C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV3 era) => MonadBuildTx era m => C.PolicyId -> C.AssetName -> C.Quantity -> m ()
+mintMatchingIndex policy assetName quantity = inAlonzo @era $
   let witness txBody = BuildTx.buildScriptWitness
         matchingIndexMPScript
         C.NoScriptDatumForMint
