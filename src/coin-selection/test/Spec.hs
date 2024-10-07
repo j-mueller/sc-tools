@@ -46,7 +46,8 @@ import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Staking       (registerPool)
 import           Convex.MockChain.Utils         (mockchainSucceeds,
-                                                 runMockchainPropErr)
+                                                 runMockchainProp,
+                                                 runTestableErr)
 import           Convex.NodeParams              (ledgerProtocolParameters,
                                                  protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
@@ -297,7 +298,7 @@ balanceMultiAddress = do
           $ classify (null requiredSignatures) "0 required signatures"
           $ classify (not (null requiredSignatures) && length requiredSignatures <= 9) "1-9 required signatures"
           $ classify (length requiredSignatures > 9) "10+ required signatures"
-          $ runMockchainPropErr @(BalanceTxError C.ConwayEra) $ do
+          $ runMockchainProp $ runTestableErr @(BalanceTxError C.ConwayEra) $ do
               -- send Ada to each operator
               traverse_ (payToOperator' mempty (C.lovelaceToValue $ 7_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
 
