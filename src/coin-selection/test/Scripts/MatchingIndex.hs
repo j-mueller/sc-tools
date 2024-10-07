@@ -12,27 +12,29 @@ module Scripts.MatchingIndex(
   , mintingPolicy
 ) where
 
+import           PlutusLedgerApi.V1.Scripts  (Redeemer (..))
 import           PlutusLedgerApi.V1.Value    (flattenValue)
-import           PlutusLedgerApi.V2.Contexts (ScriptContext (..),
-                                              ScriptPurpose (..), TxInInfo (..),
+import           PlutusLedgerApi.V3.Contexts (ScriptContext (..),
+                                              ScriptInfo (..), TxInInfo (..),
                                               TxInfo (..))
+import qualified PlutusTx.Builtins.Internal  as BI
 import           PlutusTx.IsData.Class       (UnsafeFromData (unsafeFromBuiltinData))
-import           PlutusTx.Prelude            (BuiltinData)
+import           PlutusTx.Prelude            (BuiltinData, BuiltinUnit)
 import qualified PlutusTx.Prelude            as P
 
 {-# INLINABLE validator #-}
-validator :: BuiltinData -> BuiltinData -> BuiltinData -> ()
-validator _datum (unsafeFromBuiltinData -> idx :: P.Integer) (unsafeFromBuiltinData -> ScriptContext{scriptContextPurpose=Spending txOutRef, scriptContextTxInfo=TxInfo{txInfoInputs}}) =
+validator :: BuiltinData -> BuiltinUnit
+validator (unsafeFromBuiltinData -> ScriptContext{scriptContextScriptInfo=SpendingScript txOutRef _, scriptContextTxInfo=TxInfo{txInfoInputs}, scriptContextRedeemer=(unsafeFromBuiltinData P.. getRedeemer -> idx :: P.Integer)}) =
   let isOwnIndex TxInInfo{txInInfoOutRef} = txInInfoOutRef P.== txOutRef
       ownIndex   = P.findIndex isOwnIndex txInfoInputs
-  in if ownIndex P.== (P.Just idx) then () else P.traceError "Different indices"
-validator _ _ _ = P.error ()
+  in if ownIndex P.== (P.Just idx) then BI.unitval else P.traceError "Different indices"
+validator _ = P.error ()
 
 {-# INLINABLE mintingPolicy #-}
-mintingPolicy :: BuiltinData -> BuiltinData -> ()
-mintingPolicy (unsafeFromBuiltinData -> idx :: P.Integer) (unsafeFromBuiltinData -> ScriptContext{scriptContextPurpose=Minting ownCs, scriptContextTxInfo=TxInfo{txInfoMint}}) =
+mintingPolicy :: BuiltinData -> BuiltinUnit
+mintingPolicy (unsafeFromBuiltinData -> ScriptContext{scriptContextScriptInfo=MintingScript ownCs, scriptContextTxInfo=TxInfo{txInfoMint}, scriptContextRedeemer=(unsafeFromBuiltinData P.. getRedeemer -> idx :: P.Integer)}) =
   let mintList = flattenValue txInfoMint
       isOwnIndex (cs,_,_) = cs P.== ownCs
       ownIndex = P.findIndex isOwnIndex mintList
-  in if ownIndex P.== (P.Just idx) then () else P.traceError "Different indices"
-mintingPolicy _ _ = P.error ()
+  in if ownIndex P.== (P.Just idx) then BI.unitval else P.traceError "Different indices"
+mintingPolicy _ = P.error ()
