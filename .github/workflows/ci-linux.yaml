@@ -40,7 +40,8 @@ jobs:
       - name: Build dependencies for integration test
         run: |
           cabal update
-          cabal install -j cardano-node cardano-cli convex-wallet --overwrite-policy=always
+          cabal install -j cardano-node cardano-cli --overwrite-policy=always
+          cabal install -j convex-wallet --overwrite-policy=always
           echo "/home/runner/.cabal/bin" >> $GITHUB_PATH
 
       - name: build & test
