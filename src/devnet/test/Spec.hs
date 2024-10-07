@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -153,9 +154,9 @@ stakePoolRewards = do
             withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams nodeConfigFile (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
               let stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
                   stakeCred = C.StakeCredentialByKey stakeHash
-              -- waitForStakeRewards tr rspnNode  stakeCred
-              --   >>= assertBool "Expect staking rewards" $ rewards > 0
-              assertBool "FIXME" True
+              rewards <- waitForStakeRewards tr rspnNode  stakeCred
+              assertBool "Expect staking rewards" $ rewards > 0
+              
     where
       confChange =
         GenesisConfigChanges
@@ -196,7 +197,7 @@ makePayment = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          bal <- Utxos.totalBalance <$> W.walletUtxos runningNode wllt
+          bal <- Utxos.totalBalance <$> W.walletUtxos @C.ConwayEra runningNode wllt
           assertEqual "Wallet should have the expected balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.lovelaceToQuantity $ C.selectLovelace bal)
 
 runWalletServer :: IO ()
@@ -205,7 +206,7 @@ runWalletServer =
     withTempDir "cardano-cluster" $ \tmp -> do
       withCardanoNodeDevnet (contramap TLNode tr) tmp $ \node ->
         withWallet (contramap TWallet tr) tmp node $ \wllt -> do
-          bal <- Utxos.totalBalance <$> getUTxOs wllt
+          bal <- Utxos.totalBalance <$> getUTxOs @C.ConwayEra wllt
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10 :: Int
           assertEqual "Wallet should have the correct balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.selectLovelace bal)
