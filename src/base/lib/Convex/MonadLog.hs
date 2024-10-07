@@ -1,6 +1,8 @@
+{-# LANGUAGE DefaultSignatures    #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| Simple logging
 -}
@@ -57,6 +59,15 @@ class Monad m => MonadLog m where
 
   -- | Log a message at the @debug@ level
   logDebug' :: Doc Void -> m ()
+
+  default logInfo' :: (MonadTrans t, m ~ t n, MonadLog n) => Doc Void -> m ()
+  logInfo' = lift . logInfo'
+
+  default logWarn' :: (MonadTrans t, m ~ t n, MonadLog n) => Doc Void -> m ()
+  logWarn' = lift . logWarn'
+
+  default logDebug' :: (MonadTrans t, m ~ t n, MonadLog n) => Doc Void -> m ()
+  logDebug' = lift . logDebug'
 
 instance MonadLog m => MonadLog (ReaderT e m) where
   logInfo' = lift . logInfo'

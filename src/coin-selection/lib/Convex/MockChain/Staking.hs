@@ -1,4 +1,6 @@
+{-# LANGUAGE GADTs              #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE TypeApplications   #-}
 module Convex.MockChain.Staking (registerPool) where
 
 import qualified Cardano.Api.Ledger             as C
@@ -9,8 +11,7 @@ import           Control.Monad.IO.Class         (MonadIO (..))
 import qualified Convex.BuildTx                 as BuildTx
 import           Convex.Class                   (MonadMockchain)
 import           Convex.CoinSelection           (BalanceTxError,
-                                                 ChangeOutputPosition (TrailingChange),
-                                                 ERA)
+                                                 ChangeOutputPosition (TrailingChange))
 import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
 import qualified Convex.MockChain.Defaults      as Defaults
 import           Convex.Wallet                  (Wallet)
@@ -18,63 +19,64 @@ import           Data.Ratio                     ((%))
 
 {-| Run the 'Mockchain' action with registered pool
 -}
-registerPool :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError Convex.CoinSelection.ERA) m, MonadFail m) => Wallet -> m C.PoolId
-registerPool wallet = do
-  stakeKey <- C.generateSigningKey C.AsStakeKey
-  vrfKey <- C.generateSigningKey C.AsVrfKey
-  stakePoolKey <- C.generateSigningKey C.AsStakePoolKey
+registerPool :: forall era m. (MonadIO m, MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsConwayBasedEra era) => Wallet -> m C.PoolId
+registerPool wallet = case C.conwayBasedEra @era of
+  C.ConwayEraOnwardsConway -> do
+    stakeKey <- C.generateSigningKey C.AsStakeKey
+    vrfKey <- C.generateSigningKey C.AsVrfKey
+    stakePoolKey <- C.generateSigningKey C.AsStakePoolKey
 
-  let
-    vrfHash =
-      C.verificationKeyHash . C.getVerificationKey $ vrfKey
+    let
+      vrfHash =
+        C.verificationKeyHash . C.getVerificationKey $ vrfKey
 
-    stakeHash =
-      C.verificationKeyHash . C.getVerificationKey $ stakeKey
+      stakeHash =
+        C.verificationKeyHash . C.getVerificationKey $ stakeKey
 
-    stakeCred = C.StakeCredentialByKey stakeHash
+      stakeCred = C.StakeCredentialByKey stakeHash
 
-    stakeCert =
-      C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
-      $ stakeCred
-    stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
+      stakeCert =
+        C.makeStakeAddressRegistrationCertificate
+        . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
+        $ stakeCred
+      stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
 
-    stakePoolVerKey = C.getVerificationKey stakePoolKey
-    poolId = C.verificationKeyHash stakePoolVerKey
+      stakePoolVerKey = C.getVerificationKey stakePoolKey
+      poolId = C.verificationKeyHash stakePoolVerKey
 
-    delegationCert =
-      C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (C.DelegStake $ C.unStakePoolKeyHash poolId)
+      delegationCert =
+        C.makeStakeAddressDelegationCertificate
+        $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (C.DelegStake $ C.unStakePoolKeyHash poolId)
 
-    stakePoolParams =
-     C.StakePoolParameters
-       poolId
-       vrfHash
-       340_000_000 -- cost
-       (3 % 100) -- margin
-       stakeAddress
-       0 -- pledge
-       [stakeHash] -- owners
-       [] -- relays
-       Nothing
+      stakePoolParams =
+        C.StakePoolParameters
+          poolId
+          vrfHash
+          340_000_000 -- cost
+          (3 % 100) -- margin
+          stakeAddress
+          0 -- pledge
+          [stakeHash] -- owners
+          [] -- relays
+          Nothing
 
-    poolCert =
-      C.makeStakePoolRegistrationCertificate
-      . C.StakePoolRegistrationRequirementsConwayOnwards C.ConwayEraOnwardsConway
-      . C.toShelleyPoolParams
-      $ stakePoolParams
+      poolCert =
+        C.makeStakePoolRegistrationCertificate
+        . C.StakePoolRegistrationRequirementsConwayOnwards C.ConwayEraOnwardsConway
+        . C.toShelleyPoolParams
+        $ stakePoolParams
 
-    stakeCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate stakeCert
+      stakeCertTx = BuildTx.execBuildTx $ do
+        BuildTx.addCertificate stakeCert
 
-    poolCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate poolCert
+      poolCertTx = BuildTx.execBuildTx $ do
+        BuildTx.addCertificate poolCert
 
-    delegCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate delegationCert
+      delegCertTx = BuildTx.execBuildTx $ do
+        BuildTx.addCertificate delegationCert
 
-  void $ tryBalanceAndSubmit mempty wallet stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
-  void $ tryBalanceAndSubmit mempty wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
-  void $ tryBalanceAndSubmit mempty wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+    void $ tryBalanceAndSubmit mempty wallet stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+    void $ tryBalanceAndSubmit mempty wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
+    void $ tryBalanceAndSubmit mempty wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 
-  pure poolId
+    pure poolId
