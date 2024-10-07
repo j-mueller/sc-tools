@@ -16,14 +16,12 @@ import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
 import           Control.Monad.IO.Class         (MonadIO (..))
 import           Control.Monad.State.Strict     (execStateT, modify)
-import           Control.Monad.Trans.Class      (MonadTrans (..))
 import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
                                                  assetValue, execBuildTx,
                                                  execBuildTxT, mintPlutus,
                                                  payToAddress,
                                                  payToAddressTxOut,
                                                  payToScriptDatumHash,
-                                                 payToScriptInlineDatum,
                                                  prependTxOut,
                                                  setMinAdaDepositAll,
                                                  spendPlutus, spendPlutusRef)
@@ -48,7 +46,6 @@ import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Staking       (registerPool)
 import           Convex.MockChain.Utils         (mockchainSucceeds,
-                                                 runMockchainProp,
                                                  runMockchainPropErr)
 import           Convex.NodeParams              (ledgerProtocolParameters,
                                                  protocolParameters)
@@ -156,11 +153,11 @@ spendPlutusV2Script ref = inBabbage @era $ do
   let tx = execBuildTx (spendPlutus ref Scripts.v2SpendingScript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-putReferenceScript :: forall era m. (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> m C.TxIn
+putReferenceScript :: forall m. (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
-  let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
+  let addr = Wallet.addressInEra Defaults.networkId wallet
       tx = execBuildTx $
-            payToScriptInlineDatum Defaults.networkId hsh () C.NoStakeAddress (C.lovelaceToValue 10_000_000)
+            BuildTx.createRefScriptDatumHash addr (plutusScript Scripts.v2SpendingScript) () (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx TrailingChange []
   let outRef = C.TxIn txId (C.TxIx 0)
@@ -355,13 +352,15 @@ largeTransactionTest = do
     (_, view failedTransactions -> [(_, err)]) -> case err of
       ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20313 16384)):|[])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
+    (_, length . view failedTransactions -> numFailed) -> fail $ "Expected one failed transaction, found " <> show numFailed
 
   -- the tx should succeed after setting the max tx size to exactly 20304 (see the error message in the test above)
   let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20313
   runMockchain0IOWith Wallet.initialUTxOs params' (failOnError largeDatumTx) >>= \case
     (Right{}, view failedTransactions -> []) -> pure ()
+    (_, length . view failedTransactions -> numFailed) -> fail $ "Expected success with 0 failed transactions, found " <> show numFailed
 
-matchingIndex :: forall era m. (MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => m ()
+matchingIndex :: forall era m. (MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV3 era) => m ()
 matchingIndex = inBabbage @era $ do
   let txBody = execBuildTx (BuildTx.payToScriptDatumHash Defaults.networkId (plutusScript Scripts.matchingIndexValidatorScript) () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
       tx     = C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
@@ -390,12 +389,12 @@ withdrawZero = inBabbage @era $ do
 
 matchingIndexMP :: forall m. (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 matchingIndexMP = do
-  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.matchingIndexMPScript)
+  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV3 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
       runTx assetName = Scripts.mintMatchingIndex policyId assetName 100
   void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]) TrailingChange []
 
-queryStakeAddressesTest :: forall era m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 queryStakeAddressesTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -435,7 +434,7 @@ queryStakeAddressesTest = do
   when (length rewards /= 1) $ fail "Expected 1 reward"
   when (length delegations /= 1) $ fail "Expected 1 delegation"
 
-withdrawalTest :: forall era m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+withdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 withdrawalTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
