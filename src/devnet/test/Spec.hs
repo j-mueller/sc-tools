@@ -50,7 +50,6 @@ import           Data.Ratio                      ((%))
 import qualified Data.Set                        as Set
 import           GHC.Generics                    (Generic)
 import           GHC.IO.Encoding                 (setLocaleEncoding, utf8)
-import           System.FilePath                 ((</>))
 import           Test.Tasty                      (defaultMain, testGroup)
 import           Test.Tasty.HUnit                (assertBool, assertEqual,
                                                   testCase)
@@ -107,10 +106,9 @@ startLocalStakePoolNode = do
         withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode -> do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
-              nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode} -> do
               runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
                 Left err -> failure (show err)
                 Right{}  -> pure ()
@@ -123,12 +121,11 @@ registeredStakePoolNode = do
         withCardanoNodeDevnet (contramap TLNode tr)  tmp $ \runningNode@RunningNode{rnConnectInfo} -> do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
-              nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let mode = fst rnConnectInfo
           initialStakePools <- queryStakePools mode
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001])  runningNode $ \_ -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams (PortsConfig 3002 [3001])  runningNode $ \_ -> do
               currentStakePools <- queryStakePools mode
               let
                 initial = length initialStakePools
@@ -143,20 +140,18 @@ stakePoolRewards = do
         withCardanoNodeDevnetConfig (contramap TLNode tr) tmp confChange (PortsConfig 3001 [3002]) $ \runningNode -> do
           let lovelacePerUtxo = 10_000_000_000
               numUtxos        = 4
-              nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let stakepoolParams = StakePoolNodeParams
                                   { spnCost   = 340_000_000
                                   , spnMargin = 1 % 100
-                                  , spnPledge = 10_000_000_000 --100_000_000
+                                  , spnPledge = 10_000_000_000
                                   }
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
-            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams nodeConfigFile (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnStakeKey} -> do
+            withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do
               let stakeHash = C.verificationKeyHash . C.getVerificationKey $ rspnStakeKey
-                  _stakeCred = C.StakeCredentialByKey stakeHash
-              -- waitForStakeRewards tr rspnNode  stakeCred
-              --   >>= assertBool "Expect staking rewards" $ rewards > 0
-              assertBool "FIXME" True
+                  stakeCred = C.StakeCredentialByKey stakeHash
+              rewards <- waitForStakeRewards tr rspnNode stakeCred
+              assertBool "Expect staking rewards" $ rewards > 0
     where
       confChange =
         GenesisConfigChanges
@@ -175,8 +170,8 @@ stakePoolRewards = do
         in
          sum . Map.elems . fst <$> queryStakeAddresses mode creds rnNetworkId
 
-      _waitForStakeRewards :: Tracer IO TestLog -> RunningNode -> C.StakeCredential -> IO C.Quantity
-      _waitForStakeRewards tr node cred = do
+      waitForStakeRewards :: Tracer IO TestLog -> RunningNode -> C.StakeCredential -> IO C.Quantity
+      waitForStakeRewards tr node cred = do
         rw <- getStakeRewards node cred
         traceWith tr $ TLRewards rw
         waitForStakeRewards' node cred rw

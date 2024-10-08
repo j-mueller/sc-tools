@@ -1,15 +1,22 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE OverloadedStrings  #-}
 module Convex.Devnet.CardanoNode.Types (
   Port,
   PortsConfig (..),
   defaultPortsConfig,
+  ConfigFilePath(..),
   RunningNode (..),
   RunningStakePoolNode (..),
   StakePoolNodeParams (..),
   defaultStakePoolNodeParams,
+  -- * Node arguments
+  CardanoNodeArgs(..),
+  defaultCardanoNodeArgs,
+  cardanoNodeProcess,
   -- * Genesis config changes
   GenesisConfigChanges (..),
   forkIntoConwayInEpoch,
@@ -35,6 +42,8 @@ import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
 import           Numeric.Natural                  (Natural)
 import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
+import           System.FilePath                  ((</>))
+import           System.Process                   (CreateProcess (..), proc)
 
 type Port = Int
 
@@ -53,13 +62,19 @@ data PortsConfig = PortsConfig
 defaultPortsConfig :: PortsConfig
 defaultPortsConfig = PortsConfig 3001 []
 
+newtype ConfigFilePath = ConfigFilePath FilePath
+  deriving stock (Eq, Show)
+  deriving newtype (ToJSON, FromJSON)
+
 {-| Describes a running pool node
 -}
 data RunningNode = RunningNode
-  { rnNodeSocket     :: FilePath -- ^ Cardano node socket
-  , rnNetworkId      :: NetworkId -- ^ Network ID used by the cardano node
-  , rnNodeConfigFile :: FilePath -- ^ Cardano node config file (JSON)
-  , rnConnectInfo    :: (LocalNodeConnectInfo, Env) -- ^ Connection info for node queries
+  { rnNodeSocket         :: FilePath -- ^ Cardano node socket
+  , rnNetworkId          :: NetworkId -- ^ Network ID used by the cardano node
+  , rnNodeConfigFilePath :: ConfigFilePath -- ^ Directory of the config files
+  , rnNodeArgs           :: CardanoNodeArgs
+  , rnNodeConfigFile     :: FilePath -- ^ Cardano node config file (JSON)
+  , rnConnectInfo        :: (LocalNodeConnectInfo, Env) -- ^ Connection info for node queries
   }
 
 {-| Describes a running stake pool node
@@ -145,3 +160,78 @@ setEpochLength n =
   let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
       change g = g{sgEpochLength = n}
   in mempty{cfShelley = change}
+
+-- | Arguments given to the 'cardano-node' command-line to run a node.
+data CardanoNodeArgs = CardanoNodeArgs
+  { nodeSocket             :: FilePath
+  , nodeConfigFile         :: FilePath
+  , nodeByronGenesisFile   :: FilePath
+  , nodeShelleyGenesisFile :: FilePath
+  , nodeAlonzoGenesisFile  :: FilePath
+  , nodeConwayGenesisFile  :: FilePath
+  , nodeTopologyFile       :: FilePath
+  , nodeDatabaseDir        :: FilePath
+  , nodeDlgCertFile        :: Maybe FilePath
+  , nodeSignKeyFile        :: Maybe FilePath
+  , nodeOpCertFile         :: Maybe FilePath
+  , nodeKesKeyFile         :: Maybe FilePath
+  , nodeVrfKeyFile         :: Maybe FilePath
+  , nodePort               :: Maybe Port
+  }
+
+defaultCardanoNodeArgs :: ConfigFilePath -> CardanoNodeArgs
+defaultCardanoNodeArgs (ConfigFilePath configPath) =
+  CardanoNodeArgs
+    { nodeSocket = "node.socket"
+    , nodeConfigFile = configPath </> "cardano-node.json"
+    , nodeByronGenesisFile = configPath </> "genesis-byron.json"
+    , nodeShelleyGenesisFile = configPath </> "genesis-shelley.json"
+    , nodeAlonzoGenesisFile = configPath </> "genesis-alonzo.json"
+    , nodeConwayGenesisFile = configPath </> "genesis-conway.json"
+    , nodeTopologyFile = "topology.json"
+    , nodeDatabaseDir = "db"
+    , nodeDlgCertFile = Nothing
+    , nodeSignKeyFile = Nothing
+    , nodeOpCertFile = Nothing
+    , nodeKesKeyFile = Nothing
+    , nodeVrfKeyFile = Nothing
+    , nodePort = Nothing
+    }
+
+-- | Generate command-line arguments for launching @cardano-node@.
+cardanoNodeProcess :: Maybe FilePath -> CardanoNodeArgs -> CreateProcess
+cardanoNodeProcess cwd args =
+  (proc "cardano-node" strArgs){cwd}
+ where
+  CardanoNodeArgs
+    { nodeConfigFile
+    , nodeTopologyFile
+    , nodeDatabaseDir
+    , nodeSocket
+    , nodePort
+    , nodeSignKeyFile
+    , nodeDlgCertFile
+    , nodeOpCertFile
+    , nodeKesKeyFile
+    , nodeVrfKeyFile
+    } = args
+
+  strArgs =
+    "run" :
+    mconcat
+      [ ["--config", nodeConfigFile]
+      , ["--topology", nodeTopologyFile]
+      , ["--database-path", nodeDatabaseDir]
+      , ["--socket-path", nodeSocket]
+      , opt "--port" (show <$> nodePort)
+      , opt "--byron-signing-key" nodeSignKeyFile
+      , opt "--byron-delegation-certificate" nodeDlgCertFile
+      , opt "--shelley-operational-certificate" nodeOpCertFile
+      , opt "--shelley-kes-key" nodeKesKeyFile
+      , opt "--shelley-vrf-key" nodeVrfKeyFile
+      ]
+
+  opt :: a -> Maybe a -> [a]
+  opt arg = \case
+    Nothing  -> []
+    Just val -> [arg, val]

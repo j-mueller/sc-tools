@@ -52,11 +52,15 @@ import           Control.Tracer                  (Tracer, traceWith)
 import           Convex.BuildTx                  (addCertificate, execBuildTx,
                                                   payToAddress)
 import           Convex.CoinSelection            (ChangeOutputPosition (TrailingChange))
-import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
+import           Convex.Devnet.CardanoNode.Types (CardanoNodeArgs (..),
+                                                  ConfigFilePath (..),
+                                                  GenesisConfigChanges (..),
                                                   Port, PortsConfig (..),
                                                   RunningNode (..),
                                                   RunningStakePoolNode (..),
                                                   StakePoolNodeParams (..),
+                                                  cardanoNodeProcess,
+                                                  defaultCardanoNodeArgs,
                                                   defaultPortsConfig)
 import qualified Convex.Devnet.NodeQueries       as Q
 import           Convex.Devnet.Utils             (checkProcessHasNotDied,
@@ -84,49 +88,14 @@ import           System.FilePath                 ((</>))
 import           System.IO                       (BufferMode (NoBuffering),
                                                   hSetBuffering)
 import           System.Posix                    (ownerReadMode, setFileMode)
-import           System.Process                  (CreateProcess (..),
-                                                  StdStream (UseHandle), proc,
+import           System.Process                  (CmdSpec (..),
+                                                  CreateProcess (..),
+                                                  StdStream (UseHandle), 
                                                   readProcess,
+                                                  showCommandForUser,
                                                   withCreateProcess)
 
 import           Prelude
-
--- | Arguments given to the 'cardano-node' command-line to run a node.
-data CardanoNodeArgs = CardanoNodeArgs
-  { nodeSocket             :: FilePath
-  , nodeConfigFile         :: FilePath
-  , nodeByronGenesisFile   :: FilePath
-  , nodeShelleyGenesisFile :: FilePath
-  , nodeAlonzoGenesisFile  :: FilePath
-  , nodeConwayGenesisFile  :: FilePath
-  , nodeTopologyFile       :: FilePath
-  , nodeDatabaseDir        :: FilePath
-  , nodeDlgCertFile        :: Maybe FilePath
-  , nodeSignKeyFile        :: Maybe FilePath
-  , nodeOpCertFile         :: Maybe FilePath
-  , nodeKesKeyFile         :: Maybe FilePath
-  , nodeVrfKeyFile         :: Maybe FilePath
-  , nodePort               :: Maybe Port
-  }
-
-defaultCardanoNodeArgs :: CardanoNodeArgs
-defaultCardanoNodeArgs =
-  CardanoNodeArgs
-    { nodeSocket = "node.socket"
-    , nodeConfigFile = "cardano-node.json"
-    , nodeByronGenesisFile = "genesis-byron.json"
-    , nodeShelleyGenesisFile = "genesis-shelley.json"
-    , nodeAlonzoGenesisFile = "genesis-alonzo.json"
-    , nodeConwayGenesisFile = "genesis-conway.json"
-    , nodeTopologyFile = "topology.json"
-    , nodeDatabaseDir = "db"
-    , nodeDlgCertFile = Nothing
-    , nodeSignKeyFile = Nothing
-    , nodeOpCertFile = Nothing
-    , nodeKesKeyFile = Nothing
-    , nodeVrfKeyFile = Nothing
-    , nodePort = Nothing
-    }
 
 getCardanoNodeVersion :: IO String
 getCardanoNodeVersion =
@@ -138,23 +107,29 @@ data NodeLog
   | MsgCLIStatus Text Text
   | MsgCLIRetry Text
   | MsgCLIRetryResult Text Int
-  | MsgNodeStarting {stateDirectory :: FilePath}
+  | MsgNodeStarting {stateDirectory :: FilePath, configPath :: ConfigFilePath}
   | MsgSocketIsReady FilePath
   | MsgSynchronizing {percentDone :: Centi}
   | MsgNodeIsReady
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
+cmdSpecString :: CmdSpec -> String
+cmdSpecString = \case
+  ShellCommand s -> s
+  RawCommand fp args -> showCommandForUser fp args
+
 withCardanoNode ::
   Tracer IO NodeLog ->
   NetworkId ->
+  ConfigFilePath ->
   FilePath ->
   CardanoNodeArgs ->
   (RunningNode -> IO a) ->
   IO a
-withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nodeConfigFile} action = do
-  traceWith tr $ MsgNodeCmdSpec (Text.pack $ show $ cmdspec process)
-  traceWith tr $ MsgNodeStarting{stateDirectory}
+withCardanoNode tr networkId configFilePath stateDirectory args@CardanoNodeArgs{nodeSocket, nodeConfigFile} action = do
+  traceWith tr $ MsgNodeCmdSpec (Text.pack $ cmdSpecString $ cmdspec process)
+  traceWith tr $ MsgNodeStarting{stateDirectory, configPath = configFilePath}
   withLogFile logFilePath $ \out -> do
     hSetBuffering out NoBuffering
     withCreateProcess process{std_out = UseHandle out, std_err = UseHandle out} $
@@ -176,50 +151,12 @@ withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nod
     let rnNodeConfigFile = stateDirectory </> nodeConfigFile
     traceWith tr $ MsgSocketIsReady socketPath
     rnConnectInfo <- runExceptT (Q.loadConnectInfo rnNodeConfigFile socketPath) >>= either (error . (<>) "Failed to load connect info: " . show) pure
-    let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile, rnConnectInfo}
+    let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile, rnConnectInfo, rnNodeConfigFilePath = configFilePath, rnNodeArgs = args}
     action rn
 
   cleanupSocketFile = do
     x <- doesFileExist socketPath
     when x (removeFile socketPath)
-
--- | Generate command-line arguments for launching @cardano-node@.
-cardanoNodeProcess :: Maybe FilePath -> CardanoNodeArgs -> CreateProcess
-cardanoNodeProcess cwd args =
-  (proc "cardano-node" strArgs){cwd}
- where
-  CardanoNodeArgs
-    { nodeConfigFile
-    , nodeTopologyFile
-    , nodeDatabaseDir
-    , nodeSocket
-    , nodePort
-    , nodeSignKeyFile
-    , nodeDlgCertFile
-    , nodeOpCertFile
-    , nodeKesKeyFile
-    , nodeVrfKeyFile
-    } = args
-
-  strArgs =
-    "run" :
-    mconcat
-      [ ["--config", nodeConfigFile]
-      , ["--topology", nodeTopologyFile]
-      , ["--database-path", nodeDatabaseDir]
-      , ["--socket-path", nodeSocket]
-      , opt "--port" (show <$> nodePort)
-      , opt "--byron-signing-key" nodeSignKeyFile
-      , opt "--byron-delegation-certificate" nodeDlgCertFile
-      , opt "--shelley-operational-certificate" nodeOpCertFile
-      , opt "--shelley-kes-key" nodeKesKeyFile
-      , opt "--shelley-vrf-key" nodeVrfKeyFile
-      ]
-
-  opt :: a -> Maybe a -> [a]
-  opt arg = \case
-    Nothing  -> []
-    Just val -> [arg, val]
 
 -- | Wait for the node socket file to become available.
 waitForSocket :: RunningNode -> IO ()
@@ -297,8 +234,8 @@ withCardanoNodeDevnet ::
   FilePath ->
   (RunningNode -> IO a) ->
   IO a
-withCardanoNodeDevnet tracer stateDirectory action =
-  withCardanoNodeDevnetConfig tracer stateDirectory mempty defaultPortsConfig action
+withCardanoNodeDevnet tracer stateDirectory =
+  withCardanoNodeDevnetConfig tracer stateDirectory mempty defaultPortsConfig
 
 -- | Start a single cardano-node devnet using the config from config/ and
 -- credentials from config/credentials/. Only the 'Faucet' actor will receive
@@ -325,8 +262,9 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges PortsConfig{ours
       , "kes.skey"
       , "opcert.cert"
       ]
-  let args =
-        defaultCardanoNodeArgs
+  let cfp  = ConfigFilePath stateDirectory
+      args =
+        (defaultCardanoNodeArgs cfp)
           { nodeDlgCertFile = Just dlgCert
           , nodeSignKeyFile = Just signKey
           , nodeVrfKeyFile = Just vrfKey
@@ -334,11 +272,11 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges PortsConfig{ours
           , nodeOpCertFile = Just opCert
           , nodePort = Just ours
           }
-  copyDevnetFiles args
+  copyDevnetFiles stateDirectory configChanges args
   refreshSystemStart stateDirectory args
   writeTopology peers stateDirectory args
 
-  withCardanoNode tracer networkId stateDirectory args $ \rn -> do
+  withCardanoNode tracer networkId cfp stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
     action rn
  where
@@ -354,28 +292,29 @@ withCardanoNodeDevnetConfig tracer stateDirectory configChanges PortsConfig{ours
     setFileMode destination ownerReadMode
     pure destination
 
-  GenesisConfigChanges{cfAlonzo, cfConway, cfShelley, cfNodeConfig} = configChanges
-
-  copyDevnetFiles args = do
-    readConfigFile ("devnet" </> "cardano-node.json")
-      >>= copyAndChangeJSONFile
-        cfNodeConfig
-        (stateDirectory </> nodeConfigFile args)
-    readConfigFile ("devnet" </> "genesis-byron.json")
-      >>= BS.writeFile
-        (stateDirectory </> nodeByronGenesisFile args)
-    readConfigFile ("devnet" </> "genesis-shelley.json")
-      >>= copyAndChangeJSONFile
-        cfShelley
-        (stateDirectory </> nodeShelleyGenesisFile args)
-    readConfigFile ("devnet" </> "genesis-alonzo.json")
-      >>= copyAndChangeJSONFile
-        cfAlonzo
-        (stateDirectory </> nodeAlonzoGenesisFile args)
-    readConfigFile ("devnet" </> "genesis-conway.json")
-      >>= copyAndChangeJSONFile
-        cfConway
-        (stateDirectory </> nodeConwayGenesisFile args)
+{-| Copy the devnet configuration files to the given directory
+-}
+copyDevnetFiles :: FilePath -> GenesisConfigChanges -> CardanoNodeArgs -> IO ()
+copyDevnetFiles stateDirectory GenesisConfigChanges{cfAlonzo, cfConway, cfShelley, cfNodeConfig} args = do
+  readConfigFile ("devnet" </> "cardano-node.json")
+    >>= copyAndChangeJSONFile
+      cfNodeConfig
+      (stateDirectory </> nodeConfigFile args)
+  readConfigFile ("devnet" </> "genesis-byron.json")
+    >>= BS.writeFile
+      (stateDirectory </> nodeByronGenesisFile args)
+  readConfigFile ("devnet" </> "genesis-shelley.json")
+    >>= copyAndChangeJSONFile
+      cfShelley
+      (stateDirectory </> nodeShelleyGenesisFile args)
+  readConfigFile ("devnet" </> "genesis-alonzo.json")
+    >>= copyAndChangeJSONFile
+      cfAlonzo
+      (stateDirectory </> nodeAlonzoGenesisFile args)
+  readConfigFile ("devnet" </> "genesis-conway.json")
+    >>= copyAndChangeJSONFile
+      cfConway
+      (stateDirectory </> nodeConwayGenesisFile args)
 
 writeTopology :: [Port] -> FilePath -> CardanoNodeArgs -> IO ()
 writeTopology peers stateDirectory args =
@@ -483,8 +422,6 @@ withCardanoStakePoolNodeDevnetConfig ::
   Wallet ->
   -- | Stake pool params
   StakePoolNodeParams ->
-  -- | The absolute path of the cardano-node.json configuration file
-  FilePath ->
   -- | Ports config
   PortsConfig ->
   -- | Running node
@@ -492,7 +429,7 @@ withCardanoStakePoolNodeDevnetConfig ::
   -- | Action
   (RunningStakePoolNode -> IO a) ->
   IO a
-withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile PortsConfig{ours, peers} node@RunningNode{rnNodeSocket, rnNetworkId} action = do
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params PortsConfig{ours, peers} node@RunningNode{rnNodeSocket, rnNetworkId, rnNodeArgs, rnNodeConfigFilePath} action = do
   createDirectoryIfMissing True stateDirectory
 
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -595,17 +532,16 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
 
   let
     args =
-        defaultCardanoNodeArgs
+        rnNodeArgs
           { nodeVrfKeyFile = Just vrfKeyFile
           , nodeKesKeyFile = Just kesKeyFile
           , nodeOpCertFile = Just opCertFile
           , nodePort = Just ours
-          , nodeConfigFile = nodeConfigFile
           }
 
   writeTopology peers stateDirectory args
 
-  withCardanoNode tracer rnNetworkId stateDirectory args $ \rn -> do
+  withCardanoNode tracer rnNetworkId rnNodeConfigFilePath stateDirectory args $ \rn -> do
     traceWith tracer MsgNodeIsReady
     action (RunningStakePoolNode rn stakeKey vrfKey kesKey stakePoolKey nextOpCertCounter)
  where
