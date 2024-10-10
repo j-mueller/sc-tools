@@ -604,7 +604,7 @@ balanceForWallet ::
   ChangeOutputPosition ->
   m (C.Tx ERA, BalanceChanges)
 balanceForWallet dbg wallet walletUtxo txb changePosition = do
-  n <- networkId
+  n <- queryNetworkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = C.InAnyCardanoEra C.ConwayEra $ L.emptyTxOut walletAddress
   balanceForWalletReturn dbg wallet walletUtxo txOut txb changePosition

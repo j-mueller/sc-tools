@@ -284,7 +284,7 @@ instance MonadBlockchain m => MonadBlockchain (BuildTxT m) where
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
-  networkId = lift networkId
+  queryNetworkId = lift queryNetworkId
 
 instance MonadMockchain m => MonadMockchain (BuildTxT m) where
   modifyMockChainState = lift . modifyMockChainState
@@ -631,7 +631,7 @@ scripts easier to trigger
 -}
 addScriptWithdrawal :: (MonadBlockchain m, MonadBuildTx m) => ScriptHash -> C.Quantity -> C.ScriptWitness C.WitCtxStake C.ConwayEra -> m ()
 addScriptWithdrawal sh quantity witness = do
-  n <- networkId
+  n <- queryNetworkId
   let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript sh
       wit  = C.ScriptWitness C.ScriptWitnessForStakeAddr witness
   addWithdrawal addr quantity wit

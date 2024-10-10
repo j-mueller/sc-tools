@@ -40,7 +40,7 @@ import           Cardano.Api              (ConwayEra, CtxTx, PaymentCredential,
                                            TxOut)
 import qualified Cardano.Api.Shelley      as C
 import           Convex.CardanoApi.Lenses (emptyTxOut)
-import           Convex.Class             (MonadBlockchain (networkId))
+import           Convex.Class             (MonadBlockchain (queryNetworkId))
 import           Convex.PlutusLedger      (transPubKeyHash, transStakeKeyHash)
 import           Convex.Utils             (readSigningKeyFromFile,
                                            readStakingKeyFromFile,
@@ -163,7 +163,7 @@ operatorReturnOutput = returnOutputFor . operatorPaymentCredential
 returnOutputFor :: MonadBlockchain m => PaymentCredential -> m (TxOut ctx ConwayEra)
 returnOutputFor cred = do
   addr <- C.makeShelleyAddress
-    <$> networkId
+    <$> queryNetworkId
     <*> pure cred
     <*> pure C.NoStakeAddress
   pure $ emptyTxOut $ C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) addr
