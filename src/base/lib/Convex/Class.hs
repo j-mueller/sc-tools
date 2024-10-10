@@ -66,19 +66,6 @@ module Convex.Class(
   runMonadBlockchainCardanoNodeT
 ) where
 
-import qualified Cardano.Api                                       as C
-import           Cardano.Api.Shelley                               (ConwayEra,
-                                                                    EraHistory (..),
-                                                                    Hash,
-                                                                    HashableScriptData,
-                                                                    LedgerProtocolParameters (..),
-                                                                    LocalNodeConnectInfo,
-                                                                    NetworkId,
-                                                                    PaymentCredential,
-                                                                    PoolId,
-                                                                    ScriptData,
-                                                                    SlotNo, Tx,
-                                                                    TxId)
 import qualified Cardano.Api.Shelley                               as C
 import           Cardano.Ledger.Alonzo.Plutus.Evaluate             (CollectError)
 import qualified Cardano.Ledger.Core                               as Core
@@ -153,22 +140,22 @@ import           Test.QuickCheck.Monadic                           (PropertyM)
 -}
 class Monad m => MonadBlockchain m where
   -- see note Note [sendTx Failure]
-  sendTx                  :: Tx ConwayEra -> m (Either SendTxFailed TxId) -- ^ Submit a transaction to the network
+  sendTx                  :: C.Tx C.ConwayEra -> m (Either SendTxFailed C.TxId) -- ^ Submit a transaction to the network
   utxoByTxIn              :: Set C.TxIn -> m (C.UTxO C.ConwayEra) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m (LedgerProtocolParameters C.ConwayEra) -- ^ Get the protocol parameters
-  queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
-  queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
+  queryProtocolParameters :: m (C.LedgerProtocolParameters C.ConwayEra) -- ^ Get the protocol parameters
+  queryStakeAddresses     :: Set C.StakeCredential -> C.NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress C.PoolId) -- ^ Get stake rewards
+  queryStakePools         :: m (Set C.PoolId) -- ^ Get the stake pools
   querySystemStart        :: m SystemStart
-  queryEraHistory         :: m EraHistory
-  querySlotNo             :: m (SlotNo, SlotLength, UTCTime)
+  queryEraHistory         :: m C.EraHistory
+  querySlotNo             :: m (C.SlotNo, SlotLength, UTCTime)
                           -- ^ returns the current slot number, slot length and begin utc time for slot.
                           -- Slot 0 is returned when at genesis.
-  networkId               :: m NetworkId -- ^ Get the network id
+  queryNetworkId          :: m C.NetworkId -- ^ Get the network id
 
 {-| Try sending the transaction to the node, failing with 'error' if 'sendTx'
   was not successful.
 -}
-trySendTx :: MonadBlockchain m => Tx ConwayEra -> m TxId
+trySendTx :: MonadBlockchain m => C.Tx C.ConwayEra -> m C.TxId
 trySendTx = fmap (either (error . show) id) . sendTx
 
 deriving newtype instance MonadBlockchain m => MonadBlockchain (MonadLogIgnoreT m)
@@ -182,7 +169,7 @@ instance MonadBlockchain m => MonadBlockchain (ResultT m) where
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
-  networkId = lift networkId
+  queryNetworkId = lift queryNetworkId
 
 instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
   sendTx = lift . sendTx
@@ -193,7 +180,7 @@ instance MonadBlockchain m => MonadBlockchain (ExceptT e m) where
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
-  networkId = lift networkId
+  queryNetworkId = lift queryNetworkId
 
 instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
   sendTx = lift . sendTx
@@ -204,7 +191,7 @@ instance MonadBlockchain m => MonadBlockchain (ReaderT e m) where
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
-  networkId = lift networkId
+  queryNetworkId = lift queryNetworkId
 
 instance MonadBlockchain m => MonadBlockchain (StrictState.StateT e m) where
   sendTx = lift . sendTx
@@ -215,7 +202,7 @@ instance MonadBlockchain m => MonadBlockchain (StrictState.StateT e m) where
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
-  networkId = lift networkId
+  queryNetworkId = lift queryNetworkId
 
 instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   sendTx = lift . sendTx
@@ -226,7 +213,7 @@ instance MonadBlockchain m => MonadBlockchain (LazyState.StateT e m) where
   querySystemStart = lift querySystemStart
   queryEraHistory = lift queryEraHistory
   querySlotNo = lift querySlotNo
-  networkId = lift networkId
+  queryNetworkId = lift queryNetworkId
 
 -- | Look up  a single UTxO
 singleUTxO :: MonadBlockchain m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO C.ConwayEra))
@@ -252,7 +239,7 @@ instance Pretty SendTxFailed where
   pretty (SendTxFailed msg) = "sendTx: Submission failed:" <+> pretty msg
 
 data ExUnitsError =
-  Phase1Error (C.TransactionValidityError ConwayEra)
+  Phase1Error (C.TransactionValidityError C.ConwayEra)
   | Phase2Error C.ScriptExecutionError
   deriving (Show)
 
@@ -272,8 +259,8 @@ data MockChainState =
     { mcsEnv                :: MempoolEnv ERA
     , mcsPoolState          :: MempoolState ERA
     , mcsTransactions       :: [(Validated (Core.Tx ERA), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
-    , mcsFailedTransactions :: [(Tx ConwayEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
-    , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
+    , mcsFailedTransactions :: [(C.Tx C.ConwayEra, ValidationError)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+    , mcsDatums             :: Map (C.Hash C.ScriptData) C.HashableScriptData
     }
 
 makeLensesFor
@@ -330,19 +317,19 @@ setReward cred coin = do
         (rewards dState)
   putMockChainState (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap mcs)
 
-modifySlot :: MonadMockchain m => (SlotNo -> (SlotNo, a)) -> m a
+modifySlot :: MonadMockchain m => (C.SlotNo -> (C.SlotNo, a)) -> m a
 modifySlot f = modifyMockChainState $ \s ->
   let (s', a) = f (s ^. env . L.slot)
   in (set (env . L.slot) s' s, a)
 
 {-| Get the current slot number
 -}
-getSlot :: MonadMockchain m => m SlotNo
+getSlot :: MonadMockchain m => m C.SlotNo
 getSlot = modifySlot (\s -> (s, s))
 
 {-| Get the current slot number
 -}
-setSlot :: MonadMockchain m => SlotNo -> m ()
+setSlot :: MonadMockchain m => C.SlotNo -> m ()
 setSlot s = modifySlot (\_ -> (s, ()))
 
 modifyUtxo :: MonadMockchain m => (UTxO ERA -> (UTxO ERA, a)) -> m a
@@ -411,7 +398,7 @@ class Monad m => MonadUtxoQuery m where
   -- state. Each UTXO also possibly has the resolved datum (meaning that if we
   -- only have the datum hash, the implementation should try and resolve it to
   -- the actual datum).
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
+  utxosByPaymentCredentials :: Set C.PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 
 instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
@@ -438,7 +425,7 @@ instance MonadUtxoQuery m => MonadUtxoQuery (PropertyM m) where
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
+utxosByPaymentCredential :: MonadUtxoQuery m => C.PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]
@@ -448,7 +435,7 @@ Useful for resolving datum hashes from Mockchain or a chain-indexer.
 -}
 
 class Monad m => MonadDatumQuery m where
-  queryDatumFromHash :: Hash ScriptData -> m (Maybe HashableScriptData)
+  queryDatumFromHash :: C.Hash C.ScriptData -> m (Maybe C.HashableScriptData)
 
 instance MonadDatumQuery m => MonadDatumQuery (ResultT m) where
   queryDatumFromHash = lift . queryDatumFromHash
@@ -477,7 +464,7 @@ instance MonadDatumQuery m => MonadDatumQuery (PropertyM m) where
 
 {-| 'MonadBlockchain' implementation that connects to a cardano node
 -}
-newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT LocalNodeConnectInfo (ExceptT (MonadBlockchainError e) m) a }
+newtype MonadBlockchainCardanoNodeT e m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT C.LocalNodeConnectInfo (ExceptT (MonadBlockchainError e) m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
 instance Monad m => MonadError e (MonadBlockchainCardanoNodeT e m) where
@@ -489,7 +476,7 @@ instance PrimMonad m => PrimMonad (MonadBlockchainCardanoNodeT e m) where
   {-# INLINEABLE primitive #-}
   primitive f = lift (primitive f)
 
-runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
+runMonadBlockchainCardanoNodeT :: C.LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT e m a -> m (Either (MonadBlockchainError e) a)
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runExceptT (runReaderT action info)
 
 runQuery :: (MonadIO m, MonadLog m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT e m a
@@ -530,7 +517,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
     runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
 
   queryProtocolParameters = do
-    LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryProtocolParameters))
+    C.LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway C.QueryProtocolParameters))
 
   queryStakeAddresses creds nid =
     first (fmap C.lovelaceToQuantity) <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.ShelleyBasedEraConway (C.QueryStakeAddresses creds nid)))
@@ -543,7 +530,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
   queryEraHistory = runQuery C.QueryEraHistory
 
   querySlotNo = do
-    (eraHistory@(EraHistory interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
+    (eraHistory@(C.EraHistory interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
     slotNo <- runQuery C.QueryChainPoint >>= \case
                 C.ChainPointAtGenesis  -> pure $ fromIntegral (0 :: Integer)
                 C.ChainPoint slot _hsh -> pure slot
@@ -555,7 +542,7 @@ instance (MonadLog m, MonadIO m) => MonadBlockchain (MonadBlockchainCardanoNodeT
       utctime <- either logErr pure (slotToUtcTime eraHistory systemStart slotNo)
       either (logErr . show) (\l -> pure (slotNo, l, utctime)) (interpretQuery interpreter $ slotToSlotLength slotNo)
 
-  networkId = MonadBlockchainCardanoNodeT (asks C.localNodeNetworkId)
+  queryNetworkId = MonadBlockchainCardanoNodeT (asks C.localNodeNetworkId)
 
 instance MonadTrans (MonadBlockchainCardanoNodeT e) where
   lift = MonadBlockchainCardanoNodeT . lift .lift

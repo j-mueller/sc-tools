@@ -302,7 +302,7 @@ balanceMultiAddress = do
               traverse_ (payToOperator' mempty (C.lovelaceToValue $ 7_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
 
               -- send the entire amount back to Wallet.w2
-              walletAddr <- Wallet.addressInEra <$> networkId <*> pure Wallet.w2
+              walletAddr <- Wallet.addressInEra <$> queryNetworkId <*> pure Wallet.w2
               protParams <- queryProtocolParameters
               let tx = execBuildTx $ do
                         payToAddress walletAddr $ C.lovelaceToValue $ C.quantityToLovelace nAmount

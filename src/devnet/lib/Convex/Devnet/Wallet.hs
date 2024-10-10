@@ -33,7 +33,7 @@ import           Control.Tracer                  (Tracer, traceWith)
 import           Convex.BuildTx                  (TxBuilder)
 import qualified Convex.BuildTx                  as BuildTx
 import           Convex.CardanoApi.Lenses        (emptyTxOut)
-import           Convex.Class                    (MonadBlockchain (networkId),
+import           Convex.Class                    (MonadBlockchain (queryNetworkId),
                                                   runMonadBlockchainCardanoNodeT,
                                                   sendTx)
 import           Convex.CoinSelection            (ChangeOutputPosition (TrailingChange))
@@ -98,7 +98,7 @@ runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
 -}
 balanceAndSubmit :: Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx ConwayEra)
 balanceAndSubmit tracer node wallet tx changePosition keys = do
-  n <- runningNodeBlockchain @String tracer node networkId
+  n <- runningNodeBlockchain @String tracer node queryNetworkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = emptyTxOut walletAddress
   balanceAndSubmitReturn tracer node wallet txOut tx changePosition keys

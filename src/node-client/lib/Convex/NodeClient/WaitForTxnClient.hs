@@ -119,4 +119,4 @@ instance (MonadIO m, MonadBlockchain m, MonadLog m) => MonadBlockchain (MonadBlo
 
   querySlotNo = MonadBlockchainWaitingT querySlotNo
 
-  networkId = MonadBlockchainWaitingT networkId
+  queryNetworkId = MonadBlockchainWaitingT queryNetworkId

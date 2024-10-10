@@ -45,7 +45,7 @@ balanceAndSubmit ::
   [C.ShelleyWitnessSigningKey] ->
   m (Either SendTxFailed (C.Tx CoinSelection.ERA))
 balanceAndSubmit dbg wallet tx changePosition keys = do
-  n <- networkId
+  n <- queryNetworkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = C.InAnyCardanoEra C.ConwayEra $ emptyTxOut walletAddress
   balanceAndSubmitReturn dbg wallet txOut tx changePosition keys
@@ -63,7 +63,7 @@ tryBalanceAndSubmit ::
   [C.ShelleyWitnessSigningKey] ->
   m (C.Tx CoinSelection.ERA)
 tryBalanceAndSubmit dbg wallet tx changePosition keys = do
-  n <- networkId
+  n <- queryNetworkId
   let walletAddress = Wallet.addressInEra n wallet
       txOut = C.InAnyCardanoEra C.ConwayEra $ emptyTxOut walletAddress
   balanceAndSubmitReturn dbg wallet txOut tx changePosition keys >>= either (fail . show) pure
