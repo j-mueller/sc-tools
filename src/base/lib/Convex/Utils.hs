@@ -57,6 +57,7 @@ module Convex.Utils (
   inAlonzo,
   inBabbage,
   inConway,
+  eitherToMaybe,
 ) where
 
 import Cardano.Api (
@@ -343,3 +344,7 @@ requiredTxIns body =
   spendInputs body
     <> referenceInputs body
     <> collateralInputs body
+
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left _) = Nothing
+eitherToMaybe (Right v) = Just v

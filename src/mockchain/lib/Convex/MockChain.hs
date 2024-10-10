@@ -177,6 +177,7 @@ import Convex.Class (
   MonadBlockchain (..),
   MonadDatumQuery (..),
   MonadMockchain (..),
+  MonadTime,
   MonadUtxoQuery (..),
   ValidationError (..),
   datums,
@@ -521,6 +522,8 @@ instance (Monad m, C.IsAlonzoBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ St
 
 instance (Monad m) => MonadDatumQuery (MockchainT era m) where
   queryDatumFromHash dh = MockchainT (gets (Map.lookup dh . view datums))
+
+instance (MonadTime m) => MonadTime (MockchainT era m)
 
 -- | Add all datums from the transaction to the map of known datums
 addDatumHashes :: (MonadState (MockChainState era) m) => Tx era -> m ()

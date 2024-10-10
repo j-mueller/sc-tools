@@ -67,26 +67,19 @@ module Convex.Class (
   -- * MonadDatumQuery
   MonadDatumQuery (..),
 
+  -- * MonadTime
+  MonadTime (..),
+  MockTimeT (..),
+  runMockTimeT,
+
   -- * Implementation
   MonadBlockchainCardanoNodeT (..),
   runMonadBlockchainCardanoNodeT,
+  MemoizedCardanoNodeStateQueryResponses (..),
+  runMemoizedCardanoNodeStateQueryT,
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Shelley (
-  EraHistory (..),
-  Hash,
-  HashableScriptData,
-  LedgerProtocolParameters (..),
-  LocalNodeConnectInfo,
-  NetworkId,
-  PaymentCredential,
-  PoolId,
-  ScriptData,
-  SlotNo,
-  Tx,
-  TxId,
- )
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
 import Cardano.Ledger.Core qualified as Core
@@ -139,6 +132,7 @@ import Control.Monad.Except (
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Primitive (PrimMonad)
 import Control.Monad.Reader (
+  MonadReader,
   MonadTrans,
   ReaderT (..),
   ask,
@@ -149,7 +143,7 @@ import Control.Monad.State qualified as LazyState
 import Control.Monad.State.Strict qualified as StrictState
 import Control.Monad.Trans.Except (ExceptT (..))
 import Control.Monad.Trans.Except.Result (ResultT)
-import Control.Monad.Trans.Maybe (MaybeT (..))
+import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT), hoistMaybe)
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.MonadLog (
   MonadLog (..),
@@ -161,8 +155,10 @@ import Convex.NodeParams (
   pParams,
  )
 import Convex.Utils (
+  eitherToMaybe,
   posixTimeToSlotUnsafe,
   slotToUtcTime,
+  utcTimeToSlot,
  )
 import Convex.Utxos (UtxoSet)
 import Data.Bifunctor (Bifunctor (..))
@@ -172,6 +168,7 @@ import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Time.Clock (UTCTime)
+import Data.Time.Clock qualified as Time
 import Katip.Monadic (KatipContextT (..))
 import Ouroboros.Consensus.HardFork.History (
   interpretQuery,
@@ -213,8 +210,8 @@ makePrisms ''ValidationError
 -- | Send transactions and resolve tx inputs.
 class (Monad m) => MonadBlockchain era m | m -> era where
   sendTx
-    :: Tx era
-    -> m (Either (ValidationError era) TxId)
+    :: C.Tx era
+    -> m (Either (ValidationError era) C.TxId)
     -- ^ Submit a transaction to the network
 
   utxoByTxIn
@@ -222,16 +219,16 @@ class (Monad m) => MonadBlockchain era m | m -> era where
     -> m (C.UTxO era)
     -- ^ Resolve tx inputs
 
-  queryProtocolParameters :: m (LedgerProtocolParameters era)
+  queryProtocolParameters :: m (C.LedgerProtocolParameters era)
     -- ^ Get the protocol parameters
 
   queryStakeAddresses
     :: Set C.StakeCredential
-    -> NetworkId
-    -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
+    -> C.NetworkId
+    -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress C.PoolId)
     -- ^ Get stake rewards
 
-  queryStakePools :: m (Set PoolId)
+  queryStakePools :: m (Set C.PoolId)
     -- ^ Get the stake pools
 
   querySystemStart :: m SystemStart
@@ -243,39 +240,39 @@ class (Monad m) => MonadBlockchain era m | m -> era where
   queryNetworkId :: m C.NetworkId
     -- ^ Get the network id
 
-  default sendTx :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => Tx era -> m (Either (ValidationError era) TxId)
+  default sendTx :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => C.Tx era -> m (Either (ValidationError era) C.TxId)
   sendTx = lift . sendTx
 
   default utxoByTxIn :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => Set C.TxIn -> m (C.UTxO era)
   utxoByTxIn = lift . utxoByTxIn
 
-  default queryProtocolParameters :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (LedgerProtocolParameters era)
+  default queryProtocolParameters :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (C.LedgerProtocolParameters era)
   queryProtocolParameters = lift queryProtocolParameters
 
   default queryStakeAddresses
     :: (MonadTrans t, m ~ t n, MonadBlockchain era n)
     => Set C.StakeCredential
-    -> NetworkId
-    -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
+    -> C.NetworkId
+    -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress C.PoolId)
     -- ^ Get stake rewards
   queryStakeAddresses = (lift .) . queryStakeAddresses
 
-  default queryStakePools :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (Set PoolId)
+  default queryStakePools :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (Set C.PoolId)
   queryStakePools = lift queryStakePools
 
   default querySystemStart :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m SystemStart
   querySystemStart = lift querySystemStart
 
-  default queryEraHistory :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m EraHistory
+  default queryEraHistory :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m C.EraHistory
   queryEraHistory = lift queryEraHistory
 
-  default querySlotNo :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (SlotNo, SlotLength, UTCTime)
+  default querySlotNo :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (C.SlotNo, SlotLength, UTCTime)
   querySlotNo = lift querySlotNo
 
-  default queryNetworkId :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m NetworkId
+  default queryNetworkId :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m C.NetworkId
   queryNetworkId = lift queryNetworkId
 
-trySendTx :: (MonadBlockchain era m, C.IsAlonzoBasedEra era) => Tx era -> m TxId
+trySendTx :: (MonadBlockchain era m, C.IsAlonzoBasedEra era) => C.Tx era -> m C.TxId
 trySendTx = fmap (either (error . show) id) . sendTx
 
 deriving newtype instance (MonadBlockchain era m) => MonadBlockchain era (KatipContextT m)
@@ -304,9 +301,9 @@ data MockChainState era
   , mcsPoolState :: MempoolState (C.ShelleyLedgerEra era)
   , mcsTransactions :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext StandardCrypto])]
   -- ^ Transactions that were submitted to the mockchain and validated
-  , mcsFailedTransactions :: [(Tx era, ValidationError era)]
+  , mcsFailedTransactions :: [(C.Tx era, ValidationError era)]
   -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
-  , mcsDatums :: Map (Hash ScriptData) HashableScriptData
+  , mcsDatums :: Map (C.Hash C.ScriptData) C.HashableScriptData
   , mcsTxById :: Map C.TxId (C.Tx era)
   -- ^ Index of transactions by ID
   }
@@ -359,17 +356,17 @@ setReward cred coin = do
         (rewards dState)
   putMockChainState (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap mcs)
 
-modifySlot :: (MonadMockchain era m) => (SlotNo -> (SlotNo, a)) -> m a
+modifySlot :: (MonadMockchain era m) => (C.SlotNo -> (C.SlotNo, a)) -> m a
 modifySlot f = modifyMockChainState $ \s ->
   let (s', a) = f (s ^. env . L.slot)
    in (a, set (env . L.slot) s' s)
 
 -- | Get the current slot number
-getSlot :: (MonadMockchain era m) => m SlotNo
+getSlot :: (MonadMockchain era m) => m C.SlotNo
 getSlot = modifySlot (\s -> (s, s))
 
 -- | Get the current slot number
-setSlot :: (MonadMockchain era m) => SlotNo -> m ()
+setSlot :: (MonadMockchain era m) => C.SlotNo -> m ()
 setSlot s = modifySlot (const (s, ()))
 
 modifyUtxo
@@ -437,8 +434,8 @@ class (Monad m) => MonadUtxoQuery m where
   -- state. Each UTXO also possibly has the resolved datum (meaning that if we
   -- only have the datum hash, the implementation should try and resolve it to
   -- the actual datum).
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
-  default utxosByPaymentCredentials :: (MonadTrans t, m ~ t n, MonadUtxoQuery n) => Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
+  utxosByPaymentCredentials :: Set C.PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
+  default utxosByPaymentCredentials :: (MonadTrans t, m ~ t n, MonadUtxoQuery n) => Set C.PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
 instance (MonadUtxoQuery m) => MonadUtxoQuery (ResultT m)
@@ -451,7 +448,7 @@ instance (MonadUtxoQuery m) => MonadUtxoQuery (MonadLogIgnoreT m)
 instance (MonadUtxoQuery m) => MonadUtxoQuery (PropertyM m)
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: (MonadUtxoQuery m) => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
+utxosByPaymentCredential :: (MonadUtxoQuery m) => C.PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]
@@ -487,15 +484,174 @@ instance (MonadDatumQuery m) => MonadDatumQuery (MonadLogIgnoreT m) where
 instance (MonadDatumQuery m) => MonadDatumQuery (PropertyM m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
+{- | This Monad transformer memoizes the state query mini-protocol calls to a
+local Cardano node.
+
+Querying directly the local node is an expensive operation, thus we should
+only query it when absolutely necessary.
+
+NOTE: THIS TYPE IS EXPERIMENTAL AND SUBJECT TO CHANGE.
+-}
+newtype MemoizedCardanoNodeStateQueryT era m a
+  = MemoizedCardanoNodeStateQueryT
+  {_unMemoizedCardanoNodeStateQueryT :: StrictState.StateT (MemoizedCardanoNodeStateQueryResponses era) m a}
+  deriving newtype (Functor, Applicative, Monad, MonadIO, PrimMonad)
+
+instance MonadTrans (MemoizedCardanoNodeStateQueryT era) where
+  lift = MemoizedCardanoNodeStateQueryT . lift
+
+instance (Monad m) => StrictState.MonadState (MemoizedCardanoNodeStateQueryResponses era) (MemoizedCardanoNodeStateQueryT era m) where
+  state s = MemoizedCardanoNodeStateQueryT $ StrictState.state s
+
+instance (MonadBlockchain era m, MonadTime m) => MonadBlockchain era (MemoizedCardanoNodeStateQueryT era m) where
+  -- This not a query, so there is nothing to memoize
+  sendTx = lift . sendTx
+
+  -- TODO Potentially dangerous with OOO to store _all_ resolved `TxIn`. Therefore,
+  -- it is safer to just always query the node. However, we are some
+  -- workarounds:
+  --  * provide some config which states how long some `TxIn` is kept in memory
+  --  * use a bounded set
+  --  * use a chain-indexer
+  utxoByTxIn txIns = lift $ utxoByTxIn txIns
+
+  -- Protocol parameters change at the beginning of each epoch `e` once a
+  -- protocol parameter update was posted at epoch `e - 1`. The memoization
+  -- strategy is to use the current `EraHistory` to see if the current time is
+  -- withing the same epoch. If we encounter a new epoch, then we can query the
+  -- node for the new protocol parameters.
+  queryProtocolParameters = do
+    systemStart <- querySystemStart
+    currentTime <- getCurrentTime
+    eraHistory <- queryEraHistory
+
+    protocolParametersM <- runMaybeT $ do
+      (currentEpochLastSlotNo, currentProtocolParams) <- MaybeT $ StrictState.gets memoizedProtocolParameters
+      (currentSlotNo, _, _) <- hoistMaybe $ eitherToMaybe $ utcTimeToSlot eraHistory systemStart currentTime
+      (_, _, C.SlotsToEpochEnd slotsLeftToEpochEnd) <- hoistMaybe $ eitherToMaybe $ C.slotToEpoch currentSlotNo eraHistory
+      if currentSlotNo <= currentEpochLastSlotNo
+        then pure currentProtocolParams
+        else do
+          newProtocolParams <- lift queryProtocolParameters
+          let lastSlotNoCurrentEpoch = currentSlotNo + C.SlotNo slotsLeftToEpochEnd
+          StrictState.modify (\s -> s{memoizedProtocolParameters = Just (lastSlotNoCurrentEpoch, newProtocolParams)})
+          pure newProtocolParams
+
+    case protocolParametersM of
+      Nothing -> do
+        pp <- lift queryProtocolParameters
+        StrictState.modify (\s -> s{memoizedProtocolParameters = Just (lastSlotNoCurrentEpoch, newProtocolParams)})
+      Just pp -> pure pp
+
+  -- StrictState.gets memoizedProtocolParameters >>=
+  --   \case
+  --     Nothing ->
+  --       lift queryProtocolParameters
+  --     Just (currentEpochLastSlotNo, currentProtocolParams) -> do
+  --       case utcTimeToSlot eraHistory systemStart currentTime of
+  --         Left _ -> do
+  --           lift queryProtocolParameters
+  --         Right (currentSlotNo, _, _) -> do
+  --           case C.slotToEpoch currentSlotNo eraHistory of
+  --             Left _ ->
+  --               lift queryProtocolParameters
+  --             Right (_, _, C.SlotsToEpochEnd slotsLeftToEpochEnd) -> do
+  --               if currentSlotNo <= currentEpochLastSlotNo
+  --                  then pure currentProtocolParams
+  --                  else do
+  --                    newProtocolParams <- lift queryProtocolParameters
+  --                    let lastSlotNoCurrentEpoch = currentSlotNo + C.SlotNo slotsLeftToEpochEnd
+  --                    StrictState.modify (\s -> s { memoizedProtocolParameters = Just (lastSlotNoCurrentEpoch, newProtocolParams) })
+  --                    pure newProtocolParams
+
+  -- TODO Same comment as `utxoByTxIn`
+  queryStakeAddresses creds nid = lift $ queryStakeAddresses creds nid
+
+  -- TODO Same comment as `utxoByTxIn`
+  queryStakePools = lift queryStakePools
+
+  -- The system start doesn't change in the lifetime of the blockchain, and the
+  -- value is part of the genesis config. Therefore, once queried the first
+  -- time, the value never changes.
+  querySystemStart = do
+    StrictState.gets memoizedSystemStartQuery
+      >>= \case
+        Just systemStart -> pure systemStart
+        Nothing -> do
+          systemStart <- lift querySystemStart
+          StrictState.modify (\s -> s{memoizedSystemStartQuery = Just systemStart})
+          pure systemStart
+
+  -- The memoization strategy for `queryEraHistory` is to make sure that the
+  -- memoized EraHistory can at the very least resolve the time of the current
+  -- slot. If not, we query for the new `EraHistory`.
+  queryEraHistory = do
+    eraHistoryM <- StrictState.gets memoizedEraHistoryQuery
+    case eraHistoryM of
+      Nothing -> do
+        eraHistory <- lift queryEraHistory
+        StrictState.modify (\s -> s{memoizedEraHistoryQuery = Just eraHistory})
+        pure eraHistory
+      Just eraHistory -> do
+        systemStart <- querySystemStart
+        utcTime <- getCurrentTime
+        case utcTimeToSlot eraHistory systemStart utcTime of
+          Right _ -> pure eraHistory
+          Left _ -> do
+            newEraHistory <- lift queryEraHistory
+            StrictState.modify (\s -> s{memoizedEraHistoryQuery = Just newEraHistory})
+            pure newEraHistory
+
+  -- The current `SlotNo` systematically changes. Therefore there is nothing to
+  -- memoize.
+  querySlotNo = lift querySlotNo
+
+  -- The networkId is not actually provided by the local node, but it is a value
+  -- provided by the end-user. Therefore, it is not strictly necessary to
+  -- memoize this function. However, for consistency, we will still memoize it.
+  queryNetworkId = do
+    StrictState.gets memoizedNetworkIdQuery >>= \case
+      Just networkId -> pure networkId
+      Nothing -> do
+        networkId <- lift queryNetworkId
+        StrictState.modify (\s -> s{memoizedNetworkIdQuery = Just networkId})
+        pure networkId
+
+instance (MonadMockchain era m, MonadTime m) => MonadMockchain era (MemoizedCardanoNodeStateQueryT era m)
+
+instance (MonadLog m) => MonadLog (MemoizedCardanoNodeStateQueryT era m) where
+  logInfo' = lift . logInfo'
+  logWarn' = lift . logWarn'
+  logDebug' = lift . logDebug'
+
+instance (MonadTime m) => MonadTime (MemoizedCardanoNodeStateQueryT era m)
+
+runMemoizedCardanoNodeStateQueryT
+  :: (Monad m)
+  => MemoizedCardanoNodeStateQueryT era m a
+  -> m a
+runMemoizedCardanoNodeStateQueryT (MemoizedCardanoNodeStateQueryT action) =
+  StrictState.evalStateT action $ MemoizedCardanoNodeStateQueryResponses Nothing Nothing Nothing Nothing Nothing Nothing
+
+data MemoizedCardanoNodeStateQueryResponses era
+  = MemoizedCardanoNodeStateQueryResponses
+  { memoizedSystemStartQuery :: Maybe C.SystemStart
+  , memoizedEraHistoryQuery :: Maybe C.EraHistory
+  , memoizedNetworkIdQuery :: Maybe C.NetworkId
+  , memoizedProtocolParameters :: Maybe (C.SlotNo, C.LedgerProtocolParameters era)
+  , memoizedStakeAddresses :: Maybe (Map C.StakeAddress C.Quantity, Map C.StakeAddress C.PoolId)
+  , memoizedStakePools :: Maybe (Set C.PoolId)
+  }
+
 -- | 'MonadBlockchain' implementation that connects to a cardano node
 newtype BlockchainException = BlockchainException String
   deriving stock (Show)
   deriving anyclass (Exception)
 
-newtype MonadBlockchainCardanoNodeT era m a = MonadBlockchainCardanoNodeT {unMonadBlockchainCardanoNodeT :: ReaderT LocalNodeConnectInfo m a}
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadError e, MonadFail, PrimMonad)
+newtype MonadBlockchainCardanoNodeT era m a = MonadBlockchainCardanoNodeT {unMonadBlockchainCardanoNodeT :: ReaderT C.LocalNodeConnectInfo m a}
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader C.LocalNodeConnectInfo, MonadError e, MonadFail, PrimMonad)
 
-runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT era m a -> m a
+runMonadBlockchainCardanoNodeT :: C.LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT era m a -> m a
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runReaderT action info
 
 runQuery :: (MonadIO m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT era m a
@@ -532,7 +688,7 @@ instance (MonadIO m, C.IsShelleyBasedEra era) => MonadBlockchain era (MonadBlock
     runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.shelleyBasedEra (C.QueryUTxO (C.QueryUTxOByTxIn txIns))))
 
   queryProtocolParameters = do
-    LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.shelleyBasedEra C.QueryProtocolParameters))
+    C.LedgerProtocolParameters <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra C.shelleyBasedEra C.QueryProtocolParameters))
 
   queryStakeAddresses creds nid =
     first (fmap C.lovelaceToQuantity) <$> runQuery' (C.QueryInEra (C.QueryInShelleyBasedEra (C.shelleyBasedEra @era) (C.QueryStakeAddresses creds nid)))
@@ -563,3 +719,30 @@ instance MonadTrans (MonadBlockchainCardanoNodeT era) where
   lift = MonadBlockchainCardanoNodeT . lift
 
 instance (MonadLog m) => MonadLog (MonadBlockchainCardanoNodeT era m)
+
+instance (MonadTime m) => MonadTime (MonadBlockchainCardanoNodeT era m)
+
+class (Monad m) => MonadTime m where
+  getCurrentTime :: m UTCTime
+  default getCurrentTime :: (MonadTrans t, m ~ t n, MonadTime n) => m UTCTime
+  getCurrentTime = lift getCurrentTime
+
+instance MonadTime IO where
+  getCurrentTime = liftIO $ Time.getCurrentTime
+
+newtype MockTimeT m a = MockTimeT {unMockTimeT :: StrictState.StateT UTCTime m a}
+  deriving newtype (Functor, Applicative, Monad, MonadIO, PrimMonad)
+
+runMockTimeT
+  :: (Monad m)
+  => UTCTime
+  -> MockTimeT m a
+  -> m a
+runMockTimeT startTime (MockTimeT action) =
+  StrictState.evalStateT action startTime
+
+instance (Monad m) => StrictState.MonadState UTCTime (MockTimeT m) where
+  state s = MockTimeT $ StrictState.state s
+
+instance (Monad m) => MonadTime (MockTimeT m) where
+  getCurrentTime = StrictState.get
