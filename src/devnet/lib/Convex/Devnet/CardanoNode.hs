@@ -491,7 +491,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params PortsCo
   -- create the node certificate
   let
     opCertCounter =
-      OperationalCertificateIssueCounter 0 stakePoolVerKey
+      OperationalCertificateIssueCounter 1 stakePoolVerKey
     slotsPerKESPeriod = 129600 -- slotsPerKESPeriod from config/genesis-shelley.json
     kesPeriod = KESPeriod . fromIntegral . div slotNo $ slotsPerKESPeriod -- Word64 to Word
     opCert = C.issueOperationalCertificate
@@ -517,13 +517,13 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params PortsCo
     delegCertTx = execBuildTx $ do
       addCertificate delegationCert
 
-  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+  _ <- W.balanceAndSubmit mempty node wallet stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node
 
   _ <- W.balanceAndSubmit mempty node wallet poolCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node
 
-  _ <- W.balanceAndSubmit mempty node wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+  _ <- W.balanceAndSubmit mempty node wallet delegCertTx TrailingChange [C.WitnessStakeKey stakeKey, C.WitnessStakePoolKey stakePoolKey]
   _ <- waitForNextBlock node
 
   vrfKeyFile <- writeEnvelope vrfKey "vrf.skey"

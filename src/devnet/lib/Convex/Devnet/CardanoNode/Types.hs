@@ -97,7 +97,7 @@ data StakePoolNodeParams = StakePoolNodeParams
   }
 
 defaultStakePoolNodeParams :: StakePoolNodeParams
-defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
+defaultStakePoolNodeParams = StakePoolNodeParams 340000000 (3 % 100) 340000000
 
 {-| Modifications to apply to the default genesis configurations
 -}

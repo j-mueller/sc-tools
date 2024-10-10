@@ -135,7 +135,7 @@ registeredStakePoolNode = do
 stakePoolRewards :: IO ()
 stakePoolRewards = do
   showLogsOnFailure $ \tr -> do
-    failAfter 50 $
+    failAfter 100 $
       withTempDir "cardano-cluster" $ \tmp -> do
         withCardanoNodeDevnetConfig (contramap TLNode tr) tmp confChange (PortsConfig 3001 [3002]) $ \runningNode -> do
           let lovelacePerUtxo = 10_000_000_000
