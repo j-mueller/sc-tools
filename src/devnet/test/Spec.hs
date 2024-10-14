@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE TypeApplications   #-}
 module Main where
 
 import qualified Cardano.Api                     as C

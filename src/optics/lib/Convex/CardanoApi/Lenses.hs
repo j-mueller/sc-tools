@@ -6,14 +6,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Lenses for @cardano-api@ types
 -}
 module Convex.CardanoApi.Lenses(
-  IsAllegraEraOnwards (..),
-  IsMaryEraOnwards (..),
-  IsAlonzoEraOnwards (..),
-  IsBabbageEraOnwards (..),
-  IsConwayEraOnwards(..),
   -- * Tx body content lenses
   emptyTx,
   emptyTxOut,
@@ -124,7 +120,6 @@ import qualified Cardano.Ledger.Credential          as Credential
 import           Cardano.Ledger.Crypto              (StandardCrypto)
 import qualified Cardano.Ledger.Hashes              as Hashes
 import qualified Cardano.Ledger.Keys                as Keys
-import           Cardano.Ledger.Mary.Value          (MaryValue (..))
 import           Cardano.Ledger.Shelley.API         (Coin, LedgerEnv (..), UTxO,
                                                      UTxOState (..))
 import           Cardano.Ledger.Shelley.Governance  (GovState)
@@ -145,77 +140,6 @@ import           PlutusLedgerApi.V1.Interval        (Closure, Extended (..),
                                                      LowerBound (..),
                                                      UpperBound (..))
 import qualified PlutusTx.Prelude                   as PlutusTx
-
--- | The class of eras that are after Allegra.
--- TODO Move to cardano-api
-class C.IsCardanoEra era => IsAllegraEraOnwards era where
-   allegraEraOnwards :: C.AllegraEraOnwards era
-
-instance IsAllegraEraOnwards C.AllegraEra where
-   allegraEraOnwards = C.AllegraEraOnwardsAllegra
-
-instance IsAllegraEraOnwards C.MaryEra where
-   allegraEraOnwards = C.AllegraEraOnwardsMary
-
-instance IsAllegraEraOnwards C.AlonzoEra where
-   allegraEraOnwards = C.AllegraEraOnwardsAlonzo
-
-instance IsAllegraEraOnwards C.BabbageEra where
-   allegraEraOnwards = C.AllegraEraOnwardsBabbage
-
-instance IsAllegraEraOnwards C.ConwayEra where
-   allegraEraOnwards = C.AllegraEraOnwardsConway
-
--- | The class of eras that are after Mary.
--- TODO Move to cardano-api
-class C.IsCardanoEra era => IsMaryEraOnwards era where
-   maryEraOnwards :: C.MaryEraOnwards era
-
-instance IsMaryEraOnwards C.MaryEra where
-   maryEraOnwards = C.MaryEraOnwardsMary
-
-instance IsMaryEraOnwards C.AlonzoEra where
-   maryEraOnwards = C.MaryEraOnwardsAlonzo
-
-instance IsMaryEraOnwards C.BabbageEra where
-   maryEraOnwards = C.MaryEraOnwardsBabbage
-
-instance IsMaryEraOnwards C.ConwayEra where
-   maryEraOnwards = C.MaryEraOnwardsConway
-
-
--- | The class of eras that are after Alonzo.
--- TODO Move to cardano-api
-class C.IsCardanoEra era => IsAlonzoEraOnwards era where
-   alonzoEraOnwards :: C.AlonzoEraOnwards era
-
-instance IsAlonzoEraOnwards C.AlonzoEra where
-   alonzoEraOnwards = C.AlonzoEraOnwardsAlonzo
-
-instance IsAlonzoEraOnwards C.BabbageEra where
-   alonzoEraOnwards = C.AlonzoEraOnwardsBabbage
-
-instance IsAlonzoEraOnwards C.ConwayEra where
-   alonzoEraOnwards = C.AlonzoEraOnwardsConway
-
--- | The class of eras that are after babbage.
--- TODO Move to cardano-api
-class C.IsCardanoEra era => IsBabbageEraOnwards era where
-   babbageEraOnwards :: C.BabbageEraOnwards era
-
-instance IsBabbageEraOnwards C.BabbageEra where
-   babbageEraOnwards = C.BabbageEraOnwardsBabbage
-
-instance IsBabbageEraOnwards C.ConwayEra where
-   babbageEraOnwards = C.BabbageEraOnwardsConway
-
--- | The class of eras that are after conway.
--- TODO Move to cardano-api
-class C.IsCardanoEra era => IsConwayEraOnwards era where
-   conwayEraOnwards :: C.ConwayEraOnwards era
-
-instance IsConwayEraOnwards C.ConwayEra where
-   conwayEraOnwards = C.ConwayEraOnwardsConway
 
 {-| 'TxBodyContent' with all fields set to empty, none, default values
 TODO Remove and replace with C.defaultTxBodyContent
@@ -259,12 +183,12 @@ txIns = lens get set_ where
   get = C.txIns
   set_ body txIns' = body{C.txIns=txIns'}
 
-txInsReference :: Lens' (C.TxBodyContent v era) (C.TxInsReference v era)
+txInsReference :: Lens' (C.TxBodyContent v era) (C.TxInsReference era)
 txInsReference = lens get set_ where
   get = C.txInsReference
   set_ body txInsRef' = body{C.txInsReference = txInsRef'}
 
-txInsReferenceTxIns :: Getter (C.TxInsReference ctx era) [C.TxIn]
+txInsReferenceTxIns :: Getter (C.TxInsReference era) [C.TxIn]
 txInsReferenceTxIns = L.to get_ where
   get_ = \case
     C.TxInsReferenceNone  -> []
@@ -343,14 +267,14 @@ txCertificates = lens get set_ where
   get = C.txCertificates
   set_ body k = body{C.txCertificates = k}
 
-txCurrentTreasuryValue :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era Coin))
+txCurrentTreasuryValue :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era (Maybe Coin)))
 txCurrentTreasuryValue = lens get set_ where
   get = C.txCurrentTreasuryValue
   set_ body k = body{C.txCurrentTreasuryValue = k}
 
 txTreasuryDonation :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era Coin))
 txTreasuryDonation = lens get set_ where
-  get = C.txCurrentTreasuryValue
+  get = C.txTreasuryDonation
   set_ body k = body{C.txTreasuryDonation = k}
 
 txProposalProcedures :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures v era)))
@@ -363,14 +287,14 @@ txVotingProcedures = lens get set_ where
   get = C.txVotingProcedures
   set_ body k = body{C.txVotingProcedures = k}
 
-_TxExtraKeyWitnesses :: IsAlonzoEraOnwards era => Iso' (C.TxExtraKeyWitnesses era) [C.Hash C.PaymentKey]
+_TxExtraKeyWitnesses :: C.IsAlonzoBasedEra era => Iso' (C.TxExtraKeyWitnesses era) [C.Hash C.PaymentKey]
 _TxExtraKeyWitnesses = iso from to where
   from :: C.TxExtraKeyWitnesses era -> [C.Hash C.PaymentKey]
   from C.TxExtraKeyWitnessesNone      = []
   from (C.TxExtraKeyWitnesses _ keys) = keys
 
   to []   = C.TxExtraKeyWitnessesNone
-  to keys = C.TxExtraKeyWitnesses alonzoEraOnwards keys
+  to keys = C.TxExtraKeyWitnesses C.alonzoBasedEra keys
 
 _TxWithdrawals :: C.IsShelleyBasedEra era => Iso' (C.TxWithdrawals v era) [(C.StakeAddress, Coin, BuildTxWith v (C.Witness C.WitCtxStake era))]
 _TxWithdrawals = iso from to where
@@ -383,40 +307,40 @@ _TxWithdrawals = iso from to where
 
 _TxCertificates
   :: forall era. C.IsShelleyBasedEra era
-  => Iso' (C.TxCertificates BuildTx era) ([C.Certificate era], Map C.StakeCredential (C.Witness C.WitCtxStake era))
+  => Iso' (C.TxCertificates BuildTx era) ([C.Certificate era], [(C.StakeCredential, C.Witness C.WitCtxStake era)])
 _TxCertificates = iso from to where
-  from :: C.TxCertificates BuildTx era -> ([C.Certificate era], (Map C.StakeCredential (C.Witness C.WitCtxStake era)))
-  from C.TxCertificatesNone                     = ([], Map.empty)
+  from :: C.TxCertificates BuildTx era -> ([C.Certificate era], [(C.StakeCredential, C.Witness C.WitCtxStake era)])
+  from C.TxCertificatesNone                     = ([], [])
   from (C.TxCertificates _ x (C.BuildTxWith y)) = (x, y)
 
-  to :: ([C.Certificate era], Map C.StakeCredential (C.Witness C.WitCtxStake era)) -> C.TxCertificates BuildTx era
-  to ([], mp) | Map.null mp = C.TxCertificatesNone
-  to (x, y) = C.TxCertificates C.shelleyBasedEra x (C.BuildTxWith y)
+  to :: ([C.Certificate era], [(C.StakeCredential, C.Witness C.WitCtxStake era)]) -> C.TxCertificates BuildTx era
+  to ([], []) = C.TxCertificatesNone
+  to (x, y)   = C.TxCertificates C.shelleyBasedEra x (C.BuildTxWith y)
 
 txAuxScripts :: Lens' (C.TxBodyContent v era) (C.TxAuxScripts era)
 txAuxScripts = lens get set_ where
   get = C.txAuxScripts
   set_ body s = body{C.txAuxScripts=s}
 
-_TxAuxScripts :: IsAllegraEraOnwards era => Iso' (C.TxAuxScripts era) [C.ScriptInEra era]
+_TxAuxScripts :: C.IsAllegraBasedEra era => Iso' (C.TxAuxScripts era) [C.ScriptInEra era]
 _TxAuxScripts = iso from to where
   from :: C.TxAuxScripts era -> [C.ScriptInEra era]
   from = \case
     C.TxAuxScriptsNone -> []
     C.TxAuxScripts _ s -> s
   to s | null s = C.TxAuxScriptsNone
-       | otherwise = C.TxAuxScripts allegraEraOnwards s
+       | otherwise = C.TxAuxScripts C.allegraBasedEra s
 
 _TxMetadata :: C.IsShelleyBasedEra era => Iso' (C.TxMetadataInEra era) (Map Word64 C.TxMetadataValue)
 _TxMetadata = iso from to where
-  from :: C.TxMetadataInEra era -> (Map Word64 C.TxMetadataValue)
+  from :: C.TxMetadataInEra era -> Map Word64 C.TxMetadataValue
   from = \case
     C.TxMetadataNone                     -> Map.empty
     C.TxMetadataInEra _ (C.TxMetadata m) -> m
   to m | Map.null m = C.TxMetadataNone
        | otherwise  = C.TxMetadataInEra C.shelleyBasedEra (C.TxMetadata m)
 
-_TxInsCollateralIso :: IsAlonzoEraOnwards era => Iso' (C.TxInsCollateral era) [C.TxIn]
+_TxInsCollateralIso :: C.IsAlonzoBasedEra era => Iso' (C.TxInsCollateral era) [C.TxIn]
 _TxInsCollateralIso = iso from to where
   from :: C.TxInsCollateral era -> [C.TxIn]
   from = \case
@@ -424,9 +348,9 @@ _TxInsCollateralIso = iso from to where
     C.TxInsCollateral _ xs -> xs
   to = \case
     [] -> C.TxInsCollateralNone
-    xs -> C.TxInsCollateral alonzoEraOnwards xs
+    xs -> C.TxInsCollateral C.alonzoBasedEra xs
 
-_TxMintValue :: IsMaryEraOnwards era => Iso' (TxMintValue BuildTx era) (Value, Map PolicyId (ScriptWitness WitCtxMint era))
+_TxMintValue :: C.IsMaryBasedEra era => Iso' (TxMintValue BuildTx era) (Value, Map PolicyId (ScriptWitness WitCtxMint era))
 _TxMintValue = iso from to where
   from :: TxMintValue BuildTx era -> (Value, Map PolicyId (ScriptWitness WitCtxMint era))
   from = \case
@@ -434,17 +358,17 @@ _TxMintValue = iso from to where
     C.TxMintValue _ vl (C.BuildTxWith mp) -> (vl, mp)
   to (vl, mp)
     | Map.null mp && vl == mempty = C.TxMintNone
-    | otherwise                   = C.TxMintValue maryEraOnwards vl (C.BuildTxWith mp)
+    | otherwise                   = C.TxMintValue C.maryBasedEra vl (C.BuildTxWith mp)
 
-_TxInsReferenceIso :: IsBabbageEraOnwards era => Iso' (C.TxInsReference build era) [C.TxIn]
+_TxInsReferenceIso :: C.IsBabbageBasedEra era => Iso' (C.TxInsReference era) [C.TxIn]
 _TxInsReferenceIso = iso from to where
-  from :: C.TxInsReference build era -> [C.TxIn]
+  from :: C.TxInsReference era -> [C.TxIn]
   from = \case
     C.TxInsReferenceNone   -> []
     C.TxInsReference _ ins -> ins
   to = \case
     [] -> C.TxInsReferenceNone
-    xs -> C.TxInsReference babbageEraOnwards xs
+    xs -> C.TxInsReference C.babbageBasedEra xs
 
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to where
@@ -464,29 +388,29 @@ _TxOut = iso from to where
   from (C.TxOut addr vl dt rs) = (addr, vl, dt, rs)
   to (addr, vl, dt, rs) = C.TxOut addr vl dt rs
 
-_TxOutDatumHash :: forall ctx era. IsAlonzoEraOnwards era => Prism' (TxOutDatum ctx era) (C.Hash C.ScriptData)
+_TxOutDatumHash :: forall ctx era. C.IsAlonzoBasedEra era => Prism' (TxOutDatum ctx era) (C.Hash C.ScriptData)
 _TxOutDatumHash = prism' from to where
   to :: TxOutDatum ctx era -> Maybe (C.Hash C.ScriptData)
   to (C.TxOutDatumHash _ h) = Just h
   to _                      = Nothing
   from :: C.Hash C.ScriptData -> TxOutDatum ctx era
-  from h = C.TxOutDatumHash alonzoEraOnwards h
+  from h = C.TxOutDatumHash C.alonzoBasedEra h
 
-_TxOutDatumInTx :: forall era. IsAlonzoEraOnwards era => Prism' (TxOutDatum CtxTx era) C.HashableScriptData
+_TxOutDatumInTx :: forall era. C.IsAlonzoBasedEra era => Prism' (TxOutDatum CtxTx era) C.HashableScriptData
 _TxOutDatumInTx = prism' from to where
   to :: TxOutDatum CtxTx era -> Maybe C.HashableScriptData
   to (C.TxOutDatumInTx _ k) = Just k
   to _                      = Nothing
   from :: C.HashableScriptData -> TxOutDatum CtxTx era
-  from cd = C.TxOutDatumInTx alonzoEraOnwards cd
+  from cd = C.TxOutDatumInTx C.alonzoBasedEra cd
 
-_TxOutDatumInline :: forall ctx era. IsBabbageEraOnwards era => Prism' (TxOutDatum ctx era) C.HashableScriptData
+_TxOutDatumInline :: forall ctx era. C.IsBabbageBasedEra era => Prism' (TxOutDatum ctx era) C.HashableScriptData
 _TxOutDatumInline = prism' from to where
   to :: TxOutDatum ctx era -> Maybe C.HashableScriptData
   to (C.TxOutDatumInline _ k) = Just k
   to _                        = Nothing
   from :: C.HashableScriptData -> TxOutDatum ctx era
-  from cd = C.TxOutDatumInline babbageEraOnwards cd
+  from cd = C.TxOutDatumInline C.babbageBasedEra cd
 
 _ShelleyAddress :: C.IsShelleyBasedEra era => Prism' (C.AddressInEra era) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
 _ShelleyAddress = prism' from to where
@@ -551,12 +475,12 @@ _BuildTxWith = iso from to where
   to = C.BuildTxWith
 
 _TxOutValue
-  :: forall era. (C.IsShelleyBasedEra era, Core.Value (C.ShelleyLedgerEra era) ~ MaryValue StandardCrypto)
+  :: forall era. C.IsMaryBasedEra era
   => Iso' (TxOutValue era) Value
 _TxOutValue = iso from to where
   from = C.txOutValueToValue
   to :: Value -> TxOutValue era
-  to = C.TxOutValueShelleyBased C.shelleyBasedEra . C.toMaryValue
+  to = C.maryEraOnwardsConstraints @era C.maryBasedEra $ C.TxOutValueShelleyBased C.shelleyBasedEra . C.toMaryValue
 
 slot :: Lens' (LedgerEnv era) SlotNo
 slot = lens get set_ where
@@ -669,9 +593,9 @@ _TxValidityUpperBound = iso from to where
   to :: (C.ShelleyBasedEra era, Maybe SlotNo) -> C.TxValidityUpperBound era
   to (k, s) = C.TxValidityUpperBound k s
 
-_TxValidityFiniteRange :: (IsAllegraEraOnwards era, C.IsShelleyBasedEra era) => Prism' (C.TxValidityLowerBound era, C.TxValidityUpperBound era) (SlotNo, SlotNo)
+_TxValidityFiniteRange :: (C.IsAllegraBasedEra era, C.IsShelleyBasedEra era) => Prism' (C.TxValidityLowerBound era, C.TxValidityUpperBound era) (SlotNo, SlotNo)
 _TxValidityFiniteRange = prism' from to where
-  from (l, u) = (C.TxValidityLowerBound allegraEraOnwards l, C.TxValidityUpperBound C.shelleyBasedEra (Just u))
+  from (l, u) = (C.TxValidityLowerBound C.allegraBasedEra l, C.TxValidityUpperBound C.shelleyBasedEra (Just u))
   to = \case
     (C.TxValidityLowerBound _ l, C.TxValidityUpperBound _ (Just u)) -> Just (l, u)
     _                                                        -> Nothing

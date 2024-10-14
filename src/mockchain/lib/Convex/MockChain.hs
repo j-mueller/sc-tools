@@ -1,19 +1,20 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE RankNTypes         #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE TypeFamilies       #-}
-{-# LANGUAGE TypeOperators      #-}
-{-# LANGUAGE ViewPatterns       #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveAnyClass       #-}
+{-# LANGUAGE DerivingStrategies   #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE NamedFieldPuns       #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 {-| Minimal mockchain
 -}
 module Convex.MockChain(
   -- * State of the mockchain
-  ERA,
   MockChainState(..),
   InitialUTXOs,
   initialState,
@@ -42,7 +43,6 @@ module Convex.MockChain(
   PlutusWithContext(..),
   fullyAppliedScript,
   -- * Mockchain implementation
-  MockchainError(..),
   MockchainT(..),
   Mockchain,
   runMockchainT,
@@ -63,15 +63,18 @@ module Convex.MockChain(
   evalMockchainIO,
   evalMockchain0IO,
   execMockchainIO,
-  execMockchain0IO
+  execMockchain0IO,
+  runMockchain0T,
+  evalMockchain0T
   ) where
 
-import           Cardano.Api.Shelley                   (AddressInEra, ConwayEra,
+import           Cardano.Api.Shelley                   (AddressInEra,
                                                         Hash (StakePoolKeyHash),
                                                         ShelleyLedgerEra,
                                                         SlotNo, Tx,
                                                         TxBody (ShelleyTxBody))
 import qualified Cardano.Api.Shelley                   as C
+import qualified Cardano.Ledger.Alonzo.Core            as L
 import           Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError,
                                                         collectPlutusScriptsWithContext,
                                                         evalPlutusScripts)
@@ -81,7 +84,6 @@ import           Cardano.Ledger.BaseTypes              (Globals (systemStart),
                                                         epochInfo, getVersion,
                                                         pvMajor)
 import           Cardano.Ledger.Conway                 (Conway)
-import           Cardano.Ledger.Conway.Tx              (AlonzoTx (..))
 import qualified Cardano.Ledger.Core                   as Core
 import           Cardano.Ledger.Crypto                 (StandardCrypto)
 import           Cardano.Ledger.Plutus.Evaluate        (PlutusWithContext (..),
@@ -108,19 +110,19 @@ import           Cardano.Ledger.UMap                   (RDPair (..),
                                                         domRestrictedMap,
                                                         fromCompact)
 import qualified Cardano.Ledger.Val                    as Val
-import           Control.Lens                          (_1, _3, over, to, view,
-                                                        (%=), (&), (.~), (^.))
+import           Control.Lens                          (_1, _3, over, set, to,
+                                                        view, (%=), (&), (.~),
+                                                        (^.))
 import           Control.Monad                         (forM)
-import           Control.Monad.Except                  (ExceptT,
-                                                        MonadError (throwError),
-                                                        runExceptT)
+import           Control.Monad.Except                  (MonadError (throwError))
 import           Control.Monad.IO.Class                (MonadIO)
-import           Control.Monad.Primitive               (PrimMonad (..))
+import           Control.Monad.Primitive               (PrimMonad)
 import           Control.Monad.Reader                  (MonadReader, ReaderT,
                                                         ask, asks, local,
                                                         runReaderT)
-import           Control.Monad.State                   (MonadState, StateT, get,
-                                                        gets, put, runStateT)
+import           Control.Monad.State.Strict            (MonadState, StateT, get,
+                                                        gets, put, runStateT,
+                                                        state)
 import           Control.Monad.Trans.Class             (MonadTrans (..))
 import qualified Convex.CardanoApi.Lenses              as L
 import           Convex.Class                          (ExUnitsError (..),
@@ -129,7 +131,6 @@ import           Convex.Class                          (ExUnitsError (..),
                                                         MonadDatumQuery (..),
                                                         MonadMockchain (..),
                                                         MonadUtxoQuery (..),
-                                                        SendTxFailed (..),
                                                         ValidationError (..),
                                                         _ApplyTxFailure,
                                                         _Phase1Error,
@@ -139,12 +140,12 @@ import           Convex.Class                          (ExUnitsError (..),
                                                         failedTransactions,
                                                         modifyUtxo, poolState,
                                                         transactions)
-import           Convex.Constants                      (ERA)
 import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.MonadLog                       (MonadLog (..))
 import           Convex.NodeParams                     (NodeParams (..))
-import           Convex.Utils                          (slotToUtcTime)
+import           Convex.Utils                          (alonzoEraUtxo,
+                                                        slotToUtcTime)
 import           Convex.Utxos                          (UtxoSet (..),
                                                         fromApiUtxo,
                                                         onlyCredential,
@@ -168,7 +169,7 @@ import qualified UntypedPlutusCore                     as UPLC
 {-| Apply the plutus script to all its arguments and return a plutus
 program
 -}
-fullyAppliedScript :: NodeParams -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+fullyAppliedScript :: NodeParams C.ConwayEra -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
 fullyAppliedScript params pwc@PlutusWithContext{pwcScript} = do
   let plutus = either id Plutus.Language.plutusFromRunnable pwcScript
       binScript = Plutus.Language.plutusBinary plutus
@@ -228,7 +229,7 @@ legacyPlutusArgsToData = \case
   LegacyPlutusArgs2 redeemer scriptContext -> [redeemer, PV3.toData scriptContext]
   LegacyPlutusArgs3 datum redeemer scriptContext -> [datum, redeemer, PV3.toData scriptContext]
 
-initialState :: NodeParams -> MockChainState
+initialState :: C.IsShelleyBasedEra era => NodeParams era -> MockChainState era
 initialState params = initialStateFor params []
 
 genesisUTxO ::
@@ -250,11 +251,12 @@ type InitialUTXOs = [(Wallet, Coin)]
 {-| Initialise the 'MockChainState' with a list of UTxOs
 -}
 initialStateFor ::
-  NodeParams ->
+  forall era. C.IsShelleyBasedEra era =>
+  NodeParams era ->
   InitialUTXOs -> -- List of UTXOs at each wallet's address. Can have multiple entries per wallet.
-  MockChainState
-initialStateFor params@NodeParams{npNetworkId} utxos =
-  let utxo = genesisUTxO @ERA @C.ConwayEra (fmap (first (addressInEra npNetworkId)) utxos)
+  MockChainState era
+initialStateFor params@NodeParams{npNetworkId} utxos = C.shelleyBasedEraConstraints @era C.shelleyBasedEra $
+  let utxo = genesisUTxO @_ @era (fmap (first (addressInEra npNetworkId)) utxos)
   in MockChainState
       { mcsEnv =
           LedgerEnv
@@ -272,28 +274,31 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
       , mcsDatums = Map.empty
       }
 
-utxoEnv :: NodeParams -> SlotNo -> UtxoEnv ERA
+utxoEnv :: NodeParams era -> SlotNo -> UtxoEnv (C.ShelleyLedgerEra era)
 utxoEnv params slotNo = UtxoEnv slotNo (Defaults.pParams params) def
 
 {-| Compute the exunits of a transaction
 -}
 getTxExUnits ::
-  NodeParams ->
-  UTxO ERA ->
-  C.Tx C.ConwayEra ->
-  Either ExUnitsError (Map.Map C.ScriptWitnessIndex C.ExecutionUnits)
+  forall era.
+  C.IsShelleyBasedEra era =>
+  NodeParams era ->
+  UTxO (C.ShelleyLedgerEra era) ->
+  C.Tx era ->
+  Either (ExUnitsError era) (Map.Map C.ScriptWitnessIndex C.ExecutionUnits)
 getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo (C.getTxBody -> tx) =
-  case C.evaluateTransactionExecutionUnits C.ConwayEra npSystemStart (C.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO C.ShelleyBasedEraConway utxo) tx of
+  C.shelleyBasedEraConstraints @era C.shelleyBasedEra $
+  case C.evaluateTransactionExecutionUnits C.cardanoEra npSystemStart (C.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO C.shelleyBasedEra utxo) tx of
     Left e      -> Left (Phase1Error e)
     Right rdmrs -> traverse (either (Left . Phase2Error) (Right . snd)) rdmrs
 
-applyTransaction :: NodeParams -> MockChainState -> C.Tx C.ConwayEra -> Either ValidationError (MockChainState, Validated (Core.Tx ERA))
-applyTransaction params state tx'@(C.ShelleyTx _era tx) = do
-  let currentSlot = state ^. env . L.slot
-      utxoState_ = state ^. poolState . L.utxoState
+applyTransaction :: forall era. (C.IsAlonzoBasedEra era) => NodeParams era -> MockChainState era -> C.Tx era -> Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
+applyTransaction params state' tx'@(C.ShelleyTx _era tx) = C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
+  let currentSlot = state' ^. env . L.slot
+      utxoState_ = state' ^. poolState . L.utxoState
       utxo = utxoState_ ^. L._UTxOState (C.unLedgerProtocolParameters $ npProtocolParameters params) . _1
   (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
-  result <- applyTx params state vtx scripts
+  result <- applyTx params state' vtx scripts
 
   -- Not sure if this step is needed.
   _ <- first VExUnits (getTxExUnits params utxo tx')
@@ -302,13 +307,13 @@ applyTransaction params state tx'@(C.ShelleyTx _era tx) = do
 
 {-| Evaluate a transaction, returning all of its script contexts.
 -}
-evaluateTx :: NodeParams -> SlotNo -> UTxO ERA -> C.Tx C.ConwayEra -> Either ValidationError [PlutusWithContext StandardCrypto]
+evaluateTx :: NodeParams C.ConwayEra -> SlotNo -> UTxO Conway -> C.Tx C.ConwayEra -> Either (ValidationError C.ConwayEra) [PlutusWithContext StandardCrypto]
 evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
-    (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state)) tx)
-    _ <- applyTx params state vtx scripts
+    (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state')) tx)
+    _ <- applyTx params state' vtx scripts
     pure scripts
   where
-    state =
+    state' =
       initialState params
         & env . L.slot .~ slotNo
         & poolState . L.utxoState . L._UTxOState (C.unLedgerProtocolParameters $ npProtocolParameters params) . _1 .~ utxo
@@ -323,25 +328,23 @@ evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
 -- Copied from cardano-ledger as it was removed there
 -- in https://github.com/input-output-hk/cardano-ledger/commit/721adb55b39885847562437a6fe7e998f8e48c03
 constructValidated ::
-  forall m.
-  ( MonadError [CollectError Conway] m
+  forall era m.
+  ( MonadError [CollectError (C.ShelleyLedgerEra era)] m
+  , C.IsAlonzoBasedEra era
   ) =>
   Globals ->
-  UtxoEnv Conway ->
-  UTxOState Conway ->
-  Core.Tx Conway ->
-  m (AlonzoTx Conway, [PlutusWithContext StandardCrypto])
+  UtxoEnv (C.ShelleyLedgerEra era) ->
+  UTxOState (C.ShelleyLedgerEra era) ->
+  Core.Tx (C.ShelleyLedgerEra era) ->
+  m (Core.Tx (C.ShelleyLedgerEra era), [PlutusWithContext StandardCrypto])
 constructValidated globals (UtxoEnv _ pp _) st tx =
+  C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $
+  alonzoEraUtxo @era $
   case collectPlutusScriptsWithContext ei sysS pp tx utxo of
     Left errs -> throwError errs
     Right sLst ->
-      let scriptEvalResult = evalPlutusScripts @(EraCrypto Conway) sLst
-          vTx =
-            AlonzoTx
-              (body tx)
-              (wits tx) -- (getField @"wits" tx)
-              (IsValid (lift_ scriptEvalResult))
-              (auxiliaryData tx) -- (getField @"auxiliaryData" tx)
+      let scriptEvalResult = evalPlutusScripts @(EraCrypto (C.ShelleyLedgerEra era)) sLst
+          vTx = set L.isValidTxL (IsValid (lift_ scriptEvalResult)) tx
        in pure (vTx, sLst)
   where
     utxo = utxosUtxo st
@@ -351,60 +354,51 @@ constructValidated globals (UtxoEnv _ pp _) st tx =
     lift_ (Fails _ _) = False
 
 applyTx ::
-  NodeParams ->
-  MockChainState ->
-  Core.Tx ERA ->
+  forall era.
+  C.IsShelleyBasedEra era =>
+  NodeParams era ->
+  MockChainState era ->
+  Core.Tx (C.ShelleyLedgerEra era) ->
   [PlutusWithContext StandardCrypto] ->
-  Either ValidationError (MockChainState, Validated (Core.Tx ERA))
-applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = do
+  Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
+applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = C.shelleyBasedEraConstraints @era C.shelleyBasedEra $ do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
   return (oldState & poolState .~ newMempool & over transactions ((vtx,context) :) , vtx)
 
-newtype MockchainT m a = MockchainT (ReaderT NodeParams (StateT MockChainState (ExceptT MockchainError m)) a)
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog)
+newtype MockchainT era m a = MockchainT (ReaderT (NodeParams era) (StateT (MockChainState era) m) a)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadLog, MonadFail, PrimMonad)
 
-instance PrimMonad m => PrimMonad (MockchainT m) where
-  type PrimState (MockchainT m) = PrimState m
-  {-# INLINEABLE primitive #-}
-  primitive f = lift (primitive f)
+instance MonadTrans (MockchainT era) where
+  lift = MockchainT . lift . lift
 
-instance MonadTrans MockchainT where
-  lift = MockchainT . lift . lift . lift
-
-instance Monad m => MonadReader NodeParams (MockchainT m) where
+instance Monad m => MonadReader (NodeParams era) (MockchainT era m) where
   ask = MockchainT ask
   local f (MockchainT m) = MockchainT $ local f m
 
-instance Monad m => MonadState MockChainState (MockchainT m) where
+instance Monad m => MonadState (MockChainState era) (MockchainT era m) where
   get = MockchainT $ lift get
   put = MockchainT . lift . put
 
-data MockchainError =
-  FailWith String
-  deriving (Show)
-
-instance Monad m => MonadFail (MockchainT m) where
-  fail = MockchainT . throwError . FailWith
-
-instance Monad m => MonadBlockchain (MockchainT m) where
-  sendTx tx = MockchainT $ do
+instance (Monad m, C.IsAlonzoBasedEra era) => MonadBlockchain era (MockchainT era m) where
+  sendTx tx = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
     nps <- ask
     addDatumHashes tx
     st <- get
     case applyTransaction nps st tx of
       Left err       -> do
-        failedTransactions %= ((:) (tx, err))
-        return $ Left $ SendTxFailed $ show err
+        failedTransactions %= ((tx, err) :)
+        return $ Left err
       Right (st', _) ->
         let C.Tx body _ = tx
         in put st' >> return (Right $ C.getTxId body)
-  utxoByTxIn txIns = MockchainT $ do
+  utxoByTxIn txIns = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
     nps <- ask
-    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.ShelleyBasedEraConway))
+    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.shelleyBasedEra))
     let mp' = Map.restrictKeys mp txIns
     pure (C.UTxO mp')
+
   queryProtocolParameters = MockchainT (asks npProtocolParameters)
-  queryStakeAddresses creds nid = MockchainT $ do
+  queryStakeAddresses creds nid = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
     dState <- gets (view $ poolState . lsCertStateL . certDStateL)
     let
       creds' = toLedgerStakeCredentials creds
@@ -432,35 +426,36 @@ instance Monad m => MonadBlockchain (MockchainT m) where
     st <- get
     NodeParams{npSystemStart, npEraHistory, npSlotLength} <- ask
     let slotNo = st ^. env . L.slot
-    utime <- either (throwError . FailWith) pure (slotToUtcTime npEraHistory npSystemStart slotNo)
+    -- FIXME: Propagate this to user?
+    let utime  = either (error . (<>) "MockchainT: slotToUtcTime failed ") id (slotToUtcTime npEraHistory npSystemStart slotNo)
     return (slotNo, npSlotLength, utime)
 
-instance Monad m => MonadMockchain (MockchainT m) where
-  modifyMockChainState f = MockchainT $ get >>= \st -> let (s, a) = f st in put s >> pure a
+instance (Monad m, C.IsAlonzoBasedEra era) => MonadMockchain era (MockchainT era m) where
+  modifyMockChainState f = MockchainT $ state f
   askNodeParams = ask
 
-instance Monad m => MonadUtxoQuery (MockchainT m) where
+instance (Monad m, C.IsAlonzoBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsCardanoEra era, C.IsShelleyBasedEra era) => MonadUtxoQuery (MockchainT era m) where
   utxosByPaymentCredentials cred = do
     UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
     let
-      resolveDatum :: C.TxOutDatum C.CtxUTxO era -> MockchainT m (Maybe C.HashableScriptData)
+      resolveDatum :: C.TxOutDatum C.CtxUTxO w1 -> MockchainT w2 m (Maybe C.HashableScriptData)
       resolveDatum C.TxOutDatumNone         = pure Nothing
       resolveDatum (C.TxOutDatumHash _ dh)  = queryDatumFromHash dh
       resolveDatum (C.TxOutDatumInline _ d) = pure $ Just d
 
-    resolvedUtxos <- forM utxos $ \(txOut@(C.InAnyCardanoEra _ (C.TxOut _ _ d _)), _) -> do
+    resolvedUtxos <- forM utxos $ \(txOut@(C.InAnyCardanoEra _era (C.TxOut _ _ d _)), _) -> do
       resolvedDatum <- resolveDatum d
       pure (txOut, resolvedDatum)
     pure $ UtxoSet resolvedUtxos
 
-instance Monad m => MonadDatumQuery (MockchainT m) where
+instance Monad m => MonadDatumQuery (MockchainT era m) where
   queryDatumFromHash dh = MockchainT (gets (Map.lookup dh . view datums))
 
 {-| Add all datums from the transaction to the map of known datums
 -}
-addDatumHashes :: MonadState MockChainState m => Tx ConwayEra -> m ()
-addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraConway txBody _scripts scriptData _auxData _) _witnesses) = do
-  let txOuts = C.fromLedgerTxOuts C.ShelleyBasedEraConway txBody scriptData
+addDatumHashes :: MonadState (MockChainState era) m => Tx era -> m ()
+addDatumHashes (C.Tx (ShelleyTxBody era txBody _scripts scriptData _auxData _) _witnesses) = do
+  let txOuts = C.fromLedgerTxOuts era txBody scriptData
 
   let insertHashableScriptData hashableScriptData =
         datums %= Map.insert (C.hashScriptDataBytes hashableScriptData) hashableScriptData
@@ -476,81 +471,90 @@ addDatumHashes (C.Tx (ShelleyTxBody C.ShelleyBasedEraConway txBody _scripts scri
 
 {-| All transaction outputs
 -}
-utxoSet :: MonadMockchain m => m (UtxoSet C.CtxUTxO ())
+utxoSet :: forall era m. (MonadMockchain era m, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsShelleyBasedEra era) => m (UtxoSet C.CtxUTxO ())
 utxoSet =
-  let f utxos = (utxos, fromApiUtxo () $ C.inAnyCardanoEra C.cardanoEra $ fromLedgerUTxO C.ShelleyBasedEraConway utxos)
+  let f utxos = (utxos, fromApiUtxo $ fromLedgerUTxO (C.shelleyBasedEra @era) utxos)
   in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain
 -}
-walletUtxo :: MonadMockchain m => Wallet -> m (UtxoSet C.CtxUTxO ())
+walletUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto) => Wallet -> m (UtxoSet C.CtxUTxO ())
 walletUtxo wallet = do
   fmap (onlyCredential (paymentCredential wallet)) utxoSet
 
 {-| Run the 'MockchainT' action with the @NodeParams@ from an initial state
 -}
-runMockchainT :: MockchainT m a -> NodeParams -> MockChainState -> m (Either MockchainError (a, MockChainState))
-runMockchainT (MockchainT action) nps state =
-  runExceptT (runStateT (runReaderT action nps) state)
+runMockchainT :: MockchainT era m a -> NodeParams era -> MockChainState era -> m (a, MockChainState era)
+runMockchainT (MockchainT action) nps =
+  runStateT (runReaderT action nps)
 
-type Mockchain a = MockchainT Identity a
+type Mockchain era a = MockchainT era Identity a
 
-runMockchain :: Mockchain a -> NodeParams -> MockChainState -> Either MockchainError (a, MockChainState)
+runMockchain :: Mockchain era a -> NodeParams era -> MockChainState era -> (a, MockChainState era)
 runMockchain action nps = runIdentity . runMockchainT action nps
 
 {-| Run the mockchain action with an initial distribution, using the default node parameters
 -}
-runMockchain0 :: InitialUTXOs -> Mockchain a -> Either MockchainError (a, MockChainState)
+runMockchain0 :: InitialUTXOs -> Mockchain C.ConwayEra a -> (a, MockChainState C.ConwayEra)
 runMockchain0 dist = runMockchain0With dist Defaults.nodeParams
 
 {-| Run the mockchain action with an initial distribution and a given set of node params
 -}
-runMockchain0With :: InitialUTXOs -> NodeParams -> Mockchain a -> Either MockchainError (a, MockChainState)
+runMockchain0With :: C.IsShelleyBasedEra era => InitialUTXOs -> NodeParams era -> Mockchain era a -> (a, MockChainState era)
 runMockchain0With dist params action = runMockchain action params (initialStateFor params dist)
 
-evalMockchainT :: Functor m => MockchainT m a -> NodeParams -> MockChainState -> m (Either MockchainError a)
-evalMockchainT action nps = fmap (fmap fst) . runMockchainT action nps
+evalMockchainT :: Functor m => MockchainT era m a -> NodeParams era -> MockChainState era -> m a
+evalMockchainT action nps = fmap fst . runMockchainT action nps
 
-evalMockchain :: Mockchain a -> NodeParams -> MockChainState -> Either MockchainError a
+evalMockchain :: Mockchain era a -> NodeParams era -> MockChainState era -> a
 evalMockchain action nps = runIdentity . evalMockchainT action nps
 
-evalMockchain0 :: InitialUTXOs -> Mockchain a -> Either MockchainError a
+evalMockchain0 :: InitialUTXOs -> Mockchain C.ConwayEra a -> a
 evalMockchain0 dist action = evalMockchain action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
 
-execMockchainT :: Functor m => MockchainT m a -> NodeParams -> MockChainState -> m (Either MockchainError MockChainState)
-execMockchainT action nps = fmap (fmap snd) . runMockchainT action nps
+execMockchainT :: Functor m => MockchainT era m a -> NodeParams era -> MockChainState era -> m (MockChainState era)
+execMockchainT action nps = fmap snd . runMockchainT action nps
 
-execMockchain :: Mockchain a -> NodeParams -> MockChainState -> Either MockchainError MockChainState
+execMockchain :: Mockchain era a -> NodeParams era -> MockChainState era -> MockChainState era
 execMockchain action nps = runIdentity . execMockchainT action nps
 
-execMockchain0 :: InitialUTXOs -> Mockchain a -> Either MockchainError MockChainState
+execMockchain0 :: InitialUTXOs -> Mockchain C.ConwayEra a -> MockChainState C.ConwayEra
 execMockchain0 dist action = execMockchain action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
 
-type MockchainIO a = MockchainT IO a
+type MockchainIO era a = MockchainT era IO a
 
-runMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError (a, MockChainState))
-runMockchainIO action nps = runMockchainT action nps
+runMockchainIO :: MockchainIO era a -> NodeParams era -> MockChainState era -> IO (a, MockChainState era)
+runMockchainIO = runMockchainT
 
 {-| Run the mockchain IO action with an initial distribution, using the default node parameters
 -}
-runMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError (a, MockChainState))
+runMockchain0IO :: InitialUTXOs -> MockchainIO C.ConwayEra a -> IO (a, MockChainState C.ConwayEra)
 runMockchain0IO dist = runMockchain0IOWith dist Defaults.nodeParams
+
+runMockchain0T :: InitialUTXOs -> MockchainT C.ConwayEra m a -> m (a, MockChainState C.ConwayEra)
+runMockchain0T dist = runMockchain0TWith dist Defaults.nodeParams
 
 {-| Run the mockchain IO action with an initial distribution and a given set of node params
 -}
-runMockchain0IOWith :: InitialUTXOs -> NodeParams -> MockchainIO a -> IO (Either MockchainError (a, MockChainState))
+runMockchain0IOWith :: C.IsShelleyBasedEra era => InitialUTXOs -> NodeParams era -> MockchainIO era a -> IO (a, MockChainState era)
 runMockchain0IOWith dist params action = runMockchainIO action params (initialStateFor params dist)
 
-evalMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError a)
-evalMockchainIO action nps = evalMockchainT action nps
+runMockchain0TWith :: C.IsShelleyBasedEra era => InitialUTXOs -> NodeParams era -> MockchainT era m a -> m (a, MockChainState era)
+runMockchain0TWith dist params action = runMockchainT action params (initialStateFor params dist)
 
-evalMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError a)
+evalMockchainIO :: MockchainIO era a -> NodeParams era -> MockChainState era -> IO a
+evalMockchainIO = evalMockchainT
+
+evalMockchain0IO :: InitialUTXOs -> MockchainIO C.ConwayEra a -> IO a
 evalMockchain0IO dist action = evalMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
 
-execMockchainIO :: MockchainIO a -> NodeParams -> MockChainState -> IO (Either MockchainError MockChainState)
+evalMockchain0T :: Functor m => InitialUTXOs -> MockchainT C.ConwayEra m a -> m a
+evalMockchain0T dist action = evalMockchainT action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
+
+execMockchainIO :: MockchainIO era a -> NodeParams era -> MockChainState era -> IO (MockChainState era)
 execMockchainIO action nps = execMockchainT action nps
 
-execMockchain0IO :: InitialUTXOs -> MockchainIO a -> IO (Either MockchainError MockChainState)
+execMockchain0IO :: InitialUTXOs -> MockchainIO C.ConwayEra a -> IO (MockChainState C.ConwayEra)
 execMockchain0IO dist action = execMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
 
 -- not exported by cardano-api 1.35.3 (though it seems like it's exported in 1.36)

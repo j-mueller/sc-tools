@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
+{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Primitive wallet
 -}
 module Convex.Wallet(
@@ -128,7 +129,7 @@ parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}
 selectAdaInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])
-selectAdaInputsCovering utxoSet target = selectAnyInputsCovering (onlyAda utxoSet) target
+selectAdaInputsCovering utxoSet = selectAnyInputsCovering (onlyAda utxoSet)
 
 {-| Select Ada-only inputs that cover the given amount of lovelace
 -}

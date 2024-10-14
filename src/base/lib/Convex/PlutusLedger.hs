@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TupleSections    #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Translating between cardano-api/cardano-ledger and plutus representations
 -}
 module Convex.PlutusLedger(

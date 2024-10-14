@@ -15,7 +15,7 @@ module Convex.UTxOCompatibility(
   txCompatibility
 ) where
 
-import           Cardano.Api              (ConwayEra, UTxO (..))
+import           Cardano.Api              (UTxO (..))
 import qualified Cardano.Api.Shelley      as C
 import qualified Control.Lens             as L
 import qualified Convex.CardanoApi.Lenses as L
@@ -37,14 +37,14 @@ data UTxOCompatibility =
   deriving anyclass (ToJSON, FromJSON)
 
 -- | Delete incompatible outputs from the UTxO set
-compatibleWith :: UTxOCompatibility -> UTxO ConwayEra -> UTxO ConwayEra
+compatibleWith :: C.IsBabbageBasedEra era => UTxOCompatibility -> UTxO era -> UTxO era
 compatibleWith = \case
   PlutusV1Compatibility -> deleteInlineDatums
   AnyCompatibility      -> id
 
 {-| Delete UTxOs that have inline datums, as this is not supported by Plutus V1
 -}
-deleteInlineDatums :: UTxO ConwayEra -> UTxO ConwayEra
+deleteInlineDatums :: C.IsBabbageBasedEra era => UTxO era -> UTxO era
 deleteInlineDatums (UTxO o) =
   let hasInlineDatum = isJust . L.preview (L._TxOut . L._3 . L._TxOutDatumInline)
   in UTxO (Map.filter (not . hasInlineDatum) o)
@@ -72,5 +72,5 @@ scriptWitnessCompat (C.PlutusScriptWitness lang _ _ _ _ _) = case lang of
 scriptWitnessCompat (C.SimpleScriptWitness _ _) = AnyCompatibility
 
 -- | Compatibility level of the transaction
-txCompatibility :: C.TxBodyContent C.BuildTx C.ConwayEra -> UTxOCompatibility
-txCompatibility = foldr min AnyCompatibility . fmap (anyScriptWitnessCompat . snd) . C.collectTxBodyScriptWitnesses C.ShelleyBasedEraConway
+txCompatibility :: C.IsShelleyBasedEra era => C.TxBodyContent C.BuildTx era -> UTxOCompatibility
+txCompatibility = foldr (min . anyScriptWitnessCompat . snd) AnyCompatibility . C.collectTxBodyScriptWitnesses C.shelleyBasedEra

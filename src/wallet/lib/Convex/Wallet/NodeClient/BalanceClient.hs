@@ -1,6 +1,9 @@
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-| A node client that shows the balance of the wallet
 -}
@@ -14,7 +17,7 @@ import           Cardano.Api                (BlockInMode, Env)
 import qualified Cardano.Api                as C
 import           Control.Concurrent.STM     (TVar, atomically, newTVarIO,
                                              writeTVar)
-import           Control.Monad              (when)
+import           Control.Monad              (unless, when)
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Trans.Maybe  (runMaybeT)
 import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
@@ -65,14 +68,14 @@ applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) 
       C.BlockInMode _ (C.getBlockHeader -> header) = block
       newState = WalletState.walletState newUTxOs header
 
-  when (not $ Utxos.null change) $ do
+  unless (Utxos.null change) $ do
     logInfo $ PrettyUtxoChange change
     logInfo $ PrettyBalance newUTxOs
 
   when (catchingUp oldC &&  not (catchingUp c)) $
     logInfoS "Caught up with node"
 
-  when (not $ catchingUp c) $ do
+  unless (catchingUp c) $ do
     liftIO (WalletState.writeToFile bceFile newState)
 
   liftIO $ writeState bceState newState

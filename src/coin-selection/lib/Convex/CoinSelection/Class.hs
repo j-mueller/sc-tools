@@ -1,6 +1,8 @@
+{-# LANGUAGE DefaultSignatures    #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| An effect for balancing transactions
 -}
@@ -13,14 +15,13 @@ module Convex.CoinSelection.Class(
   runTracingBalancingT
 ) where
 
-import           Cardano.Api.Shelley              (AddressInEra, ConwayEra)
+import           Cardano.Api.Shelley              (AddressInEra)
 import qualified Cardano.Api.Shelley              as C
 import           Control.Monad.Catch              (MonadCatch, MonadMask,
                                                    MonadThrow)
 import           Control.Monad.Except             (ExceptT, MonadError,
                                                    runExceptT)
 import           Control.Monad.IO.Class           (MonadIO)
-import           Control.Monad.Primitive          (PrimMonad (..))
 import           Control.Monad.Reader             (ReaderT (runReaderT), ask)
 import           Control.Monad.Trans.Class        (MonadTrans (..))
 import qualified Control.Monad.Trans.State        as StrictState
@@ -31,12 +32,13 @@ import           Convex.CardanoApi.Lenses         (emptyTxOut)
 import           Convex.Class                     (MonadBlockchain (..),
                                                    MonadDatumQuery (queryDatumFromHash),
                                                    MonadMockchain (..),
-                                                   MonadUtxoQuery (utxosByPaymentCredentials))
+                                                   MonadUtxoQuery)
 import           Convex.CoinSelection             (BalanceTxError,
                                                    ChangeOutputPosition,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
 import           Convex.MonadLog                  (MonadLog, MonadLogIgnoreT)
+import           Convex.Utils                     (inBabbage)
 import           Convex.Utxos                     (BalanceChanges (..),
                                                    UtxoSet (..))
 
@@ -53,95 +55,71 @@ we do indeed just call 'Convex.CoinSelection.balanceTx', but for
 
 {-| Balancing a transaction
 -}
-class Monad m => MonadBalance m where
+class Monad m => MonadBalance era m where
   {-| Balance the transaction using the given UTXOs and return address.
   -}
   balanceTx ::
     -- | Address used for leftover funds
-    AddressInEra ConwayEra ->
+    AddressInEra era ->
 
     -- | Set of UTxOs that can be used to supply missing funds
     UtxoSet C.CtxUTxO a ->
 
     -- | The unbalanced transaction body
-    TxBuilder ->
+    TxBuilder era ->
 
     -- | The position of the change output
     ChangeOutputPosition ->
 
     -- | The balanced transaction body and the balance changes (per address)
-    m (Either (BalanceTxError C.ConwayEra) (C.BalancedTxBody ConwayEra, BalanceChanges))
+    m (Either (BalanceTxError era) (C.BalancedTxBody era, BalanceChanges))
+
+  default balanceTx :: (MonadTrans t, m ~ t n, MonadBalance era n) =>
+    AddressInEra era -> UtxoSet C.CtxUTxO a -> TxBuilder era -> ChangeOutputPosition -> m (Either (BalanceTxError era) (C.BalancedTxBody era, BalanceChanges))
+  balanceTx = (((lift .) .) .) . balanceTx
 
 newtype BalancingT m a = BalancingT{runBalancingT :: m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, MonadBlockchain)
-
-instance PrimMonad m => PrimMonad (BalancingT m) where
-  type PrimState (BalancingT m) = PrimState m
-  {-# INLINEABLE primitive #-}
-  primitive f = lift (primitive f)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, Convex.Class.MonadBlockchain era)
 
 instance MonadTrans BalancingT where
   lift = BalancingT
 
 deriving newtype instance MonadError e m => MonadError e (BalancingT m)
 
-instance MonadBalance m => MonadBalance (ExceptT e m) where
-  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
+instance MonadBalance era m => MonadBalance era (ExceptT e m)
+instance MonadBalance era m => MonadBalance era (ReaderT e m)
+instance MonadBalance era m => MonadBalance era (StrictState.StateT s m)
+instance MonadBalance era m => MonadBalance era (LazyState.StateT s m)
+instance MonadBalance era m => MonadBalance era (MonadLogIgnoreT m)
+instance (C.IsBabbageBasedEra era, Convex.Class.MonadBlockchain era m) => MonadBalance era (BalancingT m) where
+  balanceTx addr utxos txb changePosition = runExceptT (Convex.CoinSelection.balanceTx mempty (inBabbage @era emptyTxOut addr) utxos txb changePosition)
 
-instance MonadBalance m => MonadBalance (ReaderT e m) where
-  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
+instance Convex.Class.MonadMockchain era m => Convex.Class.MonadMockchain era (BalancingT m)
+instance Convex.Class.MonadUtxoQuery m => Convex.Class.MonadUtxoQuery (BalancingT m)
 
-instance MonadBalance m => MonadBalance (StrictState.StateT s m) where
-  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
-
-instance MonadBalance m => MonadBalance (LazyState.StateT s m) where
-  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
-
-instance MonadBalance m => MonadBalance (MonadLogIgnoreT m) where
-  balanceTx addr utxos txb = lift . balanceTx addr utxos txb
-
-instance (MonadBlockchain m) => MonadBalance (BalancingT m) where
-  balanceTx addr utxos txb changePosition = runExceptT (Convex.CoinSelection.balanceTx mempty (C.InAnyCardanoEra C.ConwayEra $ emptyTxOut addr) utxos txb changePosition)
-
-instance MonadMockchain m => MonadMockchain (BalancingT m) where
-  modifyMockChainState = lift . modifyMockChainState
-  askNodeParams = lift askNodeParams
-
-instance MonadUtxoQuery m => MonadUtxoQuery (BalancingT m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadDatumQuery m => MonadDatumQuery (BalancingT m) where
-  queryDatumFromHash = lift . queryDatumFromHash
+instance Convex.Class.MonadDatumQuery m => Convex.Class.MonadDatumQuery (BalancingT m) where
+  queryDatumFromHash = lift . Convex.Class.queryDatumFromHash
 
 {-| Implementation of @MonadBalance@ that uses the provided tracer for debugging output
 -}
 newtype TracingBalancingT m a = TracingBalancingT{ runTracingBalancingT' :: ReaderT (Tracer m TxBalancingMessage) m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, MonadBlockchain)
-
-instance PrimMonad m => PrimMonad (TracingBalancingT m) where
-  type PrimState (TracingBalancingT m) = PrimState m
-  {-# INLINEABLE primitive #-}
-  primitive f = lift (primitive f)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadCatch, MonadFail, MonadLog, MonadThrow, MonadMask, Convex.Class.MonadBlockchain era)
 
 instance MonadTrans TracingBalancingT where
   lift = TracingBalancingT . lift
 
 deriving newtype instance MonadError e m => MonadError e (TracingBalancingT m)
 
-instance (MonadBlockchain m) => MonadBalance (TracingBalancingT m) where
+instance (C.IsBabbageBasedEra era, Convex.Class.MonadBlockchain era m) => MonadBalance era (TracingBalancingT m) where
   balanceTx addr utxos txb changePosition = TracingBalancingT $ do
     tr <- ask
-    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (C.InAnyCardanoEra C.ConwayEra $ emptyTxOut addr) utxos txb changePosition)
+    runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (inBabbage @era emptyTxOut addr) utxos txb changePosition)
 
-instance MonadMockchain m => MonadMockchain (TracingBalancingT m) where
-  modifyMockChainState = lift . modifyMockChainState
-  askNodeParams = lift askNodeParams
+instance Convex.Class.MonadMockchain era m => Convex.Class.MonadMockchain era (TracingBalancingT m)
+instance Convex.Class.MonadUtxoQuery m => Convex.Class.MonadUtxoQuery (TracingBalancingT m)
 
-instance MonadUtxoQuery m => MonadUtxoQuery (TracingBalancingT m) where
-  utxosByPaymentCredentials = lift . utxosByPaymentCredentials
-
-instance MonadDatumQuery m => MonadDatumQuery (TracingBalancingT m) where
-  queryDatumFromHash = lift . queryDatumFromHash
+instance Convex.Class.MonadDatumQuery m => Convex.Class.MonadDatumQuery (TracingBalancingT m) where
+  queryDatumFromHash = lift . Convex.Class.queryDatumFromHash
 
 runTracingBalancingT :: Tracer m TxBalancingMessage -> TracingBalancingT m a -> m a
 runTracingBalancingT tracer (TracingBalancingT action) = runReaderT action tracer

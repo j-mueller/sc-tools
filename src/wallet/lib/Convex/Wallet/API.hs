@@ -11,7 +11,7 @@ module Convex.Wallet.API(
 ) where
 
 import           Cardano.Api                     (CtxTx)
-import           Control.Concurrent.STM          (TVar, atomically, readTVar)
+import           Control.Concurrent.STM          (TVar, readTVarIO)
 import           Control.Monad.IO.Class          (MonadIO (..))
 import           Convex.Utxos                    (UtxoSet)
 import           Convex.Wallet.WalletState       (WalletState, utxoSet)
@@ -46,7 +46,7 @@ server :: TVar WalletState -> Server API
 server walletState = health :<|> utxo
   where
     health = pure NoContent
-    utxo = liftIO (utxoSet <$> atomically (readTVar walletState))
+    utxo = liftIO (utxoSet <$> readTVarIO walletState)
 
 startServer :: TVar WalletState -> Int -> IO ()
 startServer walletState port =

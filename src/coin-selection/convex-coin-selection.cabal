@@ -47,7 +47,6 @@ library
       convex-optics,
       convex-wallet,
       data-default,
-      primitive,
       servant-client,
       text
 
@@ -91,5 +90,4 @@ test-suite convex-coin-selection-test
     plutus-ledger-api,
     plutus-tx,
     plutus-tx-plugin,
-    mtl,
-    transformers
+    mtl

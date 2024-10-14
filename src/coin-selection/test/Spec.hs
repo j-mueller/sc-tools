@@ -1,9 +1,11 @@
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
 module Main(main) where
 
+import qualified Cardano.Api                    as C
 import qualified Cardano.Api.Ledger             as C
 import qualified Cardano.Api.Shelley            as C
 import qualified Cardano.Ledger.Api             as Ledger
@@ -14,24 +16,20 @@ import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
 import           Control.Monad.IO.Class         (MonadIO (..))
 import           Control.Monad.State.Strict     (execStateT, modify)
-import           Control.Monad.Trans.Class      (MonadTrans (..))
 import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
                                                  assetValue, execBuildTx,
-                                                 execBuildTxT, mintPlutusV1,
+                                                 execBuildTxT, mintPlutus,
                                                  payToAddress,
                                                  payToAddressTxOut,
-                                                 payToPlutusV1, payToPlutusV2,
-                                                 payToPlutusV2Inline,
+                                                 payToScriptDatumHash,
                                                  prependTxOut,
                                                  setMinAdaDepositAll,
-                                                 spendPlutusV1, spendPlutusV2,
-                                                 spendPlutusV2Ref)
+                                                 spendPlutus, spendPlutusRef)
 import qualified Convex.BuildTx                 as BuildTx
 import qualified Convex.CardanoApi.Lenses       as L
 import           Convex.Class                   (MonadBlockchain (..),
                                                  MonadDatumQuery (queryDatumFromHash),
-                                                 MonadMockchain,
-                                                 SendTxFailed (..), getUtxo,
+                                                 MonadMockchain, getUtxo,
                                                  setReward, setUtxo, singleUTxO)
 import           Convex.CoinSelection           (BalanceTxError,
                                                  ChangeOutputPosition (TrailingChange),
@@ -48,11 +46,13 @@ import qualified Convex.MockChain.Defaults      as Defaults
 import qualified Convex.MockChain.Gen           as Gen
 import           Convex.MockChain.Staking       (registerPool)
 import           Convex.MockChain.Utils         (mockchainSucceeds,
-                                                 runMockchainProp)
+                                                 runMockchainProp,
+                                                 runTestableErr)
 import           Convex.NodeParams              (ledgerProtocolParameters,
                                                  protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
-import           Convex.Utils                   (failOnError)
+import           Convex.Utils                   (failOnError, inBabbage,
+                                                 inConway)
 import qualified Convex.Utxos                   as Utxos
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
@@ -129,34 +129,36 @@ txInscript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn
 mintingScript :: C.PlutusScript C.PlutusScriptV1
 mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
-payToPlutusScript :: (MonadFail m, MonadError (BalanceTxError C.ConwayEra) m, MonadMockchain m) => m C.TxIn
-payToPlutusScript = do
-  let tx = execBuildTx (payToPlutusV1 Defaults.networkId txInscript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+plutusScript :: C.IsPlutusScriptLanguage lang => C.PlutusScript lang -> C.Script lang
+plutusScript = C.PlutusScript C.plutusScriptVersion
+
+payToPlutusScript :: forall era m. (MonadFail m, MonadError (BalanceTxError era) m, MonadMockchain era m, C.IsBabbageBasedEra era) => m C.TxIn
+payToPlutusScript = inBabbage @era $ do
+  let tx = execBuildTx (payToScriptDatumHash Defaults.networkId (plutusScript txInscript) () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
   pure (C.TxIn i (C.TxIx 0))
 
-payToPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => m C.TxIn
-payToPlutusV2Script = do
-  let tx = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.v2SpendingScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+payToPlutusV2Script :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era) => m C.TxIn
+payToPlutusV2Script = inBabbage @era $ do
+  let tx = execBuildTx (payToScriptDatumHash Defaults.networkId (plutusScript Scripts.v2SpendingScript) () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
   i <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
   pure (C.TxIn i (C.TxIx 0))
 
-spendPlutusScript :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxIn -> m C.TxId
-spendPlutusScript ref = do
-  let tx = execBuildTx (spendPlutusV1 ref txInscript () ())
+spendPlutusScript :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV1 era) => C.TxIn -> m C.TxId
+spendPlutusScript ref = inBabbage @era $ do
+  let tx = execBuildTx (spendPlutus ref txInscript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-spendPlutusV2Script :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxIn -> m C.TxId
-spendPlutusV2Script ref = do
-  let tx = execBuildTx (spendPlutusV2 ref Scripts.v2SpendingScript () ())
+spendPlutusV2Script :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => C.TxIn -> m C.TxId
+spendPlutusV2Script ref = inBabbage @era $ do
+  let tx = execBuildTx (spendPlutus ref Scripts.v2SpendingScript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-putReferenceScript :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> m C.TxIn
+putReferenceScript :: forall m. (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
-  let hsh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)
-      addr = C.makeShelleyAddressInEra C.ShelleyBasedEraConway Defaults.networkId (C.PaymentCredentialByScript hsh) C.NoStakeAddress
+  let addr = Wallet.addressInEra Defaults.networkId wallet
       tx = execBuildTx $
-            payToPlutusV2Inline addr Scripts.v2SpendingScript (C.lovelaceToValue 10_000_000)
+            BuildTx.createRefScriptDatumHash addr (plutusScript Scripts.v2SpendingScript) () (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx TrailingChange []
   let outRef = C.TxIn txId (C.TxIx 0)
@@ -168,27 +170,26 @@ putReferenceScript wallet = do
       _                   -> fail "No reference script found"
   pure outRef
 
-spendPlutusScriptReference :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) =>  C.TxIn -> m C.TxId
+spendPlutusScriptReference :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) =>  C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
-  let tx = execBuildTx (spendPlutusV2Ref txIn refTxIn (Just $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2SpendingScript)) () ())
+  let tx = execBuildTx (spendPlutusRef txIn refTxIn C.PlutusScriptV2 () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-mintingPlutus :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => m C.TxId
-mintingPlutus = do
+mintingPlutus :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV1 era) => m C.TxId
+mintingPlutus = inBabbage @era $ do
   void $ Wallet.w2 `paymentTo` Wallet.w1
-  let tx = execBuildTx (mintPlutusV1 mintingScript () "assetName" 100)
+  let tx = execBuildTx (mintPlutus mintingScript () "assetName" 100)
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
-spendTokens :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
+spendTokens :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
 spendTokens _ = do
   _ <- nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 51 Wallet.w1 Wallet.w2
   _ <- nativeAssetPaymentTo 100 Wallet.w2 Wallet.w3
   nativeAssetPaymentTo 99 Wallet.w3 Wallet.w1
 
-
-spendTokens2 :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
+spendTokens2 :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
 spendTokens2 txi = do
   let q  = 98
       wTo = Wallet.w2
@@ -197,28 +198,28 @@ spendTokens2 txi = do
       tx = execBuildTx $ do
             payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
             BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
-            mintPlutusV1 mintingScript () "assetName" (-2)
+            mintPlutus mintingScript () "assetName" (-2)
             setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
 
 -- | Put all of the Wallet 2's funds into a single UTxO with mixed assets
 --   Then make a transaction that splits this output into two
-spendSingletonOutput :: (MonadFail m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m ()
+spendSingletonOutput :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m ()
 spendSingletonOutput txi = do
   void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
-  utxoSet <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra . fromLedgerUTxO C.ShelleyBasedEraConway <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.shelleyBasedEra <$> getUtxo
   let k = Utxos.onlyCredential (Wallet.paymentCredential Wallet.w2) utxoSet
   let totalVal = Utxos.totalBalance k
       newOut = C.TxOut (Wallet.addressInEra Defaults.networkId Wallet.w2) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue totalVal) C.TxOutDatumNone C.ReferenceScriptNone
       utxoSetMinusW2 = Utxos.removeUtxos (Map.keysSet $ Utxos._utxos k) utxoSet
-      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (C.InAnyCardanoEra C.ConwayEra newOut, ())
+      utxoSetPlusSingleOutput = utxoSetMinusW2 <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newOut, ())
 
-  setUtxo (C.toLedgerUTxO C.ShelleyBasedEraConway $ Utxos.toApiUtxo utxoSetPlusSingleOutput)
+  setUtxo (C.toLedgerUTxO C.shelleyBasedEra $ Utxos.toApiUtxo utxoSetPlusSingleOutput)
   -- check that wallet 2 only
   void $ nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2
 
-nativeAssetPaymentTo :: (MonadMockchain m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
+nativeAssetPaymentTo :: (MonadMockchain C.ConwayEra m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
       tx = execBuildTx $
@@ -229,7 +230,7 @@ nativeAssetPaymentTo q wFrom wTo = do
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
 
-checkResolveDatumHash :: (MonadMockchain m, MonadDatumQuery m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => m ()
+checkResolveDatumHash :: (MonadMockchain C.ConwayEra m, MonadDatumQuery m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => m ()
 checkResolveDatumHash = do
   let addr = Wallet.addressInEra Defaults.networkId Wallet.w1
       assertDatumPresent vl = queryDatumFromHash (C.hashScriptDataBytes vl) >>= \case
@@ -241,7 +242,7 @@ checkResolveDatumHash = do
 
   -- 1. resolve an inline datum
   let datum1 = C.unsafeHashableScriptData  (C.ScriptDataConstructor 5 [])
-      dat = C.TxOutDatumInline C.BabbageEraOnwardsConway datum1
+      dat = C.TxOutDatumInline C.babbageBasedEra datum1
       txOut = payToAddressTxOut addr mempty
                 & L._TxOut . _3 .~ dat
 
@@ -249,10 +250,10 @@ checkResolveDatumHash = do
 
   assertDatumPresent datum1
 
-  -- 2. resolve a datum that was provided as a "TxOutDatumInTx" (this is what 'payToPlutusV1' does)
+  -- 2. resolve a datum that was provided as a "TxOutDatumInTx" (this is what 'payToScriptDatumHash' does)
   let d2 = (11 :: Integer, 12 :: Integer)
       datum2 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d2
-  _ <- tryExecBuildTxWallet Wallet.w1 (payToPlutusV1 Defaults.networkId txInscript d2 C.NoStakeAddress mempty)
+  _ <- tryExecBuildTxWallet Wallet.w1 (payToScriptDatumHash Defaults.networkId (plutusScript txInscript) d2 C.NoStakeAddress mempty)
   assertDatumPresent datum2
 
   -- 3. resolve a datum that was provided by a redeeming transaction
@@ -260,18 +261,18 @@ checkResolveDatumHash = do
       datum3 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d3
       txo =
         C.TxOut
-          (C.makeShelleyAddressInEra C.ShelleyBasedEraConway Defaults.networkId (C.PaymentCredentialByScript (C.hashScript (C.PlutusScript C.PlutusScriptV1 txInscript))) C.NoStakeAddress)
-          (C.TxOutValueShelleyBased C.ShelleyBasedEraConway mempty)
-          (C.TxOutDatumHash C.AlonzoEraOnwardsConway (C.hashScriptDataBytes datum3))
+          (C.makeShelleyAddressInEra C.shelleyBasedEra Defaults.networkId (C.PaymentCredentialByScript (C.hashScript (C.PlutusScript C.PlutusScriptV1 txInscript))) C.NoStakeAddress)
+          (C.TxOutValueShelleyBased C.shelleyBasedEra mempty)
+          (C.TxOutDatumHash (C.babbageEraOnwardsToAlonzoEraOnwards C.babbageBasedEra) (C.hashScriptDataBytes datum3))
           C.ReferenceScriptNone
   txId <- tryExecBuildTxWallet Wallet.w1 (prependTxOut txo)
-  _ <- tryExecBuildTxWallet Wallet.w1 (spendPlutusV1 (C.TxIn txId (C.TxIx 0)) txInscript d3 ())
+  _ <- tryExecBuildTxWallet Wallet.w1 (spendPlutus (C.TxIn txId (C.TxIx 0)) txInscript d3 ())
   assertDatumPresent datum3
 
 {-| Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain.
 -}
-execBuildTxWallet :: (MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> BuildTxT m a -> m (Either SendTxFailed C.TxId)
+execBuildTxWallet :: (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> BuildTxT C.ConwayEra m a -> m (Either (ValidationError C.ConwayEra) C.TxId)
 execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
   fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet tx TrailingChange []
@@ -279,7 +280,7 @@ execBuildTxWallet wallet action = do
 {-| Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain. Fail if 'balanceAndSubmit' is not successful.
 -}
-tryExecBuildTxWallet :: (MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => Wallet -> BuildTxT m a -> m C.TxId
+tryExecBuildTxWallet :: (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => Wallet -> BuildTxT C.ConwayEra m a -> m C.TxId
 tryExecBuildTxWallet wallet action = execBuildTxWallet wallet action >>= either (fail . show) pure
 
 -- | Balance a transaction using a list of operators
@@ -292,12 +293,12 @@ balanceMultiAddress = do
     QC.forAll (Gen.chooseInteger (7_500_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Quantity -> nAmount) ->
       QC.forAll (Gen.sublistOf (op:operators)) $ \requiredSignatures ->
         classify (null operators) "1 operator"
-          $ classify (length operators > 0 && length operators <= 9) "2-9 operators"
+          $ classify (not (null operators) && length operators <= 9) "2-9 operators"
           $ classify (length operators > 9) "10+ operators"
-          $ classify (length requiredSignatures == 0) "0 required signatures"
-          $ classify (length requiredSignatures > 0 && length requiredSignatures <= 9) "1-9 required signatures"
+          $ classify (null requiredSignatures) "0 required signatures"
+          $ classify (not (null requiredSignatures) && length requiredSignatures <= 9) "1-9 required signatures"
           $ classify (length requiredSignatures > 9) "10+ required signatures"
-          $ runMockchainProp $ lift $ failOnError $ do
+          $ runMockchainProp $ runTestableErr @(BalanceTxError C.ConwayEra) $ do
               -- send Ada to each operator
               traverse_ (payToOperator' mempty (C.lovelaceToValue $ 7_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
 
@@ -323,9 +324,9 @@ buildTxMixedInputs :: Assertion
 buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   testWallet <- liftIO Wallet.generateWallet
   -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
-  utxoSet <- Utxos.fromApiUtxo () . C.inAnyCardanoEra C.cardanoEra . fromLedgerUTxO C.ShelleyBasedEraConway <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraConway <$> getUtxo
   let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
-      newUTxO = C.InAnyCardanoEra C.ConwayEra $ C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
+      newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
   setUtxo
     $ C.toLedgerUTxO C.ShelleyBasedEraConway
@@ -345,27 +346,25 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
 largeTransactionTest :: Assertion
 largeTransactionTest = do
   let largeDatum :: [Integer] = replicate 10_000 33
-      largeDatumTx = execBuildTxWallet Wallet.w1 (payToPlutusV1 Defaults.networkId txInscript largeDatum C.NoStakeAddress mempty)
+      largeDatumTx = execBuildTxWallet Wallet.w1 (payToScriptDatumHash Defaults.networkId (plutusScript txInscript) largeDatum C.NoStakeAddress mempty)
 
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
-    Right (Left{}, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20313 16384)):|[])) -> pure ()
+    (_, view failedTransactions -> [(_, err)]) -> case err of
+      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20_313 16384)):|[])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
-    Right _ -> fail $ "Unexpected success. Expected 1 failed transaction."
-    Left err -> fail $ "Unexpected failure: " <> show err
+    (_, length . view failedTransactions -> numFailed) -> fail $ "Expected one failed transaction, found " <> show numFailed
 
-  -- the tx should succeed after setting the max tx size to exactly 20304 (see the error message in the test above)
-  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20313
+  -- the tx should succeed after setting the max tx size to exactly 20313 (see the error message in the test above)
+  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20_313
   runMockchain0IOWith Wallet.initialUTxOs params' (failOnError largeDatumTx) >>= \case
-    Right (Right{}, view failedTransactions -> []) -> pure ()
-    Right _ -> fail $ "Unexpected failure. Expected 1 successful transaction."
-    Left err -> fail $ "Unexpected failure: " <> show err
+    (Right{}, view failedTransactions -> []) -> pure ()
+    (_, length . view failedTransactions -> numFailed) -> fail $ "Expected success with 0 failed transactions, found " <> show numFailed
 
-matchingIndex :: (MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
-matchingIndex = do
-  let txBody = execBuildTx (payToPlutusV2 Defaults.networkId Scripts.matchingIndexValidatorScript () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-      tx     = C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange []) <*> pure (C.TxIx 0)
+matchingIndex :: forall era m. (MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV3 era) => m ()
+matchingIndex = inBabbage @era $ do
+  let txBody = execBuildTx (BuildTx.payToScriptDatumHash Defaults.networkId (plutusScript Scripts.matchingIndexValidatorScript) () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
+      tx     = C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
   -- create three separate tx outputs that are locked by the matching index script
   inputs <- replicateM 3 tx
@@ -376,27 +375,27 @@ matchingIndex = do
 stakingCredential :: C.StakeCredential
 stakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
 
-registerStakingCredential :: (MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m C.TxIn
-registerStakingCredential = do
+registerStakingCredential :: forall era m. (MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsConwayBasedEra era) => m C.TxIn
+registerStakingCredential = inConway @era $ do
   let txBody = execBuildTx (BuildTx.addStakeCredentialCertificate stakingCredential)
-  C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange []) <*> pure (C.TxIx 0)
+  C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
-withdrawZero :: (MonadIO m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
-withdrawZero = do
+withdrawZero :: forall era m. (MonadIO m, MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => m ()
+withdrawZero = inBabbage @era $ do
   txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
-  txI <- C.TxIn <$> (C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange []) <*> pure (C.TxIx 0)
+  txI <- C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
   singleUTxO txI >>= \case
     Nothing -> fail "txI not found"
     Just{} -> pure ()
 
-matchingIndexMP ::  (MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+matchingIndexMP :: forall m. (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 matchingIndexMP = do
-  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.matchingIndexMPScript)
+  let sh = C.hashScript (C.PlutusScript C.PlutusScriptV3 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
       runTx assetName = Scripts.mintMatchingIndex policyId assetName 100
   void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx ["assetName1", "assetName2", "assetName3"]) TrailingChange []
 
-queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 queryStakeAddressesTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -436,7 +435,7 @@ queryStakeAddressesTest = do
   when (length rewards /= 1) $ fail "Expected 1 reward"
   when (length delegations /= 1) $ fail "Expected 1 delegation"
 
-withdrawalTest :: forall m. (MonadIO m, MonadMockchain m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+withdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 withdrawalTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
