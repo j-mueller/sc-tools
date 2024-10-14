@@ -331,7 +331,6 @@ addWithdrawalWithTxBody address amount f =
 -}
 addStakeWitnessWithTxBody :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.StakeCredential -> (TxBody era -> C.Witness C.WitCtxStake era) -> m ()
 addStakeWitnessWithTxBody credential buildWitness =
-  -- addTxBuilder (TxBuilder $ \body -> set (L.txCertificates . L._TxCertificates . _2 . at credential) ())
   addTxBuilder (TxBuilder $ \body -> over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, buildWitness body)))
 
 {-| Spend an output locked by a public key
@@ -523,14 +522,14 @@ createRefScriptBase addr script dat vl = inBabbage @era $
 createRefScriptNoDatum :: (MonadBuildTx era m, C.IsBabbageBasedEra era, C.IsScriptLanguage lang) => C.AddressInEra era -> C.Script lang -> C.Value -> m ()
 createRefScriptNoDatum addr script = createRefScriptBase addr script C.TxOutDatumNone
 
-{-| same as payToPlutusV2Inline but also specify an inline datum -}
+{-| same as createRefScriptBase but also specify an inline datum -}
 createRefScriptInlineDatum :: forall a lang era m. (MonadBuildTx era m, Plutus.ToData a, C.IsBabbageBasedEra era, C.IsScriptLanguage lang)
   => C.AddressInEra era -> C.Script lang -> a -> C.Value -> m ()
 createRefScriptInlineDatum addr script datum vl =
   let dat = C.TxOutDatumInline C.babbageBasedEra (toHashableScriptData datum)
   in createRefScriptBase addr script dat vl
 
-{-| same as payToPlutusV2Inline but also specify a datum -}
+{-| same as createRefScriptBase but also specify a datum -}
 createRefScriptDatumHash :: forall a lang era m. (MonadBuildTx era m, Plutus.ToData a, C.IsBabbageBasedEra era, C.IsScriptLanguage lang)
   => C.AddressInEra era -> C.Script lang -> a -> C.Value -> m ()
 createRefScriptDatumHash addr script datum vl =
