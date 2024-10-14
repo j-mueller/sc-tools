@@ -14,7 +14,7 @@
 
 -- FIXME (koslambrou) Remove once we have the newtype for 'AnyCardanoEra TxOut'.
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -Wno-deprecations #-}
+{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-# LANGUAGE TypeApplications     #-}
 
 module Convex.Utxos(

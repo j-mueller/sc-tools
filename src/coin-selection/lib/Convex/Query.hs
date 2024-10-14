@@ -29,7 +29,6 @@ module Convex.Query(
 import           Cardano.Api                (BalancedTxBody,
                                              PaymentCredential (..))
 import qualified Cardano.Api                as C
-import           Control.Exception          (Exception)
 import           Control.Monad.Except       (MonadError)
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (ReaderT, ask, runReaderT)
@@ -58,6 +57,7 @@ import           Data.Functor               (($>))
 import qualified Data.Map                   as Map
 import           Data.Maybe                 (listToMaybe)
 import qualified Data.Set                   as Set
+import           GHC.Generics               (Generic)
 import           Servant.Client             (ClientEnv)
 
 {-| Balance the transaction body using the UTxOs locked by the payment credentials,
@@ -76,7 +76,7 @@ balanceTx dbg inputCredentials changeOutput txBody changePosition = do
   runExceptT (Convex.CoinSelection.balanceTx (natTracer lift dbg) changeOutput o txBody changePosition)
 
 newtype WalletAPIQueryT era m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: ReaderT ClientEnv m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain era, MonadLog)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadBlockchain era, MonadLog, MonadTrans)
 
 runWalletAPIQueryT :: ClientEnv -> WalletAPIQueryT era m a -> m a
 runWalletAPIQueryT env (WalletAPIQueryT action) = runReaderT action env
@@ -161,5 +161,4 @@ selectOperatorUTxO operator = fmap listToMaybe (operatorUtxos operator)
 data BalanceAndSubmitError era =
   BalanceError (BalanceTxError era)
   | SubmitError (ValidationError era)
-  deriving stock Show
-  deriving anyclass Exception
+  deriving stock (Show, Generic)

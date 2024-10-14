@@ -155,6 +155,7 @@ data ExUnitsError era =
 
 makePrisms ''ExUnitsError
 
+-- see https://github.com/j-mueller/sc-tools/issues/214
 data ValidationError era =
   ValidationErrorInMode !C.TxValidationErrorInCardanoMode
   | VExUnits !(ExUnitsError era)
