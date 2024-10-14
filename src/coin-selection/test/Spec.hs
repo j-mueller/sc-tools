@@ -382,7 +382,7 @@ registerStakingCredential = inConway @era $ do
 
 withdrawZero :: forall era m. (MonadIO m, MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => m ()
 withdrawZero = inBabbage @era $ do
-  txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Defaults.networkId Scripts.v2StakingScript ())
+  txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
   txI <- C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
   singleUTxO txI >>= \case
     Nothing -> fail "txI not found"
