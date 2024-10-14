@@ -169,6 +169,7 @@ emptyTx =
     , C.txVotingProcedures = Nothing
     , C.txCurrentTreasuryValue = Nothing
     , C.txTreasuryDonation = Nothing
+    , C.txSupplementalData = C.BuildTxWith C.TxSupplementalDataNone
     }
 
 {-| A transaction output with no value
@@ -593,7 +594,7 @@ _TxValidityUpperBound = iso from to where
   to :: (C.ShelleyBasedEra era, Maybe SlotNo) -> C.TxValidityUpperBound era
   to (k, s) = C.TxValidityUpperBound k s
 
-_TxValidityFiniteRange :: (C.IsAllegraBasedEra era, C.IsShelleyBasedEra era) => Prism' (C.TxValidityLowerBound era, C.TxValidityUpperBound era) (SlotNo, SlotNo)
+_TxValidityFiniteRange :: (C.IsAllegraBasedEra era) => Prism' (C.TxValidityLowerBound era, C.TxValidityUpperBound era) (SlotNo, SlotNo)
 _TxValidityFiniteRange = prism' from to where
   from (l, u) = (C.TxValidityLowerBound C.allegraBasedEra l, C.TxValidityUpperBound C.shelleyBasedEra (Just u))
   to = \case
