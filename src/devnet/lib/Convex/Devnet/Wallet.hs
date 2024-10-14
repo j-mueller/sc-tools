@@ -96,7 +96,7 @@ runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmit :: forall era. (C.IsShelleyBasedEra era, C.IsBabbageBasedEra era) => Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder era -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx era)
+balanceAndSubmit :: forall era. (C.IsBabbageBasedEra era) => Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder era -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx era)
 balanceAndSubmit tracer node wallet tx changePosition keys = do
   n <- runningNodeBlockchain @era tracer node queryNetworkId
   let walletAddress = Wallet.addressInEra n wallet
@@ -106,7 +106,7 @@ balanceAndSubmit tracer node wallet tx changePosition keys = do
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
 balanceAndSubmitReturn
-  :: forall era. (C.IsShelleyBasedEra era, C.IsBabbageBasedEra era)
+  :: forall era. (C.IsBabbageBasedEra era)
   => Tracer IO WalletLog
   -> RunningNode
   -> Wallet

@@ -36,6 +36,7 @@ module Convex.CardanoApi.Lenses(
   txVotingProcedures,
   txCurrentTreasuryValue,
   txTreasuryDonation,
+  txSupplementalData,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -169,6 +170,7 @@ emptyTx =
     , C.txVotingProcedures = Nothing
     , C.txCurrentTreasuryValue = Nothing
     , C.txTreasuryDonation = Nothing
+    , C.txSupplementalData = C.BuildTxWith C.TxSupplementalDataNone
     }
 
 {-| A transaction output with no value
@@ -286,6 +288,11 @@ txVotingProcedures :: Lens' (C.TxBodyContent v era) (Maybe (C.Featured C.ConwayE
 txVotingProcedures = lens get set_ where
   get = C.txVotingProcedures
   set_ body k = body{C.txVotingProcedures = k}
+
+txSupplementalData :: Lens' (C.TxBodyContent v era) (BuildTxWith v (C.TxSupplementalDatums era))
+txSupplementalData = lens get set_ where
+  get = C.txSupplementalData
+  set_ body k = body{C.txSupplementalData = k}
 
 _TxExtraKeyWitnesses :: C.IsAlonzoBasedEra era => Iso' (C.TxExtraKeyWitnesses era) [C.Hash C.PaymentKey]
 _TxExtraKeyWitnesses = iso from to where
@@ -593,7 +600,7 @@ _TxValidityUpperBound = iso from to where
   to :: (C.ShelleyBasedEra era, Maybe SlotNo) -> C.TxValidityUpperBound era
   to (k, s) = C.TxValidityUpperBound k s
 
-_TxValidityFiniteRange :: (C.IsAllegraBasedEra era, C.IsShelleyBasedEra era) => Prism' (C.TxValidityLowerBound era, C.TxValidityUpperBound era) (SlotNo, SlotNo)
+_TxValidityFiniteRange :: (C.IsAllegraBasedEra era) => Prism' (C.TxValidityLowerBound era, C.TxValidityUpperBound era) (SlotNo, SlotNo)
 _TxValidityFiniteRange = prism' from to where
   from (l, u) = (C.TxValidityLowerBound C.allegraBasedEra l, C.TxValidityUpperBound C.shelleyBasedEra (Just u))
   to = \case
