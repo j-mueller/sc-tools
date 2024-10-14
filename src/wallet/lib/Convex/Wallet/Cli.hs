@@ -86,7 +86,7 @@ showAddress Config{cardanoNodeConfigFile, cardanoNodeSocket} operatorConfig = do
 
 runWallet :: (MonadLog m, MonadError C.InitialLedgerStateError m, MonadIO m) => K.LogEnv -> Int -> Config -> OperatorConfigVerification -> m ()
 runWallet logEnv port Config{cardanoNodeConfigFile, cardanoNodeSocket, walletFile} operatorConfig = do
-  initialState <- fromMaybe WalletState.initialWalletState <$> liftIO (WalletState.readFromFile @C.ConwayEra walletFile)
+  initialState <- fromMaybe WalletState.initialWalletState <$> liftIO (WalletState.readFromFile walletFile)
   op <- liftIO (loadOperatorFilesVerification operatorConfig)
   logInfoS $ "Resuming from " <> show (WalletState.chainPoint initialState)
   logInfo (PrettyBalance $ WalletState.utxoSet initialState)

@@ -208,7 +208,7 @@ spendTokens2 txi = do
 spendSingletonOutput :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m ()
 spendSingletonOutput txi = do
   void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
-  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.shelleyBasedEra <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.shelleyBasedEra <$> getUtxo
   let k = Utxos.onlyCredential (Wallet.paymentCredential Wallet.w2) utxoSet
   let totalVal = Utxos.totalBalance k
       newOut = C.TxOut (Wallet.addressInEra Defaults.networkId Wallet.w2) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue totalVal) C.TxOutDatumNone C.ReferenceScriptNone
@@ -324,7 +324,7 @@ buildTxMixedInputs :: Assertion
 buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   testWallet <- liftIO Wallet.generateWallet
   -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
-  utxoSet <- Utxos.fromApiUtxo () . fromLedgerUTxO C.ShelleyBasedEraConway <$> getUtxo
+  utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraConway <$> getUtxo
   let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
       newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
@@ -351,12 +351,12 @@ largeTransactionTest = do
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
     (_, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20313 16384)):|[])) -> pure ()
+      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20_313 16384)):|[])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
     (_, length . view failedTransactions -> numFailed) -> fail $ "Expected one failed transaction, found " <> show numFailed
 
-  -- the tx should succeed after setting the max tx size to exactly 20304 (see the error message in the test above)
-  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20313
+  -- the tx should succeed after setting the max tx size to exactly 20313 (see the error message in the test above)
+  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20_313
   runMockchain0IOWith Wallet.initialUTxOs params' (failOnError largeDatumTx) >>= \case
     (Right{}, view failedTransactions -> []) -> pure ()
     (_, length . view failedTransactions -> numFailed) -> fail $ "Expected success with 0 failed transactions, found " <> show numFailed

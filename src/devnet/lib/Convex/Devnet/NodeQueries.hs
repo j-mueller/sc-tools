@@ -194,7 +194,7 @@ waitForTxIn networkId socket txIn = do
               )
           )
       go = do
-        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        utxo <- Utxos.fromApiUtxo <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
         when (utxo == mempty) $ do
           threadDelay 2_000_000
           go
@@ -216,7 +216,7 @@ waitForTxInSpend networkId socket txIn = do
               )
           )
       go = do
-        utxo <- Utxos.fromApiUtxo () <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
+        utxo <- Utxos.fromApiUtxo <$> (queryLocalState query networkId socket >>= throwOnEraMismatch)
         unless (utxo == mempty) $ do
           threadDelay 2_000_000
           go

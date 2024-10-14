@@ -364,28 +364,28 @@ control over the capabilities they require.
 -- | A capability typeclass that provides methods for querying a chain indexer.
 --   See note [MonadUtxoQuery design].
 --   NOTE: There are currently no implementations of this class in sc-tools.
-class Monad m => MonadUtxoQuery era m | m -> era where
+class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain
   -- state. Each UTXO also possibly has the resolved datum (meaning that if we
   -- only have the datum hash, the implementation should try and resolve it to
   -- the actual datum).
-  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO era (Maybe C.HashableScriptData))
+  utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 
-  default utxosByPaymentCredentials :: (MonadTrans t, m ~ t n, MonadUtxoQuery era n) => Set PaymentCredential -> m (UtxoSet C.CtxUTxO era (Maybe C.HashableScriptData))
+  default utxosByPaymentCredentials :: (MonadTrans t, m ~ t n, MonadUtxoQuery n) => Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
-instance MonadUtxoQuery era m => MonadUtxoQuery era (ResultT m) where
-instance MonadUtxoQuery era m => MonadUtxoQuery era (ExceptT e m)
-instance MonadUtxoQuery era m => MonadUtxoQuery era (ReaderT e m)
-instance MonadUtxoQuery era m => MonadUtxoQuery era (StrictState.StateT s m)
-instance MonadUtxoQuery era m => MonadUtxoQuery era (LazyState.StateT s m)
-instance MonadUtxoQuery era m => MonadUtxoQuery era (MonadBlockchainCardanoNodeT era m)
-instance MonadUtxoQuery era m => MonadUtxoQuery era (MonadLogIgnoreT m)
-instance MonadUtxoQuery era m => MonadUtxoQuery era (PropertyM m)
+instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
+instance MonadUtxoQuery m => MonadUtxoQuery (ExceptT e m)
+instance MonadUtxoQuery m => MonadUtxoQuery (ReaderT e m)
+instance MonadUtxoQuery m => MonadUtxoQuery (StrictState.StateT s m)
+instance MonadUtxoQuery m => MonadUtxoQuery (LazyState.StateT s m)
+instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT era m)
+instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m)
+instance MonadUtxoQuery m => MonadUtxoQuery (PropertyM m)
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery era m => PaymentCredential -> m (UtxoSet C.CtxUTxO era (Maybe C.HashableScriptData))
+utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]

@@ -1,9 +1,11 @@
+{-# LANGUAGE ConstraintKinds   #-}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE TypeOperators     #-}
 {-# LANGUAGE ViewPatterns      #-}
 {-| Conversion functions and other conveniences
 -}
@@ -58,6 +60,7 @@ import           Cardano.Api                              (BlockInMode (..),
                                                            SlotNo, Tx, TxIn)
 import qualified Cardano.Api.Shelley                      as C
 import qualified Cardano.Ledger.Alonzo.UTxO               as L
+import qualified Cardano.Ledger.Core
 import qualified Cardano.Ledger.Credential                as Shelley
 import           Cardano.Ledger.Crypto                    (StandardCrypto)
 import           Cardano.Slotting.EpochInfo.API           (epochInfoSlotToUTCTime,
@@ -253,9 +256,16 @@ toShelleyPaymentCredential (PaymentCredentialByKey (C.PaymentKeyHash kh)) =
 toShelleyPaymentCredential (PaymentCredentialByScript sh) =
     Shelley.ScriptHashObj (C.toShelleyScriptHash sh)
 
+type LedgerValueConstraints era =
+  ( Eq (Cardano.Ledger.Core.Value (C.ShelleyLedgerEra era))
+  , Show (Cardano.Ledger.Core.Value (C.ShelleyLedgerEra era))
+  )
+
+type EraCryptoConstraint era = Cardano.Ledger.Core.EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto
+
 inMary :: forall era a
   .  C.IsMaryBasedEra era
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
   -> a
 inMary f = case C.maryBasedEra @era of
   C.MaryEraOnwardsMary    -> f
@@ -265,7 +275,7 @@ inMary f = case C.maryBasedEra @era of
 
 inAlonzo :: forall era a
   .  C.IsAlonzoBasedEra era
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
   -> a
 inAlonzo f = case C.alonzoBasedEra @era of
   C.AlonzoEraOnwardsAlonzo  -> f
@@ -274,7 +284,7 @@ inAlonzo f = case C.alonzoBasedEra @era of
 
 inBabbage :: forall era a
   .  C.IsBabbageBasedEra era
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
   -> a
 inBabbage f = case C.babbageBasedEra @era of
   C.BabbageEraOnwardsBabbage -> f
@@ -282,7 +292,7 @@ inBabbage f = case C.babbageBasedEra @era of
 
 inConway :: forall era a
   .  C.IsConwayBasedEra era
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.IsBabbageBasedEra era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.IsBabbageBasedEra era , LedgerValueConstraints era, EraCryptoConstraint era) => a)
   -> a
 inConway f = case C.conwayBasedEra @era of
   C.ConwayEraOnwardsConway -> f

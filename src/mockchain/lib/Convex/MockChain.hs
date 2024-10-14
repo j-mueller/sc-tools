@@ -144,7 +144,7 @@ import           Convex.MockChain.Defaults             ()
 import qualified Convex.MockChain.Defaults             as Defaults
 import           Convex.MonadLog                       (MonadLog (..))
 import           Convex.NodeParams                     (NodeParams (..))
-import           Convex.Utils                          (alonzoEraUtxo, inAlonzo,
+import           Convex.Utils                          (alonzoEraUtxo,
                                                         slotToUtcTime)
 import           Convex.Utxos                          (UtxoSet (..),
                                                         fromApiUtxo,
@@ -434,16 +434,16 @@ instance (Monad m, C.IsAlonzoBasedEra era) => MonadMockchain era (MockchainT era
   modifyMockChainState f = MockchainT $ state f
   askNodeParams = ask
 
-instance (Monad m, C.IsAlonzoBasedEra era) => MonadUtxoQuery era (MockchainT era m) where
-  utxosByPaymentCredentials cred = inAlonzo @era $ do
+instance (Monad m, C.IsAlonzoBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsCardanoEra era, C.IsShelleyBasedEra era) => MonadUtxoQuery (MockchainT era m) where
+  utxosByPaymentCredentials cred = do
     UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
     let
-      resolveDatum :: C.TxOutDatum C.CtxUTxO era -> MockchainT era m (Maybe C.HashableScriptData)
+      resolveDatum :: C.TxOutDatum C.CtxUTxO w1 -> MockchainT w2 m (Maybe C.HashableScriptData)
       resolveDatum C.TxOutDatumNone         = pure Nothing
       resolveDatum (C.TxOutDatumHash _ dh)  = queryDatumFromHash dh
       resolveDatum (C.TxOutDatumInline _ d) = pure $ Just d
 
-    resolvedUtxos <- forM utxos $ \(txOut@(C.TxOut _ _ d _), _) -> do
+    resolvedUtxos <- forM utxos $ \(txOut@(C.InAnyCardanoEra _era (C.TxOut _ _ d _)), _) -> do
       resolvedDatum <- resolveDatum d
       pure (txOut, resolvedDatum)
     pure $ UtxoSet resolvedUtxos
@@ -471,22 +471,22 @@ addDatumHashes (C.Tx (ShelleyTxBody era txBody _scripts scriptData _auxData _) _
 
 {-| All transaction outputs
 -}
-utxoSet :: forall era m. (MonadMockchain era m, C.IsShelleyBasedEra era) => m (UtxoSet C.CtxUTxO era ())
+utxoSet :: forall era m. (MonadMockchain era m, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsShelleyBasedEra era) => m (UtxoSet C.CtxUTxO ())
 utxoSet =
-  let f utxos = (utxos, fromApiUtxo () $ fromLedgerUTxO C.shelleyBasedEra utxos)
-  in modifyUtxo $ C.shelleyBasedEraConstraints @era C.shelleyBasedEra f
+  let f utxos = (utxos, fromApiUtxo $ fromLedgerUTxO (C.shelleyBasedEra @era) utxos)
+  in modifyUtxo f
 
 {-| The wallet's transaction outputs on the mockchain
 -}
-walletUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era) => Wallet -> m (UtxoSet C.CtxUTxO era ())
+walletUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto) => Wallet -> m (UtxoSet C.CtxUTxO ())
 walletUtxo wallet = do
   fmap (onlyCredential (paymentCredential wallet)) utxoSet
 
 {-| Run the 'MockchainT' action with the @NodeParams@ from an initial state
 -}
 runMockchainT :: MockchainT era m a -> NodeParams era -> MockChainState era -> m (a, MockChainState era)
-runMockchainT (MockchainT action) nps state' =
-  runStateT (runReaderT action nps) state'
+runMockchainT (MockchainT action) nps =
+  runStateT (runReaderT action nps)
 
 type Mockchain era a = MockchainT era Identity a
 

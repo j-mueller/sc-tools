@@ -59,9 +59,9 @@ faucet = Wallet . snd <$> keysFor "faucet"
 
 {-| Query the node for UTXOs that belong to the wallet
 -}
-walletUtxos :: forall era. C.IsShelleyBasedEra era => RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO era ())
+walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO ())
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
-  Utxos.fromApiUtxo () <$> NodeQueries.queryUTxO rnNetworkId rnNodeSocket [address rnNetworkId wllt]
+  Utxos.fromApiUtxo <$> NodeQueries.queryUTxO @C.ConwayEra rnNetworkId rnNodeSocket [address rnNetworkId wllt]
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}

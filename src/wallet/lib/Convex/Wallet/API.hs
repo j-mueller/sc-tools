@@ -10,8 +10,7 @@ module Convex.Wallet.API(
   startServer
 ) where
 
-import           Cardano.Api                     (ConwayEra, CtxTx,
-                                                  IsShelleyBasedEra)
+import           Cardano.Api                     (CtxTx)
 import           Control.Concurrent.STM          (TVar, readTVarIO)
 import           Control.Monad.IO.Class          (MonadIO (..))
 import           Convex.Utxos                    (UtxoSet)
@@ -25,31 +24,31 @@ import           Servant.Client                  (ClientEnv, client, runClientM)
 import           Servant.Client.Core.ClientError (ClientError)
 import           Servant.Server                  (Server, serve)
 
-type API era =
+type API =
   "healthcheck" :> Description "Is the server alive?" :> Get '[JSON] NoContent
-  :<|> "utxos" :> Get '[JSON] (UtxoSet CtxTx era ())
+  :<|> "utxos" :> Get '[JSON] (UtxoSet CtxTx ())
 
 {-| Call the "healthcheck" endpoint
 -}
 getHealth :: ClientEnv -> IO (Either ClientError NoContent)
 getHealth clientEnv = do
-  let healthcheck :<|> _ = client (Proxy @(API ConwayEra))
+  let healthcheck :<|> _ = client (Proxy @API)
   runClientM healthcheck clientEnv
 
 {-| Call the "utxos" endpoint
 -}
-getUTxOs :: forall era. IsShelleyBasedEra era => ClientEnv -> IO (Either ClientError (UtxoSet CtxTx era ()))
+getUTxOs :: ClientEnv -> IO (Either ClientError (UtxoSet CtxTx ()))
 getUTxOs clientEnv = do
-  let _ :<|> utxos = client (Proxy @(API era))
+  let _ :<|> utxos = client (Proxy @API)
   runClientM utxos clientEnv
 
-server :: TVar (WalletState era) -> Server (API era)
+server :: TVar WalletState -> Server API
 server walletState = health :<|> utxo
   where
     health = pure NoContent
     utxo = liftIO (utxoSet <$> readTVarIO walletState)
 
-startServer :: forall era. IsShelleyBasedEra era => TVar (WalletState era) -> Int -> IO ()
+startServer :: TVar WalletState -> Int -> IO ()
 startServer walletState port =
-  let app = serve (Proxy @(API era)) (server walletState)
+  let app = serve (Proxy @API) (server walletState)
   in Warp.run port app

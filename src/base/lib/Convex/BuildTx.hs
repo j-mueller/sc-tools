@@ -343,7 +343,7 @@ spendPublicKeyOutput txIn = do
 
 {-| Utility function to build a v1 script witness
 -}
-buildScriptWitness ::
+buildScriptWitness :: forall era lang redeemer witctx.
   (Plutus.ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang) =>
   C.PlutusScript lang ->
   C.ScriptDatum witctx ->
@@ -404,7 +404,7 @@ spendPlutusRefBase txIn refTxIn scrVer dat red =
 -}
 spendPlutusRefBaseWithInRef :: forall redeemer lang era m. (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
-spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat red = inBabbage @era spendPlutusRefBase txIn refTxIn scrVer dat (const red) >> addReference refTxIn
+spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat red = inBabbage @era $ spendPlutusRefBase txIn refTxIn scrVer dat (const red) >> addReference refTxIn
 
 spendPlutusRef :: forall datum redeemer lang era m. (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
@@ -437,7 +437,7 @@ mintPlutus script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.plutusScriptVersion script)
       v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
-      wit      = buildScriptWitness script C.NoScriptDatumForMint red
+      wit      = buildScriptWitness @era script C.NoScriptDatumForMint red
   in
     inAlonzo @era $
     setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))

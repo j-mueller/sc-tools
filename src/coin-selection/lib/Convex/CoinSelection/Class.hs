@@ -63,7 +63,7 @@ class Monad m => MonadBalance era m where
     AddressInEra era ->
 
     -- | Set of UTxOs that can be used to supply missing funds
-    UtxoSet C.CtxUTxO era a ->
+    UtxoSet C.CtxUTxO a ->
 
     -- | The unbalanced transaction body
     TxBuilder era ->
@@ -75,7 +75,7 @@ class Monad m => MonadBalance era m where
     m (Either (BalanceTxError era) (C.BalancedTxBody era, BalanceChanges))
 
   default balanceTx :: (MonadTrans t, m ~ t n, MonadBalance era n) =>
-    AddressInEra era -> UtxoSet C.CtxUTxO era a -> TxBuilder era -> ChangeOutputPosition -> m (Either (BalanceTxError era) (C.BalancedTxBody era, BalanceChanges))
+    AddressInEra era -> UtxoSet C.CtxUTxO a -> TxBuilder era -> ChangeOutputPosition -> m (Either (BalanceTxError era) (C.BalancedTxBody era, BalanceChanges))
   balanceTx = (((lift .) .) .) . balanceTx
 
 newtype BalancingT m a = BalancingT{runBalancingT :: m a }
@@ -95,7 +95,7 @@ instance (C.IsBabbageBasedEra era, Convex.Class.MonadBlockchain era m) => MonadB
   balanceTx addr utxos txb changePosition = runExceptT (Convex.CoinSelection.balanceTx mempty (inBabbage @era emptyTxOut addr) utxos txb changePosition)
 
 instance Convex.Class.MonadMockchain era m => Convex.Class.MonadMockchain era (BalancingT m)
-instance Convex.Class.MonadUtxoQuery era m => Convex.Class.MonadUtxoQuery era (BalancingT m)
+instance Convex.Class.MonadUtxoQuery m => Convex.Class.MonadUtxoQuery (BalancingT m)
 
 instance Convex.Class.MonadDatumQuery m => Convex.Class.MonadDatumQuery (BalancingT m) where
   queryDatumFromHash = lift . Convex.Class.queryDatumFromHash
@@ -116,7 +116,7 @@ instance (C.IsBabbageBasedEra era, Convex.Class.MonadBlockchain era m) => MonadB
     runExceptT (Convex.CoinSelection.balanceTx (natTracer (lift . lift) tr) (inBabbage @era emptyTxOut addr) utxos txb changePosition)
 
 instance Convex.Class.MonadMockchain era m => Convex.Class.MonadMockchain era (TracingBalancingT m)
-instance Convex.Class.MonadUtxoQuery era m => Convex.Class.MonadUtxoQuery era (TracingBalancingT m)
+instance Convex.Class.MonadUtxoQuery m => Convex.Class.MonadUtxoQuery (TracingBalancingT m)
 
 instance Convex.Class.MonadDatumQuery m => Convex.Class.MonadDatumQuery (TracingBalancingT m) where
   queryDatumFromHash = lift . Convex.Class.queryDatumFromHash

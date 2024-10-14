@@ -161,7 +161,7 @@ opConfigArgs OperatorConfigVerification{ocvPaymentKeyFile, ocvStakeVerificationK
   ] ++
     maybe [] (\f -> ["--stake-verification-key-file", f]) ocvStakeVerificationKeyFile
 
-getUTxOs :: C.IsShelleyBasedEra era => RunningWalletServer -> IO (UtxoSet CtxTx era ())
+getUTxOs :: RunningWalletServer -> IO (UtxoSet CtxTx ())
 getUTxOs RunningWalletServer{rwsClient} = API.getUTxOs rwsClient >>= \case
   Left err -> error ("getUTxOs failed: " <> show err)
   Right x  -> pure x

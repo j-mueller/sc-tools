@@ -68,7 +68,7 @@ checkTxId :: TxId -> C.Tx era -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)
 
 newtype MonadBlockchainWaitingT era m a = MonadBlockchainWaitingT{unMonadBlockchainWaitingT :: ReaderT (LocalNodeConnectInfo, Env) m a }
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail, MonadUtxoQuery era, MonadDatumQuery, MonadError e, MonadLog, PrimMonad)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFail, MonadUtxoQuery, MonadDatumQuery, MonadError e, MonadLog, PrimMonad)
 
 runMonadBlockchainWaitingT :: LocalNodeConnectInfo -> Env -> MonadBlockchainWaitingT era m a -> m a
 runMonadBlockchainWaitingT connectInfo env (MonadBlockchainWaitingT action) = runReaderT action (connectInfo, env)

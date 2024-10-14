@@ -25,37 +25,37 @@ import           Data.Aeson.Encode.Pretty   (encodePretty)
 import qualified Data.ByteString.Lazy       as BSL
 import           GHC.Generics               (Generic)
 
-data WalletState era =
+data WalletState =
   WalletState
     { wsChainPoint :: JSONChainPoint
-    , wsUtxos      :: UtxoSet C.CtxTx era ()
+    , wsUtxos      :: UtxoSet C.CtxTx ()
     }
     deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON, FromJSON)
 
 {-| Construct a 'WalletState' from a UTxO set and a block header
 -}
-walletState :: UtxoSet C.CtxTx era () -> BlockHeader -> WalletState era
+walletState :: UtxoSet C.CtxTx () -> BlockHeader -> WalletState
 walletState wsUtxos (BlockHeader slot hsh _)=
   let wsChainPoint = JSONChainPoint $ ChainPoint slot hsh
   in WalletState{wsUtxos, wsChainPoint}
 
-chainPoint :: WalletState era -> ChainPoint
+chainPoint :: WalletState -> ChainPoint
 chainPoint WalletState{wsChainPoint = JSONChainPoint c} = c
 
-utxoSet :: WalletState era -> UtxoSet C.CtxTx era ()
+utxoSet :: WalletState -> UtxoSet C.CtxTx ()
 utxoSet WalletState{wsUtxos} = wsUtxos
 
-initialWalletState :: WalletState era
+initialWalletState :: WalletState
 initialWalletState = WalletState (JSONChainPoint lessRecent) mempty
 
 {-| Write the wallet state to a JSON file
 -}
-writeToFile :: C.IsCardanoEra era => FilePath -> WalletState era -> IO ()
+writeToFile :: FilePath -> WalletState -> IO ()
 writeToFile file = BSL.writeFile file . encodePretty
 
 {-| Read the wallet state from a JSON file
 -}
-readFromFile :: C.IsShelleyBasedEra era => FilePath -> IO (Maybe (WalletState era))
+readFromFile :: FilePath -> IO (Maybe WalletState)
 readFromFile fp =
   catch (decode <$> BSL.readFile fp) $ \(_ :: SomeException) -> pure Nothing

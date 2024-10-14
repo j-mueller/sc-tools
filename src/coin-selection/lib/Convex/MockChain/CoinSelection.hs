@@ -113,11 +113,11 @@ payToOperator dbg = payToOperator' dbg (C.lovelaceToValue 100_000_000)
 {-| Pay some Ada from one of the seed addresses to an @Operator@
 -}
 payToOperator' :: forall era k m. (MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era) => Tracer m TxBalancingMessage -> Value -> Wallet -> Operator k -> m (Either (ValidationError era) (C.Tx era))
-payToOperator' dbg value wFrom Operator{oPaymentKey} = do
+payToOperator' dbg value wFrom Operator{oPaymentKey} = inBabbage @era $ do
   p <- queryProtocolParameters
   let addr =
-        C.makeShelleyAddressInEra (C.babbageEraOnwardsToShelleyBasedEra C.babbageBasedEra) Defaults.networkId
+        C.makeShelleyAddressInEra @era (C.babbageEraOnwardsToShelleyBasedEra C.babbageBasedEra) Defaults.networkId
         (C.PaymentCredentialByKey $ C.verificationKeyHash $ verificationKey oPaymentKey)
         C.NoStakeAddress
-      tx = execBuildTx (inBabbage @era $ payToAddress addr value >> setMinAdaDepositAll p)
+      tx = execBuildTx (payToAddress @era addr value >> setMinAdaDepositAll p)
   balanceAndSubmit dbg wFrom tx TrailingChange []

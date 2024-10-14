@@ -558,7 +558,7 @@ balanceTx ::
   C.TxOut C.CtxTx era ->
 
   -- | Set of UTxOs that can be used to supply missing funds
-  UtxoSet C.CtxUTxO era a ->
+  UtxoSet C.CtxUTxO a ->
 
   -- | The unbalanced transaction body
   TxBuilder era ->
@@ -594,9 +594,10 @@ balanceTx dbg returnUTxO0 walletUtxo txb changePosition = inBabbage @era $ do
 
 -- | Check the compatibility level of the transaction body
 --   and remove any incompatible UTxOs from the UTxO set.
-checkCompatibilityLevel :: forall era m a. (Monad m, C.IsBabbageBasedEra era) => Tracer m TxBalancingMessage -> TxBuilder era -> UtxoSet C.CtxUTxO era a -> m (UTxO era)
-checkCompatibilityLevel tr (inBabbage @era BuildTx.buildTx -> txB) utxoSet@(UtxoSet w) = do
-  let compatibility = inBabbage @era txCompatibility txB
+checkCompatibilityLevel :: forall era m a. (Monad m, C.IsBabbageBasedEra era) => Tracer m TxBalancingMessage -> TxBuilder era -> UtxoSet C.CtxUTxO a -> m (UTxO era)
+checkCompatibilityLevel tr txBuilder utxoSet@(UtxoSet w) = inBabbage @era $ do
+  let txB = BuildTx.buildTx txBuilder
+      compatibility = inBabbage @era $ txCompatibility txB
       utxoIn = Utxos.toApiUtxo utxoSet
       UTxO utxoOut = compatibleWith compatibility utxoIn
       droppedTxIns = Map.size w - Map.size utxoOut
@@ -610,7 +611,7 @@ balanceForWallet ::
   (MonadBlockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era) =>
   Tracer m TxBalancingMessage ->
   Wallet ->
-  UtxoSet C.CtxUTxO era a ->
+  UtxoSet C.CtxUTxO a ->
   TxBuilder era ->
   ChangeOutputPosition ->
   m (C.Tx era, BalanceChanges)
@@ -627,7 +628,7 @@ balanceForWalletReturn ::
   (MonadBlockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era) =>
   Tracer m TxBalancingMessage ->
   Wallet ->
-  UtxoSet C.CtxUTxO era a ->
+  UtxoSet C.CtxUTxO a ->
   C.TxOut C.CtxTx era ->
   TxBuilder era ->
   ChangeOutputPosition ->
@@ -655,7 +656,7 @@ signBalancedTxBody witnesses (C.BalancedTxBody _ txbody _changeOutput _fee) =
 --   (we have to do this because 'C.evaluateTransactionBalance' fails on a tx body with
 --    no inputs)
 --   Throws an error if the transaction body has no inputs and the wallet UTxO set is empty.
-addOwnInput :: (MonadError CoinSelectionError m, C.IsShelleyBasedEra era) => TxBuilder era -> UtxoSet ctx era a -> m (TxBuilder era)
+addOwnInput :: (MonadError CoinSelectionError m, C.IsShelleyBasedEra era) => TxBuilder era -> UtxoSet ctx a -> m (TxBuilder era)
 addOwnInput builder allUtxos =
   let body = BuildTx.buildTx builder
       UtxoSet{_utxos} = Utxos.removeUtxos (spentTxIns body) allUtxos
@@ -667,7 +668,7 @@ addOwnInput builder allUtxos =
            let availableUTxOs =
                  List.sortOn
                    ( length
-                   . (\(C.TxOut _ txOutValue _ _) -> C.valueToList (C.txOutValueToValue txOutValue))
+                   . (\(C.InAnyCardanoEra _ (C.TxOut _ txOutValue _ _)) -> C.valueToList (C.txOutValueToValue txOutValue))
                    . fst
                    . snd
                    )
@@ -678,7 +679,7 @@ addOwnInput builder allUtxos =
 -- | Add a collateral input. Throws a 'NoAdaOnlyUTxOsForCollateral' error if a collateral input is required,
 --   but no suitable input is provided in the wallet UTxO set.
 --   Additionally returns the collateral UTxOs that were used.
-setCollateral :: forall era m ctx a. (MonadError CoinSelectionError m, C.IsAlonzoBasedEra era) => TxBuilder era -> UtxoSet ctx era a -> m (TxBuilder era, UtxoSet ctx era a)
+setCollateral :: forall era m ctx a. (MonadError CoinSelectionError m, C.IsAlonzoBasedEra era) => TxBuilder era -> UtxoSet ctx a -> m (TxBuilder era, UtxoSet ctx a)
 setCollateral builder (Utxos.onlyAda -> UtxoSet{_utxos}) = inAlonzo @era $
   let body = BuildTx.buildTx builder
       noScripts = not (runsScripts body)
@@ -698,7 +699,7 @@ setCollateral builder (Utxos.onlyAda -> UtxoSet{_utxos}) = inAlonzo @era $
                 List.sortOn
                   ( Down
                   . C.selectLovelace
-                  . (\(C.TxOut _ txOutValue _ _) -> C.txOutValueToValue txOutValue)
+                  . (\(C.InAnyCardanoEra _ (C.TxOut _ txOutValue _ _)) -> C.txOutValueToValue txOutValue)
                  . fst
                   . snd
                   ) $ Map.toList _utxos
@@ -730,8 +731,8 @@ balancePositive
   -> C.LedgerProtocolParameters era
   -> C.UTxO era
   -> C.TxOut C.CtxTx era
-  -> UtxoSet ctx era a
-  -> UtxoSet ctx era a -- ^ Collateral UTxOs, these are the UTxOs that were used as collateral inputs
+  -> UtxoSet ctx a
+  -> UtxoSet ctx a -- ^ Collateral UTxOs, these are the UTxOs that were used as collateral inputs
                    --  they will only be used for balancing in the case that the other UTxOs are insufficient.
   -> TxBuilder era
   -> m (TxBuilder era, C.TxOut C.CtxTx era)
@@ -767,8 +768,8 @@ addInputsForAssets ::
   MonadError CoinSelectionError m =>
   Tracer m TxBalancingMessage ->
   C.Value -> -- ^ The balance of the transaction
-  UtxoSet ctx era a -> -- ^ UTxOs (excluding collateral) that we can spend to cover the negative part of the balance
-  UtxoSet ctx era a -> -- ^ collateral UTxOs that we can use to cover the negative part of the balance if there are no other UTxOs available
+  UtxoSet ctx a -> -- ^ UTxOs (excluding collateral) that we can spend to cover the negative part of the balance
+  UtxoSet ctx a -> -- ^ collateral UTxOs that we can use to cover the negative part of the balance if there are no other UTxOs available
   TxBuilder era -> -- ^ Transaction body
   m (TxBuilder era, C.Value) -- ^ Transaction body with additional inputs and the total value of the additional inputs
 addInputsForAssets dbg txBal availableUtxo collateralUtxo txBuilder =

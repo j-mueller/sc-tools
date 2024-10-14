@@ -4,6 +4,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE ViewPatterns      #-}
 {-| A node client that shows the balance of the wallet
 -}
 module Convex.Wallet.NodeClient.BalanceClient(
@@ -12,12 +13,13 @@ module Convex.Wallet.NodeClient.BalanceClient(
   balanceClient
   ) where
 
-import           Cardano.Api                (Env)
+import           Cardano.Api                (BlockInMode, Env)
 import qualified Cardano.Api                as C
 import           Control.Concurrent.STM     (TVar, atomically, newTVarIO,
                                              writeTVar)
 import           Control.Monad              (unless, when)
 import           Control.Monad.IO.Class     (MonadIO (..))
+import           Control.Monad.Trans.Maybe  (runMaybeT)
 import           Convex.MonadLog            (MonadLogKatipT (..), logInfo,
                                              logInfoS)
 import           Convex.NodeClient.Fold     (CatchingUp (..),
@@ -34,20 +36,19 @@ import           Convex.Utxos               (PrettyBalance (..),
 import qualified Convex.Utxos               as Utxos
 import           Convex.Wallet.WalletState  (WalletState, chainPoint, utxoSet)
 import qualified Convex.Wallet.WalletState  as WalletState
-import           Data.Type.Equality         (testEquality, (:~:) (Refl))
 import qualified Katip                      as K
 
-data BalanceClientEnv era =
+data BalanceClientEnv =
   BalanceClientEnv
     { bceFile  :: FilePath
-    , bceState :: TVar (WalletState era)
+    , bceState :: TVar WalletState
     }
 
-balanceClientEnv :: FilePath -> WalletState era -> IO (BalanceClientEnv era)
+balanceClientEnv :: FilePath -> WalletState -> IO BalanceClientEnv
 balanceClientEnv bceFile initialState =
   BalanceClientEnv bceFile <$> newTVarIO initialState
 
-balanceClient :: forall era. C.IsCardanoEra era => K.LogEnv -> K.Namespace -> BalanceClientEnv era -> WalletState era -> C.PaymentCredential -> Env -> PipelinedLedgerStateClient
+balanceClient :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> WalletState -> C.PaymentCredential -> Env -> PipelinedLedgerStateClient
 balanceClient logEnv ns clientEnv walletState wallet env =
   let cp = chainPoint walletState
       i  = catchingUpWithNode cp Nothing Nothing
@@ -56,19 +57,15 @@ balanceClient logEnv ns clientEnv walletState wallet env =
         (i, utxoSet walletState)
         NoLedgerStateArgs
         env
-        (\c s upd (C.BlockInMode era' block) ->
-              case testEquality era' (C.cardanoEra @era) of
-                Just Refl -> applyBlock logEnv ns clientEnv wallet c s upd block
-                _         -> pure Nothing
-        )
+        (applyBlock logEnv ns clientEnv wallet)
 
 {-| Apply a new block
 -}
-applyBlock :: C.IsCardanoEra era => K.LogEnv -> K.Namespace -> BalanceClientEnv era -> C.PaymentCredential -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx era ()) -> LedgerStateUpdate 'NoLedgerState -> C.Block era -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx era ()))
-applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) _ block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ do
+applyBlock :: K.LogEnv -> K.Namespace -> BalanceClientEnv -> C.PaymentCredential -> CatchingUp -> (CatchingUp, UtxoSet C.CtxTx ()) -> LedgerStateUpdate 'NoLedgerState -> BlockInMode -> IO (Maybe (CatchingUp, UtxoSet C.CtxTx ()))
+applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) _ block = K.runKatipContextT logEnv () ns $ runMonadLogKatipT $ runMaybeT $ do
   let change = Utxos.extract_ (toShelleyPaymentCredential wallet) state block
       newUTxOs = apply state change
-      C.Block header _ = block
+      C.BlockInMode _ (C.getBlockHeader -> header) = block
       newState = WalletState.walletState newUTxOs header
 
   unless (Utxos.null change) $ do
@@ -83,7 +80,7 @@ applyBlock logEnv ns BalanceClientEnv{bceFile, bceState} wallet c (oldC, state) 
 
   liftIO $ writeState bceState newState
 
-  pure $ Just (c, newUTxOs)
+  pure (c, newUTxOs)
 
-writeState :: TVar (WalletState era) -> WalletState era -> IO ()
+writeState :: TVar WalletState -> WalletState -> IO ()
 writeState tvar state = atomically (writeTVar tvar state)

@@ -49,6 +49,7 @@ import           Convex.MonadLog            (MonadLog)
 import           Convex.Utils               (inBabbage, liftEither, mapError)
 import           Convex.Utxos               (BalanceChanges, UtxoSet (_utxos),
                                              fromUtxoTx, onlyCredentials)
+import qualified Convex.Utxos               as Utxos
 import qualified Convex.Wallet.API          as Wallet.API
 import           Convex.Wallet.Operator     (Operator (..), Signing,
                                              operatorPaymentCredential,
@@ -63,7 +64,7 @@ import           Servant.Client             (ClientEnv)
 returning any unused funds to the given return output
 |-}
 balanceTx
-  :: (MonadBlockchain era m, MonadUtxoQuery era m, C.IsBabbageBasedEra era)
+  :: (MonadBlockchain era m, MonadUtxoQuery m, C.IsBabbageBasedEra era)
   => Tracer m TxBalancingMessage
   -> [PaymentCredential]
   -> C.TxOut C.CtxTx era
@@ -80,7 +81,7 @@ newtype WalletAPIQueryT era m a = WalletAPIQueryT{ runWalletAPIQueryT_ :: Reader
 runWalletAPIQueryT :: ClientEnv -> WalletAPIQueryT era m a -> m a
 runWalletAPIQueryT env (WalletAPIQueryT action) = runReaderT action env
 
-instance (MonadIO m, C.IsShelleyBasedEra era) => MonadUtxoQuery era (WalletAPIQueryT era m) where
+instance (MonadIO m) => MonadUtxoQuery (WalletAPIQueryT era m) where
   utxosByPaymentCredentials credentials = WalletAPIQueryT $ do
     result <- ask >>= liftIO . Wallet.API.getUTxOs
     case result of
@@ -97,7 +98,7 @@ deriving newtype instance MonadError e m => MonadError e (WalletAPIQueryT era m)
 -}
 balancePaymentCredentials ::
   forall era m.
-  (MonadBlockchain era m, MonadUtxoQuery era m, MonadError (BalanceAndSubmitError era) m, C.IsBabbageBasedEra era) =>
+  (MonadBlockchain era m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError era) m, C.IsBabbageBasedEra era) =>
   Tracer m TxBalancingMessage ->
   C.PaymentCredential -> -- ^ Primary payment credential, used for return output
   [C.PaymentCredential] -> -- ^ Other payment credentials, used for balancing
@@ -113,7 +114,7 @@ balancePaymentCredentials dbg primaryCred otherCreds returnOutput txBody changeP
 {-| Balance a transaction body using the funds locked by the payment credential
 -}
 balancePaymentCredential ::
-  (MonadBlockchain era m, MonadUtxoQuery era m, MonadError (BalanceAndSubmitError era) m, C.IsBabbageBasedEra era) =>
+  (MonadBlockchain era m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError era) m, C.IsBabbageBasedEra era) =>
   Tracer m TxBalancingMessage ->
   C.PaymentCredential ->
   Maybe (C.TxOut C.CtxTx era) ->
@@ -125,7 +126,7 @@ balancePaymentCredential dbg cred = balancePaymentCredentials dbg cred []
 -- | Balance a transaction body, sign it with the operator's key, and submit it to the network.
 balanceAndSubmitOperator ::
   forall era m.
-  (MonadBlockchain era m, MonadUtxoQuery era m, MonadError (BalanceAndSubmitError era) m, C.IsBabbageBasedEra era) =>
+  (MonadBlockchain era m, MonadUtxoQuery m, MonadError (BalanceAndSubmitError era) m, C.IsBabbageBasedEra era) =>
   Tracer m TxBalancingMessage ->
   Operator Signing ->
   Maybe (C.TxOut C.CtxTx era) ->
@@ -149,11 +150,11 @@ signAndSubmitOperator op tx = do
 
 {-| UTxOs that are locked by the operator's payment credential
 |-}
-operatorUtxos :: MonadUtxoQuery era m => Operator k -> m [(C.TxIn, C.TxOut C.CtxUTxO era)]
-operatorUtxos = fmap (Map.toList . fmap fst . _utxos) . utxosByPaymentCredential . operatorPaymentCredential
+operatorUtxos :: forall era m k. (C.IsBabbageBasedEra era, MonadUtxoQuery m) => Operator k -> m [(C.TxIn, C.TxOut C.CtxUTxO era)]
+operatorUtxos = fmap (Map.toList . fmap (Utxos.toTxOut @era . fst) . _utxos) . utxosByPaymentCredential . operatorPaymentCredential
 
 {-| Select a single UTxO that is controlled by the operator. |-}
-selectOperatorUTxO :: MonadUtxoQuery era m => Operator k -> m (Maybe (C.TxIn, C.TxOut C.CtxUTxO era))
+selectOperatorUTxO :: forall era m k. (C.IsBabbageBasedEra era, MonadUtxoQuery m) => Operator k -> m (Maybe (C.TxIn, C.TxOut C.CtxUTxO era))
 selectOperatorUTxO operator = fmap listToMaybe (operatorUtxos operator)
 
 -- | Failures during txn balancing and submission
