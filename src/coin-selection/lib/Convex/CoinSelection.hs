@@ -64,7 +64,6 @@ import           Cardano.Ledger.Shelley.API    (Coin (..), Credential (..),
 import           Cardano.Ledger.Shelley.Core   (EraCrypto)
 import qualified Cardano.Ledger.Shelley.TxCert as TxCert
 import           Cardano.Slotting.Time         (SystemStart)
-import           Control.Exception             (Exception)
 import           Control.Lens                  (_1, _2, _3, at, makeLensesFor,
                                                 over, preview, set, to,
                                                 traversed, view, (%~), (&),
@@ -157,14 +156,15 @@ bodyError :: C.TxBodyError -> CoinSelectionError
 bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
 data BalancingError era =
-  BalancingError (C.TxBodyErrorAutoBalance era)
+  BalancingError Text
   | CheckMinUtxoValueError (C.TxOut C.CtxTx era) C.Quantity
   | BalanceCheckError (BalancingError era)
   | ComputeBalanceChangeError
-  deriving stock (Show)
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 balancingError :: MonadError (BalancingError era) m => Either (C.TxBodyErrorAutoBalance era) a -> m a
-balancingError = either (throwError . BalancingError) pure
+balancingError = either (throwError . BalancingError . Text.pack . C.docToString . C.prettyError) pure
 
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage =
@@ -539,8 +539,8 @@ txOutChange _ = mempty
 data BalanceTxError era =
   ACoinSelectionError CoinSelectionError
   | ABalancingError (BalancingError era)
-  deriving stock Show
-  deriving anyclass Exception
+  deriving stock (Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 {-| Balance the transaction using the given UTXOs and return address. This
 calls 'balanceTransactionBody' after preparing all the required inputs.
