@@ -142,9 +142,9 @@ stakePoolRewards = do
               numUtxos        = 4
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let stakepoolParams = StakePoolNodeParams
-                                  { spnCost   = 340_000_000
-                                  , spnMargin = 1 % 100
-                                  , spnPledge = 10_000_000_000
+                                  { spnCost   = 500_000_000
+                                  , spnMargin = 3 % 100
+                                  , spnPledge = 500_000_000
                                   }
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
             withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt stakepoolParams (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode, rspnStakeKey} -> do

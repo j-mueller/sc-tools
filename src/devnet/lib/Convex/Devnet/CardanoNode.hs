@@ -491,7 +491,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params PortsCo
   -- create the node certificate
   let
     opCertCounter =
-      OperationalCertificateIssueCounter 1 stakePoolVerKey
+      OperationalCertificateIssueCounter 0 stakePoolVerKey
     slotsPerKESPeriod = 129600 -- slotsPerKESPeriod from config/genesis-shelley.json
     kesPeriod = KESPeriod . fromIntegral . div slotNo $ slotsPerKESPeriod -- Word64 to Word
     opCert = C.issueOperationalCertificate
