@@ -14,7 +14,6 @@
 
 -- FIXME (koslambrou) Remove once we have the newtype for 'AnyCardanoEra TxOut'.
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-# LANGUAGE TypeApplications     #-}
 
 module Convex.Utxos(
@@ -108,6 +107,7 @@ import           Data.Set                      (Set)
 import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
+import           GHC.IsList                    (IsList (toList))
 import           GHC.Word                      (Word32)
 import           Prelude                       hiding (null)
 import           Prettyprinter                 (Doc, Pretty (..), hang, parens,
@@ -489,7 +489,7 @@ prettyValue :: C.Value -> [Doc ann]
 prettyValue vl =
   let k (C.AdaAssetId, l)             = "Ada" <+> prettyAda l
       k (C.AssetId p n, C.Quantity q) = prettyPolicy p n <+> pretty q
-  in k <$> C.valueToList vl
+  in k <$> toList vl
 
 invBalanceChange :: BalanceChanges -> BalanceChanges
 invBalanceChange = BalanceChanges . Map.map C.negateValue . tbBalances

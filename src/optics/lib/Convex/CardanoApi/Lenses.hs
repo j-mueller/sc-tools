@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
-{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Lenses for @cardano-api@ types
 -}
 module Convex.CardanoApi.Lenses(
@@ -134,6 +133,7 @@ import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as Map
 import           Data.Proxy                         (Proxy (..))
 import           Data.Word                          (Word64)
+import           GHC.IsList                         (IsList (fromList, toList))
 import           PlutusLedgerApi.V1                 (PubKeyHash (..))
 import qualified PlutusLedgerApi.V1                 as PV1
 import           PlutusLedgerApi.V1.Interval        (Closure, Extended (..),
@@ -380,8 +380,8 @@ _TxInsReferenceIso = iso from to where
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to where
   -- the 'Value' constructor is not exposed so we have to take the long way around
-  from = Map.fromList . C.valueToList
-  to = C.valueFromList . Map.toList
+  from = Map.fromList . toList
+  to = fromList . Map.toList
 
 _AssetId :: Prism' C.AssetId (C.PolicyId, C.AssetName)
 _AssetId = prism' from to where
