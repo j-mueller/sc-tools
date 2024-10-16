@@ -12,7 +12,6 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
-{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Building transactions
 -}
 module Convex.BuildTx(
@@ -142,6 +141,7 @@ import           Data.List                      (nub)
 import qualified Data.Map                       as Map
 import           Data.Maybe                     (fromJust)
 import qualified Data.Set                       as Set
+import           GHC.IsList                     (IsList (fromList))
 import qualified PlutusLedgerApi.V1             as Plutus
 
 type TxBody era = C.TxBodyContent C.BuildTx era
@@ -445,7 +445,7 @@ mintPlutus script red assetName quantity =
 -}
 assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
 assetValue hsh assetName quantity =
-  C.valueFromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
+  fromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
 
 mintPlutusRef :: forall redeemer lang era m.
   (Plutus.ToData redeemer, MonadBuildTx era m, C.HasScriptLanguageInEra lang era, C.IsBabbageBasedEra era)
