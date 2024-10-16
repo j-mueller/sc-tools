@@ -5,7 +5,6 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE ViewPatterns       #-}
-{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Primitive wallet
 -}
 module Convex.Wallet(
@@ -47,6 +46,7 @@ import           Data.Maybe                (fromMaybe, mapMaybe)
 import qualified Data.Set                  as Set
 import           Data.Text                 (Text)
 import qualified Data.Text                 as Text
+import           GHC.IsList                (IsList (toList))
 
 
 newtype Wallet = Wallet { getWallet :: SigningKey PaymentKey }
@@ -153,7 +153,7 @@ selectMixedInputsCovering UtxoSet{_utxos} xs =
         all (\(assetId, quantity) -> C.selectAsset candidateVl assetId >= quantity) xs
       requiredAssets = foldMap (\(a, _) -> Set.singleton a) xs
       relevantValue (txIn, C.InAnyCardanoEra _ (C.TxOut _ (C.txOutValueToValue -> value) _ _)) =
-        let providedAssets = foldMap (Set.singleton . fst) (C.valueToList value)
+        let providedAssets = foldMap (Set.singleton . fst) (toList value)
         in if Set.null (Set.intersection requiredAssets providedAssets)
           then Nothing
           else Just (value, txIn)

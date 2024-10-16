@@ -13,7 +13,6 @@
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE TypeOperators      #-}
 {-# LANGUAGE ViewPatterns       #-}
-{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Building cardano transactions from tx bodies
 -}
 module Convex.CoinSelection(
@@ -105,6 +104,7 @@ import qualified Data.Set                      as Set
 import           Data.Text                     (Text)
 import qualified Data.Text                     as Text
 import           GHC.Generics                  (Generic)
+import           GHC.IsList                    (IsList (fromList, toList))
 
 type ERA = ConwayEra
 
@@ -221,7 +221,7 @@ balanceTransactionBody
         TrailingChange -> txb & appendTxOut change
 
   txbody0 <-
-    balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.shelleyBasedEra $ csiTxBody & addChangeOutput changeOutputSmall
+    balancingError . first C.TxBodyError $ C.createTransactionBody C.shelleyBasedEra $ csiTxBody & addChangeOutput changeOutputSmall
 
   exUnitsMap <- balancingError . first C.TxBodyErrorValidityInterval $
                 C.evaluateTransactionExecutionUnits C.cardanoEra
@@ -242,13 +242,13 @@ balanceTransactionBody
   let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2^(32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
   -- append output instead of prepending
-  txbody1 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.shelleyBasedEra txbodycontent1'
+  txbody1 <- balancingError . first C.TxBodyError $ C.createTransactionBody C.shelleyBasedEra txbodycontent1'
 
   let !t_fee = C.calculateMinTxFee C.shelleyBasedEra (C.unLedgerProtocolParameters protocolParams) csiUtxo txbody1 numWits
   traceWith tracer Txfee{fee = C.lovelaceToQuantity t_fee}
 
   let txbodycontent2 = txbodycontent1 & set L.txFee t_fee & appendTxOut csiChangeLatestEraOutput
-  txbody2 <- balancingError . first C.TxBodyError $ C.createAndValidateTransactionBody C.shelleyBasedEra txbodycontent2
+  txbody2 <- balancingError . first C.TxBodyError $ C.createTransactionBody C.shelleyBasedEra txbodycontent2
 
   let unregPoolStakeBalance = C.maryEraOnwardsConstraints @era C.maryBasedEra unregBalance protocolParams txbodycontent2
 
@@ -669,7 +669,7 @@ addOwnInput builder allUtxos =
            let availableUTxOs =
                  List.sortOn
                    ( length
-                   . (\(C.InAnyCardanoEra _ (C.TxOut _ txOutValue _ _)) -> C.valueToList (C.txOutValueToValue txOutValue))
+                   . (\(C.InAnyCardanoEra _ (C.TxOut _ txOutValue _ _)) -> toList (C.txOutValueToValue txOutValue))
                    . fst
                    . snd
                    )
@@ -739,7 +739,7 @@ balancePositive
   -> m (TxBuilder era, C.TxOut C.CtxTx era)
 balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo collateralUTxOs txBuilder0 = inMary @era $ do
   let txBodyContent0 = BuildTx.buildTx txBuilder0
-  txb <- either (throwError . bodyError) pure (C.createAndValidateTransactionBody C.shelleyBasedEra txBodyContent0)
+  txb <- either (throwError . bodyError) pure (C.createTransactionBody C.shelleyBasedEra txBodyContent0)
   let bal = C.evaluateTransactionBalance C.shelleyBasedEra (C.unLedgerProtocolParameters ledgerPPs) poolIds mempty mempty utxo_ txb & view L._TxOutValue
       available = Utxos.removeUtxos (spentTxIns txBodyContent0) walletUtxo
 
@@ -779,12 +779,12 @@ addInputsForAssets dbg txBal availableUtxo collateralUtxo txBuilder =
         return (txBuilder, mempty)
      | otherwise -> do
         let missingAssets = fmap (second abs) $ fst $ splitValue txBal
-        traceWith dbg (MissingAssets $ C.valueFromList missingAssets)
+        traceWith dbg (MissingAssets $ fromList missingAssets)
         case Wallet.selectMixedInputsCovering availableUtxo missingAssets of
           Nothing ->
             let total = availableUtxo <> collateralUtxo in
             case Wallet.selectMixedInputsCovering total missingAssets of
-              Nothing -> throwError (NotEnoughMixedOutputsFor (C.valueFromList missingAssets) (Utxos.totalBalance total) txBal)
+              Nothing -> throwError (NotEnoughMixedOutputsFor (fromList missingAssets) (Utxos.totalBalance total) txBal)
               Just (total_, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total_)
           Just (total, ins) -> pure (txBuilder <> BuildTx.liftTxBodyEndo (over L.txIns (<> fmap spendPubKeyTxIn ins)), total)
 
@@ -802,7 +802,7 @@ addOutputForNonAdaAssets ::
   -- ^ The balance of the transaction
   (C.TxOut C.CtxTx era, C.Quantity)
   -- ^ The modified change output and the lovelace portion of the change output's value. If no output was added then the amount will be 0.
-addOutputForNonAdaAssets pparams returnUTxO (C.valueFromList . snd . splitValue -> positives)
+addOutputForNonAdaAssets pparams returnUTxO (fromList . snd . splitValue -> positives)
   | isNothing (C.valueToLovelace positives) =
       let (vlWithoutAda :: C.Value) = positives & set (L._Value . at C.AdaAssetId) Nothing
           output =
@@ -815,7 +815,7 @@ splitValue :: C.Value -> ([(C.AssetId, C.Quantity)], [(C.AssetId, C.Quantity)])
 splitValue =
   let p (_, q) = q < 0
       f (_, q) = q /= 0
-  in List.partition p . List.filter f . C.valueToList
+  in List.partition p . List.filter f . toList
 
 {-| Take the tx body and produce a 'CSInputs' value for coin selection,
 using the @MonadBlockchain@ effect to query any missing UTxO information.

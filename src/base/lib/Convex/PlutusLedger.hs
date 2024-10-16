@@ -3,7 +3,6 @@
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TupleSections    #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-deprecations #-} -- see https://github.com/j-mueller/sc-tools/issues/213
 {-| Translating between cardano-api/cardano-ledger and plutus representations
 -}
 module Convex.PlutusLedger(
@@ -76,6 +75,7 @@ import           Data.ByteString.Short      (fromShort)
 import qualified Data.ByteString.Short      as Short
 import           Data.Functor               ((<&>))
 import           Data.Time.Clock.POSIX      (POSIXTime)
+import           GHC.IsList                 (IsList (fromList, toList))
 import           PlutusLedgerApi.Common     (SerialisedScript)
 import qualified PlutusLedgerApi.V1         as PV1
 import qualified PlutusLedgerApi.V1.Scripts as P
@@ -221,7 +221,7 @@ unTransTxOutValue value = C.TxOutValueShelleyBased C.ShelleyBasedEraConway . C.t
 
 unTransValue :: PV1.Value -> Either C.SerialiseAsRawBytesError C.Value
 unTransValue =
-    fmap C.valueFromList . traverse toSingleton . Value.flattenValue
+    fmap fromList . traverse toSingleton . Value.flattenValue
   where
     toSingleton (cs, tn, q) =
         unTransAssetId (Value.assetClass cs tn) <&> (, C.Quantity q)
@@ -231,7 +231,7 @@ transValue =
   let t (assetId, C.Quantity quantity) =
         let Value.AssetClass (sym, tn) = transAssetId assetId
         in (sym, Map.singleton tn quantity)
-  in PV1.Value . Map.safeFromList . fmap t . C.valueToList
+  in PV1.Value . Map.safeFromList . fmap t . toList
 
 unTransPlutusScript
     :: C.SerialiseAsRawBytes plutusScript
