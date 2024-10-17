@@ -7,6 +7,7 @@
 {-# LANGUAGE ViewPatterns       #-}
 {-| Conveniences for working with a local @cardano-node@
 -}
+-- $eras
 module Convex.NodeQueries(
   -- * Connecting to the node
   loadConnectInfo,
@@ -99,6 +100,21 @@ import           Ouroboros.Consensus.HardFork.History               (interpretQu
 import           Ouroboros.Consensus.Shelley.Eras                   (StandardConway)
 import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type    as T
 
+-- $eras
+-- This module provides some conviences for querying a running cardano node.
+-- Some queries are /era-specific/: They have an @era@ parameter which must
+-- match the era of the node. If they don't match then we get an 'EraMismatch'
+-- error.
+-- This is fine most of the time as we mainly work with the current era. But
+-- some care must be taken when querying the node around the time a hard-fork
+-- to a new era is scheduled, to make sure that we only issue queries
+-- for the next era after the hard-fork.
+-- To make it easier to implement era-specific queries, this module exports
+-- 'queryInSupportedEra'. This function allows us to run queries that return
+-- the same result type both before and after a hard-fork.
+-- We use the 'Cardano.Api.Experimental.Era' type from @cardano-api@ to
+-- distinguish the current era from the next era.
+
 -- | Exceptions thrown while querying the cardano node
 data QueryException
   = QueryAcquireException String -- ^ Failed to connect to the node
@@ -108,6 +124,7 @@ data QueryException
 
 instance Exception QueryException
 
+-- | Exceptions thrown while converting between slot time and clock time
 data TimeException =
   TimePastHorizonException Consensus.PastHorizonException
   | ChainPointAtGenesisFailure
