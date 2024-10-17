@@ -31,17 +31,17 @@ import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
                                                   forkIntoConwayInEpoch)
 import           Convex.Devnet.Logging           (contramap, showLogsOnFailure,
                                                   traceWith)
-import           Convex.Devnet.NodeQueries       (loadConnectInfo)
-import qualified Convex.Devnet.NodeQueries       as Queries
 import           Convex.Devnet.Utils             (failAfter, failure,
                                                   withTempDir)
 import           Convex.Devnet.Wallet            (WalletLog)
 import qualified Convex.Devnet.Wallet            as W
 import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer      as WS
-import           Convex.NodeQueries              (queryProtocolParameters,
+import           Convex.NodeQueries              (loadConnectInfo,
+                                                  queryProtocolParameters,
                                                   queryStakeAddresses,
                                                   queryStakePools)
+import qualified Convex.NodeQueries              as Queries
 import qualified Convex.Utxos                    as Utxos
 import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.List                       (isInfixOf)
@@ -83,11 +83,11 @@ startLocalNode = do
     showLogsOnFailure $ \tr -> do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile, rnNetworkId} -> do
+          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile, rnConnectInfo} -> do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
               Left err -> failure (show err)
               Right{}  -> do
-                Queries.queryEra rnNetworkId rnNodeSocket
+                Queries.queryEra rnConnectInfo
                   >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
 transitionToConway :: IO ()
@@ -95,8 +95,8 @@ transitionToConway = do
     showLogsOnFailure $ \tr -> do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
-            Queries.queryEra rnNetworkId rnNodeSocket
+          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnConnectInfo} -> do
+            Queries.queryEra rnConnectInfo
               >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
 startLocalStakePoolNode :: IO ()
@@ -125,11 +125,10 @@ registeredStakePoolNode = do
               numUtxos        = 10
               nodeConfigFile  = tmp </> "cardano-node.json"
           wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
-          let mode = fst rnConnectInfo
-          initialStakePools <- queryStakePools mode
+          initialStakePools <- queryStakePools rnConnectInfo
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
             withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001])  runningNode $ \_ -> do
-              currentStakePools <- queryStakePools mode
+              currentStakePools <- queryStakePools rnConnectInfo
               let
                 initial = length initialStakePools
                 current = length currentStakePools
@@ -168,12 +167,11 @@ stakePoolRewards = do
           ) id id id
 
       getStakeRewards :: RunningNode -> C.StakeCredential -> IO C.Quantity
-      getStakeRewards RunningNode{rnConnectInfo, rnNetworkId} cred =
+      getStakeRewards RunningNode{rnConnectInfo} cred =
         let
-          mode  = fst rnConnectInfo
           creds = Set.singleton cred
         in
-         sum . Map.elems . fst <$> queryStakeAddresses mode creds rnNetworkId
+         sum . Map.elems . fst <$> queryStakeAddresses rnConnectInfo creds
 
       _waitForStakeRewards :: Tracer IO TestLog -> RunningNode -> C.StakeCredential -> IO C.Quantity
       _waitForStakeRewards tr node cred = do
@@ -213,7 +211,7 @@ runWalletServer =
 
 changeMaxTxSize :: IO ()
 changeMaxTxSize =
-  let getMaxTxSize = fmap (view ppMaxTxSizeL) . queryProtocolParameters . fst . rnConnectInfo in
+  let getMaxTxSize = fmap (view ppMaxTxSizeL) . queryProtocolParameters . rnConnectInfo in
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize
