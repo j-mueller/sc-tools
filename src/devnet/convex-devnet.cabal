@@ -45,7 +45,6 @@ library
       Convex.Devnet.CardanoNode
       Convex.Devnet.CardanoNode.Types
       Convex.Devnet.Logging
-      Convex.Devnet.NodeQueries
       Convex.Devnet.Utils
       Convex.Devnet.Wallet
       Convex.Devnet.WalletServer
@@ -64,8 +63,6 @@ library
       , temporary
       , async
       , unix
-      , exceptions
-      , containers
       , convex-wallet
       , convex-base
       , convex-optics
@@ -86,9 +83,7 @@ library
       , cardano-slotting
       , cardano-ledger-conway
       , io-classes
-      , ouroboros-consensus
       , ouroboros-consensus-cardano
-      , ouroboros-network-protocols
 
       -- logging
       , contra-tracer

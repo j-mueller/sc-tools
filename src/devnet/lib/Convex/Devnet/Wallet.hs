@@ -39,12 +39,11 @@ import           Convex.Class                    (MonadBlockchain (queryNetworkI
 import           Convex.CoinSelection            (ChangeOutputPosition (TrailingChange))
 import qualified Convex.CoinSelection            as CoinSelection
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
-import qualified Convex.Devnet.NodeQueries       as NodeQueries
 import           Convex.Devnet.Utils             (keysFor)
 import           Convex.MonadLog                 (MonadLog (..))
+import qualified Convex.NodeQueries              as NodeQueries
 import           Convex.Utils                    (failOnError)
 import           Convex.Utxos                    (UtxoSet)
-import qualified Convex.Utxos                    as Utxos
 import           Convex.Wallet                   (Wallet (..), address)
 import qualified Convex.Wallet                   as Wallet
 import           Data.Aeson                      (FromJSON, ToJSON)
@@ -61,7 +60,7 @@ faucet = Wallet . snd <$> keysFor "faucet"
 -}
 walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO ())
 walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
-  Utxos.fromApiUtxo <$> NodeQueries.queryUTxO @C.ConwayEra rnNetworkId rnNodeSocket [address rnNetworkId wllt]
+  NodeQueries.queryUTxOByAddress (NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket) [C.toAddressAny $ address rnNetworkId wllt]
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}
@@ -77,7 +76,7 @@ createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Int -> Quantity -> I
 createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} n amount = do
   wallet <- Wallet.generateWallet
   traceWith tracer (GeneratedWallet wallet)
-  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) n amount >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
+  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) n amount >>= NodeQueries.waitForTx (NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket)
   pure wallet
 
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the

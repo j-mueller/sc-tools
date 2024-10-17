@@ -31,17 +31,17 @@ import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
                                                   forkIntoConwayInEpoch)
 import           Convex.Devnet.Logging           (contramap, showLogsOnFailure,
                                                   traceWith)
-import           Convex.Devnet.NodeQueries       (loadConnectInfo)
-import qualified Convex.Devnet.NodeQueries       as Queries
 import           Convex.Devnet.Utils             (failAfter, failure,
                                                   withTempDir)
 import           Convex.Devnet.Wallet            (WalletLog)
 import qualified Convex.Devnet.Wallet            as W
 import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer      as WS
-import           Convex.NodeQueries              (queryProtocolParameters,
+import           Convex.NodeQueries              (loadConnectInfo,
+                                                  queryProtocolParameters,
                                                   queryStakeAddresses,
                                                   queryStakePools)
+import qualified Convex.NodeQueries              as Queries
 import qualified Convex.Utxos                    as Utxos
 import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.List                       (isInfixOf)
@@ -87,7 +87,7 @@ startLocalNode = do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
               Left err -> failure (show err)
               Right{}  -> do
-                Queries.queryEra rnNetworkId rnNodeSocket
+                Queries.queryEra (Queries.localNodeConnectInfo rnNetworkId rnNodeSocket)
                   >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
 transitionToConway :: IO ()
@@ -96,7 +96,7 @@ transitionToConway = do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
           withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
-            Queries.queryEra rnNetworkId rnNodeSocket
+            Queries.queryEra (Queries.localNodeConnectInfo rnNetworkId rnNodeSocket)
               >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
 
 startLocalStakePoolNode :: IO ()
