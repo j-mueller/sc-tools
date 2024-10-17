@@ -732,7 +732,6 @@ globals :: C.IsShelleyBasedEra era => NodeParams era -> Globals
 globals params@NodeParams { npSlotLength } = mkShelleyGlobals
   (genesisDefaultsFromParams params)
   (fixedEpochInfo epochSize npSlotLength)
-  (C.Ledger.pvMajor $ view L.ppProtocolVersionL protocolParameters)
 
 protVer :: L.EraPParams (C.ShelleyLedgerEra era) => NodeParams era -> ProtVer
 protVer = view L.ppProtocolVersionL . C.unLedgerProtocolParameters . npProtocolParameters

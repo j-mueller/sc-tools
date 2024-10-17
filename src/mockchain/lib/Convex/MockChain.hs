@@ -264,6 +264,7 @@ initialStateFor params@NodeParams{npNetworkId} utxos = C.shelleyBasedEraConstrai
             , ledgerIx = minBound
             , ledgerPp = Defaults.pParams params
             , ledgerAccount = AccountState (Coin 0) (Coin 0)
+            , ledgerMempool = False
             }
       , mcsPoolState = LedgerState
           { lsUTxOState = smartUTxOState (Defaults.pParams params) utxo (Coin 0) (Coin 0) def (Coin 0)
