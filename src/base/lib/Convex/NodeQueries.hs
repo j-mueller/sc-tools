@@ -266,11 +266,12 @@ queryProtocolParameters connectInfo = runEraQuery connectInfo $
 -- | Get the stake and the IDs of the stake pool for a set of stake credentials
 --   Throws 'QueryException' if the node's era is not supported or if the connection
 --   to the node cannot be acquired
-queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> NetworkId -> IO (Map StakeAddress Quantity, Map StakeAddress PoolId)
-queryStakeAddresses info creds nid = do
+queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeAddress Quantity, Map StakeAddress PoolId)
+queryStakeAddresses info creds = do
+  let LocalNodeConnectInfo{localNodeNetworkId} = info
   queryInSupportedEra info $ \case
-    X.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds nid, eqResult = first (fmap CAPI.lovelaceToQuantity)}
-    X.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds nid, eqResult = first (fmap CAPI.lovelaceToQuantity)}
+    X.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
+    X.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
 
 -- | Get the set of registered stake pools
 --   Throws 'QueryException' if the node's era is not supported or if the connection

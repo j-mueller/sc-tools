@@ -59,8 +59,8 @@ faucet = Wallet . snd <$> keysFor "faucet"
 {-| Query the node for UTXOs that belong to the wallet
 -}
 walletUtxos :: RunningNode -> Wallet -> IO (UtxoSet C.CtxUTxO ())
-walletUtxos RunningNode{rnNodeSocket, rnNetworkId} wllt =
-  NodeQueries.queryUTxOByAddress (NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket) [C.toAddressAny $ address rnNetworkId wllt]
+walletUtxos RunningNode{rnConnectInfo, rnNetworkId} wllt =
+  NodeQueries.queryUTxOByAddress rnConnectInfo [C.toAddressAny $ address rnNetworkId wllt]
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}
@@ -73,10 +73,10 @@ sendFaucetFundsTo tracer node destination n amount = do
 on the chain.
 -}
 createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Int -> Quantity -> IO Wallet
-createSeededWallet tracer node@RunningNode{rnNetworkId, rnNodeSocket} n amount = do
+createSeededWallet tracer node@RunningNode{rnNetworkId, rnConnectInfo} n amount = do
   wallet <- Wallet.generateWallet
   traceWith tracer (GeneratedWallet wallet)
-  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) n amount >>= NodeQueries.waitForTx (NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket)
+  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) n amount >>= NodeQueries.waitForTx rnConnectInfo
   pure wallet
 
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the
@@ -88,10 +88,8 @@ runningNodeBlockchain ::
   -> RunningNode
   -> (forall m. (MonadFail m, MonadLog m, MonadBlockchain era m) => m a)
   -> IO a
-runningNodeBlockchain tracer RunningNode{rnNodeSocket, rnNetworkId} h =
-  let info = NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket
-  in runTracerMonadLogT tracer $ do
-      runMonadBlockchainCardanoNodeT @era info h
+runningNodeBlockchain tracer RunningNode{rnConnectInfo} =
+  runTracerMonadLogT tracer . runMonadBlockchainCardanoNodeT @era rnConnectInfo
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}

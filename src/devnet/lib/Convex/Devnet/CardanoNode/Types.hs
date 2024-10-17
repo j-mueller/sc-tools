@@ -59,7 +59,8 @@ data RunningNode = RunningNode
   { rnNodeSocket     :: FilePath -- ^ Cardano node socket
   , rnNetworkId      :: NetworkId -- ^ Network ID used by the cardano node
   , rnNodeConfigFile :: FilePath -- ^ Cardano node config file (JSON)
-  , rnConnectInfo    :: (LocalNodeConnectInfo, Env) -- ^ Connection info for node queries
+  , rnConnectInfo    :: LocalNodeConnectInfo -- ^ Connection info for node queries
+  , rnEnv            :: Env -- ^ Node environment
   }
 
 {-| Describes a running stake pool node

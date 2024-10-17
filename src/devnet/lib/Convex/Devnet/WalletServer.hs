@@ -70,7 +70,7 @@ data RunningWalletServer =
     }
 
 withWallet :: Tracer IO WalletLog -> FilePath -> RunningNode -> (RunningWalletServer -> IO a) -> IO a
-withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, rnNetworkId} action = do
+withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, rnConnectInfo} action = do
   let logFilePath = stateDirectory </> "wallet-server.log"
       signingKeyFile = stateDirectory </> "operator-signing-key.vkey"
       verificationKeyFile = stateDirectory </> "operator-verification-key.vkey"
@@ -103,7 +103,7 @@ withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, 
                 , rwsManager
                 , rwsClient
                 }
-        _ <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000) >>= NodeQueries.waitForTx (NodeQueries.localNodeConnectInfo rnNetworkId rnNodeSocket)
+        _ <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000) >>= NodeQueries.waitForTx rnConnectInfo
         waitUntilAvailable tracer rws
         action rws
 
