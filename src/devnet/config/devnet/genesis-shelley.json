@@ -25,10 +25,10 @@
         "maxTxSize": 16384,
         "minFeeA": 44,
         "minFeeB": 155381,
-        "minPoolCost": 0,
-        "minUTxOValue": 0,
+        "minPoolCost": 340000000,
+        "minUTxOValue": 1000000,
         "nOpt": 100,
-        "poolDeposit": 0,
+        "poolDeposit": 500000000,
         "protocolVersion": {
             "major": 7,
             "minor": 0
