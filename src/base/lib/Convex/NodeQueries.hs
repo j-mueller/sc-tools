@@ -7,8 +7,8 @@
 {-# LANGUAGE ViewPatterns       #-}
 {-| Conveniences for working with a local @cardano-node@
 -}
--- $eras
 module Convex.NodeQueries(
+  -- $eras
   -- * Connecting to the node
   loadConnectInfo,
   localNodeConnectInfo,
@@ -37,6 +37,8 @@ module Convex.NodeQueries(
   queryUTxOFilter,
 
   -- ** Debug queries
+  -- The queries in this section should only be used in testing or preview
+  -- environments. They may be unstable or inefficient.
   queryUTxOByAddress,
   queryUTxOWhole,
   waitForTxIn,
