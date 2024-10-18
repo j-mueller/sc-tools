@@ -41,7 +41,7 @@ import qualified Convex.CoinSelection            as CoinSelection
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
 import           Convex.Devnet.Utils             (keysFor)
 import           Convex.MonadLog                 (MonadLog (..))
-import qualified Convex.NodeQueries              as NodeQueries
+import qualified Convex.NodeQueries.Debug        as NodeQueries
 import           Convex.Utils                    (failOnError)
 import           Convex.Utxos                    (UtxoSet)
 import           Convex.Wallet                   (Wallet (..), address)

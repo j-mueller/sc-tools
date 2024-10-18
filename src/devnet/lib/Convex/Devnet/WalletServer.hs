@@ -22,7 +22,7 @@ import           Control.Tracer                  (Tracer, contramap, traceWith)
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
 import           Convex.Devnet.Utils             (failure, withLogFile)
 import qualified Convex.Devnet.Wallet            as Wallet
-import qualified Convex.NodeQueries              as NodeQueries
+import qualified Convex.NodeQueries.Debug        as NodeQueries
 import           Convex.Utxos                    (UtxoSet)
 import qualified Convex.Wallet.API               as API
 import           Convex.Wallet.Cli.Command       (CliCommand (..))

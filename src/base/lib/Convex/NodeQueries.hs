@@ -34,16 +34,7 @@ module Convex.NodeQueries(
   queryProtocolParameters,
   queryStakePools,
   queryStakeAddresses,
-  queryUTxOFilter,
-
-  -- ** Debug queries
-  -- The queries in this section should only be used in testing or preview
-  -- environments. They may be unstable or inefficient.
-  queryUTxOByAddress,
-  queryUTxOWhole,
-  waitForTxIn,
-  waitForTx,
-  waitForTxInSpend
+  queryUTxOFilter
 ) where
 
 import           Cardano.Api                                        (AnyCardanoEra,
@@ -60,11 +51,10 @@ import           Cardano.Api                                        (AnyCardanoE
                                                                      Quantity,
                                                                      SlotNo,
                                                                      SystemStart,
-                                                                     Tx, TxIn,
                                                                      envSecurityParam)
 import qualified Cardano.Api                                        as CAPI
 import           Cardano.Api.Experimental                           (Era)
-import qualified Cardano.Api.Experimental                           as X
+import qualified Cardano.Api.Experimental                           as C.Experimental
 import           Cardano.Api.Shelley                                (PoolId,
                                                                      StakeAddress,
                                                                      StakeCredential)
@@ -74,22 +64,17 @@ import           Cardano.Crypto                                     (RequiresNet
 import           Cardano.Ledger.Core                                (PParams)
 import           Cardano.Slotting.Slot                              (WithOrigin)
 import           Cardano.Slotting.Time                              (SlotLength)
-import           Control.Concurrent                                 (threadDelay)
 import           Control.Exception                                  (Exception,
                                                                      throwIO)
-import           Control.Monad                                      (unless,
-                                                                     when)
 import           Control.Monad.Except                               (MonadError,
                                                                      throwError)
 import           Control.Monad.IO.Class                             (MonadIO (..))
 import           Control.Monad.Trans.Except                         (runExceptT)
-import           Convex.Utils                                       (txnUtxos)
 import           Convex.Utxos                                       (UtxoSet)
 import qualified Convex.Utxos                                       as Utxos
 import           Data.Bifunctor                                     (Bifunctor (..))
 import           Data.Map                                           (Map)
 import           Data.Set                                           (Set)
-import qualified Data.Set                                           as Set
 import           Data.SOP.Strict                                    (NP ((:*)))
 import           Data.Word                                          (Word64)
 import qualified Ouroboros.Consensus.Cardano.CanHardFork            as Consensus
@@ -271,8 +256,8 @@ runEraQuery connectInfo EraQuery{eqQuery, eqResult} =
 queryInSupportedEra :: LocalNodeConnectInfo -> (forall era. Era era -> EraQuery era result) -> IO result
 queryInSupportedEra connectInfo qry = do
   queryEra connectInfo >>= \case
-    CAPI.AnyCardanoEra CAPI.BabbageEra -> runEraQuery connectInfo (qry X.BabbageEra)
-    CAPI.AnyCardanoEra CAPI.ConwayEra -> runEraQuery connectInfo (qry X.ConwayEra)
+    CAPI.AnyCardanoEra CAPI.BabbageEra -> runEraQuery connectInfo (qry C.Experimental.BabbageEra)
+    CAPI.AnyCardanoEra CAPI.ConwayEra -> runEraQuery connectInfo (qry C.Experimental.ConwayEra)
     era -> throwIO (QueryEraNotSupported era)
 
 -- | Get the conway protocol parameters from the local cardano node
@@ -289,61 +274,29 @@ queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> IO (Map St
 queryStakeAddresses info creds = do
   let LocalNodeConnectInfo{localNodeNetworkId} = info
   queryInSupportedEra info $ \case
-    X.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
-    X.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
+    C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
+    C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
 
 -- | Get the set of registered stake pools
 --   Throws 'QueryException' if the node's era is not supported or if the connection
 --   to the node cannot be acquired
 queryStakePools :: LocalNodeConnectInfo -> IO (Set PoolId)
 queryStakePools connectInfo = queryInSupportedEra connectInfo $ \case
-  X.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakePools, eqResult = id}
-  X.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakePools, eqResult = id}
+  C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakePools, eqResult = id}
+  C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakePools, eqResult = id}
 
 -- | Get the current epoch
 --   Throws 'QueryException' if the node's era is not supported or if the connection
 --   to the node cannot be acquired
 queryEpoch :: LocalNodeConnectInfo -> IO CAPI.EpochNo
 queryEpoch connectInfo = queryInSupportedEra connectInfo $ \case
-  X.BabbageEra -> EraQuery{eqQuery = CAPI.QueryEpoch, eqResult = id}
-  X.ConwayEra -> EraQuery{eqQuery = CAPI.QueryEpoch, eqResult = id}
+  C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryEpoch, eqResult = id}
+  C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryEpoch, eqResult = id}
 
 -- | Query UTxO for all given addresses at given point.
 --   Throws 'QueryException' if the node's era is not supported or if the connection
 --   to the node cannot be acquired
 queryUTxOFilter :: LocalNodeConnectInfo -> CAPI.QueryUTxOFilter -> IO (UtxoSet CAPI.CtxUTxO ())
 queryUTxOFilter connectInfo flt = queryInSupportedEra connectInfo $ \case
-  X.BabbageEra -> EraQuery{eqQuery = CAPI.QueryUTxO flt, eqResult = Utxos.fromApiUtxo }
-  X.ConwayEra -> EraQuery{eqQuery = CAPI.QueryUTxO flt, eqResult = Utxos.fromApiUtxo }
-
-queryUTxOByAddress :: LocalNodeConnectInfo -> [CAPI.AddressAny] -> IO (UtxoSet CAPI.CtxUTxO ())
-queryUTxOByAddress connectInfo addresses =
-  queryUTxOFilter connectInfo $ CAPI.QueryUTxOByAddress $ Set.fromList addresses
-
-queryUTxOWhole :: LocalNodeConnectInfo -> IO (UtxoSet CAPI.CtxUTxO ())
-queryUTxOWhole connectInfo = queryUTxOFilter connectInfo CAPI.QueryUTxOWhole
-
-{-| Wait until the output appears on the chain
--}
-waitForTxIn :: LocalNodeConnectInfo -> TxIn -> IO ()
-waitForTxIn connectInfo txIn = go where
-  go = do
-    utxo <- queryUTxOFilter connectInfo (CAPI.QueryUTxOByTxIn (Set.singleton txIn))
-    when (utxo == mempty) $ do
-      threadDelay 2_000_000
-      go
-
-{-| Wait until the first output of the transaction appears on the chain
--}
-waitForTx :: forall era. LocalNodeConnectInfo -> Tx era -> IO ()
-waitForTx connectInfo tx = waitForTxIn connectInfo (fst $ head $ txnUtxos tx)
-
-{-| Wait until the output disappears from the chain
--}
-waitForTxInSpend :: LocalNodeConnectInfo -> TxIn -> IO ()
-waitForTxInSpend connectInfo txIn = go where
-  go = do
-    utxo <- queryUTxOFilter connectInfo (CAPI.QueryUTxOByTxIn (Set.singleton txIn))
-    unless (utxo == mempty) $ do
-      threadDelay 2_000_000
-      go
+  C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryUTxO flt, eqResult = Utxos.fromApiUtxo }
+  C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryUTxO flt, eqResult = Utxos.fromApiUtxo }
