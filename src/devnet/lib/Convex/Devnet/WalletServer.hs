@@ -20,9 +20,9 @@ import qualified Cardano.Api                     as C
 import           Control.Concurrent              (threadDelay)
 import           Control.Tracer                  (Tracer, contramap, traceWith)
 import           Convex.Devnet.CardanoNode.Types (RunningNode (..))
-import qualified Convex.Devnet.NodeQueries       as NodeQueries
 import           Convex.Devnet.Utils             (failure, withLogFile)
 import qualified Convex.Devnet.Wallet            as Wallet
+import qualified Convex.NodeQueries.Debug        as NodeQueries
 import           Convex.Utxos                    (UtxoSet)
 import qualified Convex.Wallet.API               as API
 import           Convex.Wallet.Cli.Command       (CliCommand (..))
@@ -70,7 +70,7 @@ data RunningWalletServer =
     }
 
 withWallet :: Tracer IO WalletLog -> FilePath -> RunningNode -> (RunningWalletServer -> IO a) -> IO a
-withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, rnNetworkId} action = do
+withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, rnConnectInfo} action = do
   let logFilePath = stateDirectory </> "wallet-server.log"
       signingKeyFile = stateDirectory </> "operator-signing-key.vkey"
       verificationKeyFile = stateDirectory </> "operator-verification-key.vkey"
@@ -103,7 +103,7 @@ withWallet tracer stateDirectory rn@RunningNode{rnNodeSocket, rnNodeConfigFile, 
                 , rwsManager
                 , rwsClient
                 }
-        _ <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000) >>= NodeQueries.waitForTxn rnNetworkId rnNodeSocket
+        _ <- sendFundsToOperator tracer rn op (C.Quantity 100_000_000) >>= NodeQueries.waitForTx rnConnectInfo
         waitUntilAvailable tracer rws
         action rws
 

@@ -58,11 +58,11 @@ import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
                                                   RunningStakePoolNode (..),
                                                   StakePoolNodeParams (..),
                                                   defaultPortsConfig)
-import qualified Convex.Devnet.NodeQueries       as Q
 import           Convex.Devnet.Utils             (checkProcessHasNotDied,
                                                   defaultNetworkId, failure,
                                                   readConfigFile, withLogFile)
 import qualified Convex.Devnet.Wallet            as W
+import qualified Convex.NodeQueries              as Q
 import           Convex.Wallet                   (Wallet, paymentCredential)
 import           Data.Aeson                      (FromJSON, ToJSON (toJSON),
                                                   (.=))
@@ -175,8 +175,8 @@ withCardanoNode tr networkId stateDirectory args@CardanoNodeArgs{nodeSocket, nod
     waitForFile socketPath
     let rnNodeConfigFile = stateDirectory </> nodeConfigFile
     traceWith tr $ MsgSocketIsReady socketPath
-    rnConnectInfo <- runExceptT (Q.loadConnectInfo rnNodeConfigFile socketPath) >>= either (error . (<>) "Failed to load connect info: " . show) pure
-    let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile, rnConnectInfo}
+    (rnConnectInfo, rnEnv) <- runExceptT (Q.loadConnectInfo rnNodeConfigFile socketPath) >>= either (error . (<>) "Failed to load connect info: " . show) pure
+    let rn = RunningNode{rnNodeSocket = socketPath, rnNetworkId = networkId, rnNodeConfigFile, rnConnectInfo, rnEnv}
     action rn
 
   cleanupSocketFile = do
@@ -239,14 +239,14 @@ waitForFullySynchronized ::
   Tracer IO NodeLog ->
   RunningNode ->
   IO ()
-waitForFullySynchronized tracer RunningNode{rnNodeSocket, rnNetworkId} = do
-  systemStart <- Q.querySystemStart rnNetworkId rnNodeSocket
+waitForFullySynchronized tracer RunningNode{rnConnectInfo} = do
+  systemStart <- Q.querySystemStart rnConnectInfo
   check systemStart
  where
   check systemStart = do
     targetTime <- toRelativeTime systemStart <$> getCurrentTime
-    eraHistory <- Q.queryEraHistory rnNetworkId rnNodeSocket
-    (tipSlotNo, _slotLength) <- Q.queryTipSlotNo rnNetworkId rnNodeSocket
+    eraHistory <- Q.queryEraHistory rnConnectInfo
+    (tipSlotNo, _slotLength) <- Q.queryTipSlotNo rnConnectInfo
     (tipTime, _slotLength) <- either throwIO pure $ C.getProgress tipSlotNo eraHistory
     let timeDifference = diffRelativeTime targetTime tipTime
     let percentDone = realToFrac (100.0 * getRelativeTime tipTime / getRelativeTime targetTime)
@@ -258,8 +258,8 @@ waitForFullySynchronized tracer RunningNode{rnNodeSocket, rnNetworkId} = do
 {-| Wait until at least one block has been produced (ie. the tip is not genesis)
 -}
 waitForBlock :: RunningNode -> IO C.BlockNo
-waitForBlock n@RunningNode{rnNodeSocket, rnNetworkId} = do
-  withOriginToMaybe <$> Q.queryTipBlock rnNetworkId rnNodeSocket >>= \case
+waitForBlock n@RunningNode{rnConnectInfo} = do
+  withOriginToMaybe <$> Q.queryTipBlock rnConnectInfo >>= \case
     Just blockNo | blockNo >= 1 -> pure blockNo
     _ -> do
       threadDelay 1_000_000 >> waitForBlock n
@@ -277,13 +277,13 @@ waitForNextBlock' node blockNo = do
     threadDelay 1_000_000 >> waitForNextBlock' node blockNo
 
 waitForNextEpoch :: RunningNode -> IO C.EpochNo
-waitForNextEpoch n@RunningNode{rnNodeSocket, rnNetworkId} = do
-  currentEpochNo <- Q.queryEpoch rnNetworkId rnNodeSocket
+waitForNextEpoch n@RunningNode{rnConnectInfo} = do
+  currentEpochNo <- Q.queryEpoch rnConnectInfo
   waitForNextEpoch' n currentEpochNo
 
 waitForNextEpoch' :: RunningNode -> C.EpochNo -> IO C.EpochNo
-waitForNextEpoch' n@RunningNode{rnNodeSocket, rnNetworkId} epochNo = do
-  currentEpochNo <- Q.queryEpoch rnNetworkId rnNodeSocket
+waitForNextEpoch' n@RunningNode{rnConnectInfo} epochNo = do
+  currentEpochNo <- Q.queryEpoch rnConnectInfo
   if currentEpochNo > epochNo then
     pure currentEpochNo else
     threadDelay 1_000_000 >> waitForNextEpoch' n epochNo
@@ -492,7 +492,7 @@ withCardanoStakePoolNodeDevnetConfig ::
   -- | Action
   (RunningStakePoolNode -> IO a) ->
   IO a
-withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile PortsConfig{ours, peers} node@RunningNode{rnNodeSocket, rnNetworkId} action = do
+withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeConfigFile PortsConfig{ours, peers} node@RunningNode{rnConnectInfo, rnNetworkId} action = do
   createDirectoryIfMissing True stateDirectory
 
   stakeKey <- C.generateSigningKey C.AsStakeKey
@@ -500,7 +500,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
   kesKey <- C.generateSigningKey C.AsKesKey
   stakePoolKey <- C.generateSigningKey C.AsStakePoolKey
 
-  C.SlotNo slotNo <- fst <$> Q.queryTipSlotNo rnNetworkId rnNodeSocket
+  C.SlotNo slotNo <- fst <$> Q.queryTipSlotNo rnConnectInfo
 
   let
     minDeposit = 500_000_000

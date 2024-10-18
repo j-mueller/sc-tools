@@ -33,6 +33,7 @@ library
       Convex.Constants
       Convex.MonadLog
       Convex.NodeQueries
+      Convex.NodeQueries.Debug
       Convex.NodeParams
       Convex.PlutusLedger
       Convex.PlutusTx
