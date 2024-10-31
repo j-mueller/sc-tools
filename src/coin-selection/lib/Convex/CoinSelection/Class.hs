@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-| An effect for balancing transactions
@@ -22,6 +23,7 @@ import           Control.Monad.Catch              (MonadCatch, MonadMask,
 import           Control.Monad.Except             (ExceptT, MonadError,
                                                    runExceptT)
 import           Control.Monad.IO.Class           (MonadIO)
+import           Control.Monad.Primitive          (PrimMonad (..))
 import           Control.Monad.Reader             (ReaderT (runReaderT), ask)
 import           Control.Monad.Trans.Class        (MonadTrans (..))
 import qualified Control.Monad.Trans.State        as StrictState
@@ -37,6 +39,7 @@ import           Convex.CoinSelection             (BalanceTxError,
                                                    ChangeOutputPosition,
                                                    TxBalancingMessage)
 import qualified Convex.CoinSelection
+import           Convex.MockChain                 (MockchainT)
 import           Convex.MonadLog                  (MonadLog, MonadLogIgnoreT)
 import           Convex.Utils                     (inBabbage)
 import           Convex.Utxos                     (BalanceChanges (..),
@@ -84,6 +87,12 @@ newtype BalancingT m a = BalancingT{runBalancingT :: m a }
 instance MonadTrans BalancingT where
   lift = BalancingT
 
+-- Same for BalancingT
+instance PrimMonad m => PrimMonad (BalancingT m) where
+  type PrimState (BalancingT m) = PrimState m
+  {-# INLINEABLE primitive #-}
+  primitive f = lift (primitive f)
+
 deriving newtype instance MonadError e m => MonadError e (BalancingT m)
 
 instance MonadBalance era m => MonadBalance era (ExceptT e m)
@@ -91,6 +100,7 @@ instance MonadBalance era m => MonadBalance era (ReaderT e m)
 instance MonadBalance era m => MonadBalance era (StrictState.StateT s m)
 instance MonadBalance era m => MonadBalance era (LazyState.StateT s m)
 instance MonadBalance era m => MonadBalance era (MonadLogIgnoreT m)
+instance MonadBalance era m => MonadBalance era (MockchainT era m)
 instance (C.IsBabbageBasedEra era, Convex.Class.MonadBlockchain era m) => MonadBalance era (BalancingT m) where
   balanceTx addr utxos txb changePosition = runExceptT (Convex.CoinSelection.balanceTx mempty (inBabbage @era emptyTxOut addr) utxos txb changePosition)
 
