@@ -6,7 +6,8 @@
 module Main(main) where
 
 import qualified Cardano.Api                    as C
-import qualified Cardano.Api.Ledger             as C
+import qualified Cardano.Api.Ledger             as C hiding (PlutusScript, TxId,
+                                                      TxIn)
 import qualified Cardano.Api.Shelley            as C
 import qualified Cardano.Ledger.Api             as Ledger
 import qualified Cardano.Ledger.Conway.Rules    as Rules

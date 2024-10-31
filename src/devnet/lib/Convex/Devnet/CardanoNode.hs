@@ -472,7 +472,7 @@ withObject fn = \case
 computeGenesisHash :: FilePath -> IO String
 computeGenesisHash fp =
   -- drop the last character (newline)
-  take 64 <$> readProcess "cardano-cli" ["genesis", "hash", "--genesis", fp] ""
+  take 64 <$> readProcess "cardano-cli" ["hash", "anchor-data", "--file-text", fp] ""
 
 -- | Launch a Cardano stake pool node with predefined node configuration, port and topology.
 withCardanoStakePoolNodeDevnetConfig ::
