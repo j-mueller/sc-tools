@@ -31,7 +31,10 @@
                 compiler-nix-name = "ghc966";
                 src = lib.cleanSource ./.;
                 shell = {
-                  withHoogle = true;
+                  # Disabled this due to a build failure in http-client-tls
+                  # See https://github.com/snoyberg/http-client/issues/548
+                  # TODO: set to 'true' when the issue has been fixed.
+                  withHoogle = false;
                   buildInputs = with pkgs; [
                     fd
                   ];
