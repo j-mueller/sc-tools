@@ -47,6 +47,7 @@ library
       convex-optics,
       convex-wallet,
       data-default,
+      primitive,
       servant-client,
       text
 
