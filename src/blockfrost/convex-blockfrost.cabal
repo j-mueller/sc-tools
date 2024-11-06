@@ -1,0 +1,57 @@
+cabal-version: 3.0
+name:          convex-blockfrost
+version:       0.3.0.0
+synopsis:      Blockfrost backend for @MonadBlockchain@
+license: Apache-2.0
+license-files:
+  LICENSE
+
+maintainer:    j-mueller@users.noreply.github.com
+author:        Jann Müller
+homepage:      https://github.com/j-mueller/sc-tools
+bug-reports:   https://github.com/j-mueller/sc-tools
+description:
+  Please see the README on GitHub at <https://github.com/j-mueller/sc-tools>
+
+build-type:    Simple
+
+common lang
+    default-language: Haskell2010
+    default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
+                        DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
+                        GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
+                        DeriveTraversable ImportQualifiedPost NumericUnderscores
+    ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
+                 -Wincomplete-uni-patterns -Wincomplete-record-updates
+                 -Wredundant-constraints -Widentities
+
+library
+    import: lang
+    hs-source-dirs: lib
+    exposed-modules:
+      Convex.Blockfrost
+      Convex.Blockfrost.API
+      Convex.Blockfrost.Types
+    build-depends:
+      base >= 4.14 && < 5,
+      blockfrost-api >= 0.12.1.0,
+      text,
+      cardano-api,
+      safe-money
+
+test-suite convex-blockfrost-test
+  import: lang
+  type: exitcode-stdio-1.0
+  hs-source-dirs:     test
+  main-is:
+    Spec.hs
+  other-modules:
+    Unit
+  build-depends:
+    base >= 4.14.0,
+    convex-blockfrost,
+    tasty,
+    tasty-hunit,
+    cardano-api,
+    safe-money,
+    blockfrost-api
