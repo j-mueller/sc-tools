@@ -37,7 +37,9 @@ library
       blockfrost-api >= 0.12.1.0,
       text,
       cardano-api,
-      safe-money
+      convex-base,
+      safe-money,
+      cardano-binary
 
 test-suite convex-blockfrost-test
   import: lang

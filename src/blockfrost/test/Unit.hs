@@ -1,16 +1,21 @@
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 {-| Unit tests for blockfrost backend
 -}
 module Unit(tests) where
 
 import           Blockfrost.Types.Shared.Amount (Amount (..))
 import qualified Cardano.Api                    as C
-import           Convex.Blockfrost.Types        (toAssetId, toPolicyId,
+import           Convex.Blockfrost.Types        (toAddress, toAssetId,
+                                                 toPolicyId, toStakeAddress,
                                                  toTxHash)
+import           Data.Maybe                     (isJust)
 import qualified Money
 import           Test.Tasty                     (TestTree, testGroup)
-import           Test.Tasty.HUnit               (assertEqual, testCase)
+import           Test.Tasty.HUnit               (assertBool, assertEqual,
+                                                 testCase)
 
 tests :: TestTree
 tests = testGroup "unit"
@@ -27,5 +32,19 @@ tests = testGroup "unit"
           $ assertEqual "asset ID should match"
               (toAssetId $ AssetAmount $ Money.toSomeDiscrete (12 :: Money.Discrete' "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a76e7574636f696e" '(1, 1)))
               (C.AssetId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7" "6e7574636f696e", 12)
+      , testCase "address"
+          $ deserialiseAddress "addr1qxqs59lphg8g6qndelq8xwqn60ag3aeyfcp33c2kdp46a09re5df3pzwwmyq946axfcejy5n4x0y99wqpgtp2gd0k09qsgy6pz"
+      , testCase "stake address"
+          $ deserialiseStakeAddress "stake1ux3g2c9dx2nhhehyrezyxpkstartcqmu9hk63qgfkccw5rqttygt7"
       ]
   ]
+
+deserialiseAddress =
+  assertBool "should be able to deserialise address"
+  . isJust
+  . toAddress @C.ConwayEra
+
+deserialiseStakeAddress =
+  assertBool "should be able to deserialise stake address"
+  . isJust
+  . toStakeAddress
