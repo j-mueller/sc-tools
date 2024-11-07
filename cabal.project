@@ -20,6 +20,12 @@ index-state:
 
 multi-repl: true
 
+-- You never, ever, want this.
+write-ghc-environment-files: never
+
+test-show-details: direct
+tests: True
+
 packages:
   src/base
   src/coin-selection

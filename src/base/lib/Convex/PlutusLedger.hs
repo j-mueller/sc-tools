@@ -46,6 +46,9 @@ module Convex.PlutusLedger(
   unTransAddressInEra,
   transAddressInEra,
 
+  unTransAddressShelley,
+  transAddressShelley,
+
   -- * Tx IDs
   unTransTxOutRef,
   transTxOutRef,
@@ -183,22 +186,30 @@ unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
   Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
 unTransAddressInEra :: C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra C.ConwayEra)
-unTransAddressInEra networkId (PV1.Address cred staking) =
+unTransAddressInEra networkId addr =
   C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) <$>
-    (C.makeShelleyAddress networkId
-      <$> unTransCredential cred
-      <*> unTransStakeAddressReference staking
-      )
+    unTransAddressShelley networkId addr
 
 -- | @cardano-api@ address to @plutus@ address. Returns 'Nothing' for
 -- | byron addresses.
 transAddressInEra :: C.AddressInEra C.ConwayEra -> Maybe PV1.Address
 transAddressInEra = \case
-  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) (C.ShelleyAddress _ p s) ->
-    Just $ PV1.Address
+  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) shelleyAddr ->
+    Just $ transAddressShelley shelleyAddr
+  C.AddressInEra C.ByronAddressInAnyEra _ -> Nothing
+
+transAddressShelley :: C.Address C.ShelleyAddr -> PV1.Address
+transAddressShelley = \case
+  (C.ShelleyAddress _ p s) ->
+    PV1.Address
       (transCredential $ C.fromShelleyPaymentCredential p)
       (transStakeAddressReference $ C.fromShelleyStakeReference s)
-  C.AddressInEra C.ByronAddressInAnyEra _ -> Nothing
+
+unTransAddressShelley :: C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.Address C.ShelleyAddr)
+unTransAddressShelley networkId (PV1.Address cred staking) =
+  C.makeShelleyAddress networkId
+    <$> unTransCredential cred
+    <*> unTransStakeAddressReference staking
 
 unTransTxOutRef :: PV1.TxOutRef -> Either C.SerialiseAsRawBytesError C.TxIn
 unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId=PV1.TxId bs, PV1.txOutRefIdx} =
