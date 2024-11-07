@@ -16,8 +16,11 @@
       inputs.hackage.follows = "hackage";
     };
     iohk-nix.url = "github:input-output-hk/iohk-nix";
+    cardano-node = {
+      url = "github:input-output-hk/cardano-node?ref=10.1.1";
+    };
   };
-  outputs = inputs@{ nixpkgs, haskellNix, flake-parts, CHaP, iohk-nix, ... }:
+  outputs = inputs@{ nixpkgs, haskellNix, flake-parts, CHaP, iohk-nix, cardano-node, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" ];
       perSystem = { self', system, lib, config, pkgs, ... }:
@@ -36,6 +39,7 @@
                   # TODO: set to 'true' when the issue has been fixed.
                   withHoogle = false;
                   buildInputs = with pkgs; [
+                    cardano-node.packages.${system}.cardano-node
                     fd
                   ];
                   tools = {
@@ -75,5 +79,3 @@
     allow-import-from-derivation = true;
   };
 }
-
-
