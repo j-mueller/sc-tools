@@ -12,7 +12,6 @@ module Convex.Devnet.CardanoNode.Types (
   defaultStakePoolNodeParams,
   -- * Genesis config changes
   GenesisConfigChanges (..),
-  forkIntoConwayInEpoch,
   allowLargeTransactions,
   setEpochLength
 ) where
@@ -27,13 +26,11 @@ import           Cardano.Ledger.BaseTypes         (EpochSize)
 import qualified Cardano.Ledger.Core              as Core
 import           Cardano.Ledger.Shelley.API       (Coin)
 import           Cardano.Ledger.Shelley.Genesis   (ShelleyGenesis (..))
-import           Control.Lens                     (over, set)
+import           Control.Lens                     (over)
 import           Data.Aeson                       (FromJSON, ToJSON)
 import qualified Data.Aeson                       as Aeson
-import           Data.Aeson.Lens                  (atKey)
 import           Data.Ratio                       ((%))
 import           GHC.Generics                     (Generic)
-import           Numeric.Natural                  (Natural)
 import           Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
 
 type Port = Int
@@ -121,11 +118,6 @@ instance Semigroup GenesisConfigChanges where
 
 instance Monoid GenesisConfigChanges where
   mempty = GenesisConfigChanges id id id id
-
--- | Set the 'TestConwayHardForkAtEpoch' field to the given value (can be 0)
-forkIntoConwayInEpoch :: Natural -> GenesisConfigChanges
-forkIntoConwayInEpoch n =
-  mempty{ cfNodeConfig = set (atKey "TestConwayHardForkAtEpoch") (Just $ Aeson.toJSON n) }
 
 {-| Change the alonzo genesis config to allow transactions with up to twice the normal size
 -}

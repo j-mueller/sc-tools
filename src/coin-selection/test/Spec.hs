@@ -6,8 +6,8 @@
 module Main(main) where
 
 import qualified Cardano.Api                    as C
-import qualified Cardano.Api.Ledger             as C hiding (PlutusScript, TxId,
-                                                      TxIn)
+import qualified Cardano.Api.Ledger             as Ledger hiding (PlutusScript,
+                                                           TxId, TxIn)
 import qualified Cardano.Api.Shelley            as C
 import qualified Cardano.Ledger.Api             as Ledger
 import qualified Cardano.Ledger.Conway.Rules    as Rules
@@ -415,7 +415,7 @@ queryStakeAddressesTest = do
 
     delegationCert =
       C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (C.DelegStake $ C.unStakePoolKeyHash poolId)
+      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegStake $ C.unStakePoolKeyHash poolId)
 
     stakeCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate stakeCert
@@ -440,6 +440,7 @@ withdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError
 withdrawalTest = do
   poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
+  drepKey <- C.generateSigningKey C.AsDRepKey
   let
     withdrawalAmount = 10_000_000
 
@@ -452,28 +453,46 @@ withdrawalTest = do
       C.makeStakeAddressRegistrationCertificate
       . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
       $ stakeCred
-    stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
-
-    delegationCert =
-      C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (C.DelegStake $ C.unStakePoolKeyHash poolId)
-
     stakeCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate stakeCert
 
+    delegStake = Ledger.DelegStake $ C.unStakePoolKeyHash poolId
+    delegationCert =
+      C.makeStakeAddressDelegationCertificate
+      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred delegStake
     delegCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate delegationCert
 
-    withdrawalTx = execBuildTx $ do
-      BuildTx.addWithdrawal stakeAddress withdrawalAmount (C.KeyWitness C.KeyWitnessForStakeAddr)
+    delegHash = C.verificationKeyHash . C.getVerificationKey $ drepKey
+    delegCred = Ledger.KeyHashObj $ C.unDRepKeyHash delegHash
+    drepCert = C.makeDrepRegistrationCertificate (C.DRepRegistrationRequirements C.ConwayEraOnwardsConway delegCred 0) Nothing
+    drepCertTx = BuildTx.execBuildTx $ BuildTx.addCertificate drepCert
+
+    -- delegationDrepCert = C.makeStakeAddressAndDRepDelegationCertificate
+    --   C.ConwayEraOnwardsConway
+    --   stakeCred
+    --   delegStake
+    --   0
+    -- delegDrepCertTx = BuildTx.execBuildTx $ BuildTx.addCertificate delegationDrepCert
+
+    -- stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
+    -- withdrawalTx = execBuildTx $ do
+    --   BuildTx.addWithdrawal stakeAddress withdrawalAmount (C.KeyWitness C.KeyWitnessForStakeAddr)
 
   -- activate stake
   void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
   -- delegate to pool
   void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+  -- register drep
+  void $ tryBalanceAndSubmit mempty Wallet.w2 drepCertTx TrailingChange [C.WitnessDRepKey drepKey]
+  -- delegate to drep
+  -- FIXME (koslambrou) Need to fix this in order to enable withdrawal
+  -- void $ tryBalanceAndSubmit mempty Wallet.w2 delegDrepCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 
   -- modify the ledger state
   setReward stakeCred (C.quantityToLovelace withdrawalAmount)
 
   -- withdraw rewards
-  void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx TrailingChange [C.WitnessStakeKey stakeKey]
+  -- FIXME (koslambrou) After updating to Chang+1 protocol version 10, the following gives the following error:
+  --  Exception: user error (user error (ValidationError: ApplyTxFailure: ApplyTxError (ConwayWdrlNotDelegatedToDRep (KeyHash {unKeyHash = "d6f0088850dc2494b69cf89c27491031ca610041afacf98ad95a0d4a"} :| []) :| [])))
+  -- void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx TrailingChange [C.WitnessStakeKey stakeKey]

@@ -1,59 +1,76 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs              #-}
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TypeApplications   #-}
+
 module Main where
 
-import qualified Cardano.Api                     as C
-import qualified Cardano.Api.Shelley             as C
-import           Cardano.Ledger.Api.PParams      (ppMaxTxSizeL)
-import           Cardano.Ledger.Slot             (EpochSize (..))
-import           Control.Concurrent              (threadDelay)
-import           Control.Lens                    (view)
-import           Control.Monad                   (unless)
-import           Control.Monad.Except            (runExceptT)
-import           Control.Tracer                  (Tracer)
-import           Convex.Devnet.CardanoNode       (NodeLog (..),
-                                                  getCardanoNodeVersion,
-                                                  withCardanoNodeDevnet,
-                                                  withCardanoNodeDevnetConfig,
-                                                  withCardanoStakePoolNodeDevnetConfig)
-import           Convex.Devnet.CardanoNode.Types (GenesisConfigChanges (..),
-                                                  PortsConfig (..),
-                                                  RunningNode (..),
-                                                  RunningStakePoolNode (..),
-                                                  StakePoolNodeParams (..),
-                                                  allowLargeTransactions,
-                                                  defaultPortsConfig,
-                                                  defaultStakePoolNodeParams,
-                                                  forkIntoConwayInEpoch)
-import           Convex.Devnet.Logging           (contramap, showLogsOnFailure,
-                                                  traceWith)
-import           Convex.Devnet.Utils             (failAfter, failure,
-                                                  withTempDir)
-import           Convex.Devnet.Wallet            (WalletLog)
-import qualified Convex.Devnet.Wallet            as W
-import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
-import qualified Convex.Devnet.WalletServer      as WS
-import           Convex.NodeQueries              (loadConnectInfo,
-                                                  queryProtocolParameters,
-                                                  queryStakeAddresses,
-                                                  queryStakePools)
-import qualified Convex.NodeQueries              as Queries
-import qualified Convex.Utxos                    as Utxos
-import           Data.Aeson                      (FromJSON, ToJSON)
-import           Data.List                       (isInfixOf)
-import qualified Data.Map                        as Map
-import           Data.Ratio                      ((%))
-import qualified Data.Set                        as Set
-import           GHC.Generics                    (Generic)
-import           GHC.IO.Encoding                 (setLocaleEncoding, utf8)
-import           System.FilePath                 ((</>))
-import           Test.Tasty                      (defaultMain, testGroup)
-import           Test.Tasty.HUnit                (assertBool, assertEqual,
-                                                  testCase)
+import qualified Cardano.Api                               as C
+import qualified Cardano.Api.Ledger                        as L
+import qualified Cardano.Api.Shelley                       as C
+import qualified Cardano.Ledger.Api.PParams                as L
+import qualified Cardano.Ledger.Block                      as Ledger
+import           Cardano.Ledger.Slot                       (EpochSize (..))
+import           Control.Concurrent                        (threadDelay)
+import           Control.Lens                              (view)
+import           Control.Monad                             (unless, void)
+import           Control.Monad.Except                      (runExceptT)
+import           Control.Tracer                            (Tracer)
+import           Convex.Devnet.CardanoNode                 (NodeLog (..),
+                                                            getCardanoNodeVersion,
+                                                            withCardanoNodeDevnet,
+                                                            withCardanoNodeDevnetConfig,
+                                                            withCardanoStakePoolNodeDevnetConfig)
+import           Convex.Devnet.CardanoNode.Types           (GenesisConfigChanges (..),
+                                                            PortsConfig (..),
+                                                            RunningNode (..),
+                                                            RunningStakePoolNode (..),
+                                                            StakePoolNodeParams (..),
+                                                            allowLargeTransactions,
+                                                            defaultPortsConfig,
+                                                            defaultStakePoolNodeParams)
+import           Convex.Devnet.Logging                     (contramap,
+                                                            showLogsOnFailure,
+                                                            traceWith)
+import           Convex.Devnet.Utils                       (failAfter, failure,
+                                                            withTempDir)
+import           Convex.Devnet.Wallet                      (WalletLog)
+import qualified Convex.Devnet.Wallet                      as W
+import           Convex.Devnet.WalletServer                (getUTxOs,
+                                                            withWallet)
+import qualified Convex.Devnet.WalletServer                as WS
+import           Convex.NodeClient.Fold                    (LedgerStateArgs (NoLedgerStateArgs),
+                                                            foldClient)
+import           Convex.NodeClient.Types                   (runNodeClient)
+import           Convex.NodeQueries                        (loadConnectInfo,
+                                                            queryProtocolParameters,
+                                                            queryStakeAddresses,
+                                                            queryStakePools)
+import qualified Convex.NodeQueries                        as Queries
+import qualified Convex.Utxos                              as Utxos
+import           Data.Aeson                                (FromJSON, ToJSON)
+import           Data.IORef                                (modifyIORef,
+                                                            newIORef, readIORef)
+import           Data.List                                 (isInfixOf)
+import qualified Data.Map                                  as Map
+import           Data.Ratio                                ((%))
+import qualified Data.Set                                  as Set
+import qualified Devnet.Test.LatestEraTransitionSpec       as LatestEraTransitionSpec
+import           GHC.Generics                              (Generic)
+import           GHC.IO.Encoding                           (setLocaleEncoding,
+                                                            utf8)
+import qualified Ouroboros.Consensus.Protocol.Praos.Header as Consensus
+import qualified Ouroboros.Consensus.Shelley.Ledger.Block  as Consensus
+import           System.FilePath                           ((</>))
+import           Test.Tasty                                (defaultMain,
+                                                            testGroup)
+import           Test.Tasty.HUnit                          (assertBool,
+                                                            assertEqual,
+                                                            testCase)
 
 main :: IO ()
 main = do
@@ -61,7 +78,8 @@ main = do
   defaultMain $ testGroup "test"
     [ testCase "cardano-node is available" checkCardanoNode
     , testCase "start local node" startLocalNode
-    , testCase "transition to conway era" transitionToConway
+    , testCase "check transition to conway era and protocol version 10" checkTransitionToConway
+    , LatestEraTransitionSpec.tests
     , testCase "make a payment" makePayment
     , testCase "start local stake pool node" startLocalStakePoolNode
     , testCase "stake pool registration" registeredStakePoolNode
@@ -83,21 +101,41 @@ startLocalNode = do
     showLogsOnFailure $ \tr -> do
       failAfter 5 $
         withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile, rnConnectInfo} -> do
+          withCardanoNodeDevnet tr tmp $ \RunningNode{rnNodeSocket, rnNodeConfigFile} -> do
             runExceptT (loadConnectInfo rnNodeConfigFile rnNodeSocket) >>= \case
               Left err -> failure (show err)
-              Right{}  -> do
-                Queries.queryEra rnConnectInfo
-                  >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
+              Right{} -> pure ()
 
-transitionToConway :: IO ()
-transitionToConway = do
-    showLogsOnFailure $ \tr -> do
-      failAfter 5 $
-        withTempDir "cardano-cluster" $ \tmp -> do
-          withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnConnectInfo} -> do
-            Queries.queryEra rnConnectInfo
-              >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
+checkTransitionToConway :: IO ()
+checkTransitionToConway = do
+  showLogsOnFailure $ \tr -> do
+    failAfter 5 $
+      withTempDir "cardano-cluster" $ \tmp -> do
+        withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode@RunningNode{rnConnectInfo, rnNodeSocket, rnNodeConfigFile} -> do
+          Queries.queryEra rnConnectInfo >>= assertEqual "Should be in conway era" (C.anyCardanoEra C.ConwayEra)
+          let lovelacePerUtxo = 100_000_000
+              numUtxos        = 10
+          void $ W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          majorProtVersionsRef <- newIORef []
+          res <- C.liftIO $ runExceptT $ runNodeClient rnNodeConfigFile rnNodeSocket $ \_localNodeConnectInfo env -> do
+            pure $ foldClient () NoLedgerStateArgs env $ \_catchingUp _ _ bim -> do
+              case bim of
+                (C.BlockInMode C.ConwayEra
+                  (C.ShelleyBlock C.ShelleyBasedEraConway
+                    (Consensus.ShelleyBlock
+                      (Ledger.Block (Consensus.Header hb _) _) _))) -> do
+                  modifyIORef majorProtVersionsRef $ \majorProtVersions ->
+                    L.pvMajor (Consensus.hbProtVer hb) : majorProtVersions
+                  pure Nothing
+                (C.BlockInMode _ _block) -> do
+                  failure "Block should be a ShelleyBlock in Conway era"
+          case res of
+            Left err -> failure $ show err
+            Right () -> do
+              majorProtVersions <- readIORef majorProtVersionsRef
+              expectedVersion <- L.mkVersion (10 :: Integer)
+              assertBool "Should have correct conway era protocol version" $
+                not (null majorProtVersions) && all (== expectedVersion) majorProtVersions
 
 startLocalStakePoolNode :: IO ()
 startLocalStakePoolNode = do
@@ -211,7 +249,7 @@ runWalletServer =
 
 changeMaxTxSize :: IO ()
 changeMaxTxSize =
-  let getMaxTxSize = fmap (view ppMaxTxSizeL) . queryProtocolParameters . rnConnectInfo in
+  let getMaxTxSize = fmap (view L.ppMaxTxSizeL) . queryProtocolParameters . rnConnectInfo in
   showLogsOnFailure $ \tr -> do
     withTempDir "cardano-cluster" $ \tmp -> do
       standardTxSize <- withCardanoNodeDevnet (contramap TLNode tr) tmp getMaxTxSize

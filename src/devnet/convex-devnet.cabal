@@ -52,7 +52,6 @@ library
     build-depends:
       base >= 4.14.0
       , aeson
-      , lens-aeson
       , text
       , time
       , bytestring
@@ -89,10 +88,10 @@ library
       , contra-tracer
       , iohk-monitoring
 
-  other-modules:
-    Paths_convex_devnet
-  autogen-modules:
-    Paths_convex_devnet
+    other-modules:
+      Paths_convex_devnet
+    autogen-modules:
+      Paths_convex_devnet
 
 test-suite convex-devnet-test
   import: lang
@@ -100,18 +99,32 @@ test-suite convex-devnet-test
   main-is: Spec.hs
   ghc-options: -threaded -rtsopts
   other-modules:
+    Devnet.Test.LatestEraTransitionSpec
+    Devnet.Test.LatestEraTransitionSpec.PV2
+    Devnet.Test.LatestEraTransitionSpec.PV3
   hs-source-dirs:
     test
+  build-depends:
+    , convex-devnet
+    , convex-base
+    , convex-node-client
+    , convex-wallet
+    , convex-coin-selection
+    , convex-mockchain
+  build-depends:
+    , plutus-tx
+    , plutus-tx-plugin
+    , ouroboros-consensus-cardano
+    , plutus-core
+    , ouroboros-consensus-protocol
+    , cardano-api
+    , cardano-ledger-api
+    , cardano-ledger-core -any
   build-depends:
     base >= 4.14.0
     , tasty
     , tasty-hunit
-    , convex-devnet
-    , convex-base
-    , cardano-api
     , contra-tracer
-    , cardano-ledger-api
-    , cardano-ledger-core -any
     , lens
     , mtl
     , aeson
