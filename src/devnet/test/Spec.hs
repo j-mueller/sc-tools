@@ -12,9 +12,16 @@ import           Cardano.Ledger.Api.PParams      (ppMaxTxSizeL)
 import           Cardano.Ledger.Slot             (EpochSize (..))
 import           Control.Concurrent              (threadDelay)
 import           Control.Lens                    (view)
-import           Control.Monad                   (unless)
+import           Control.Monad                   (unless, void)
 import           Control.Monad.Except            (runExceptT)
-import           Control.Tracer                  (Tracer)
+import           Control.Monad.IO.Class          (liftIO, MonadIO)
+import           Control.Monad.State             (gets, MonadTrans (lift), MonadState)
+import           Control.Tracer                  (Tracer, nullTracer)
+import           Convex.Class                    (MonadBlockchainError,
+                                                  memoizedSystemStartQuery,
+                                                  queryNetworkId,
+                                                  querySystemStart,
+                                                  runMonadBlockchainCardanoNodeT, runMemoizedCardanoNodeStateQueryT, MonadBlockchain, MemoizedCardanoNodeStateQueryResponses)
 import           Convex.Devnet.CardanoNode       (NodeLog (..),
                                                   getCardanoNodeVersion,
                                                   withCardanoNodeDevnet,
@@ -33,7 +40,7 @@ import           Convex.Devnet.Logging           (contramap, showLogsOnFailure,
                                                   traceWith)
 import           Convex.Devnet.Utils             (failAfter, failure,
                                                   withTempDir)
-import           Convex.Devnet.Wallet            (WalletLog)
+import           Convex.Devnet.Wallet            (WalletLog, runTracerMonadLogT)
 import qualified Convex.Devnet.Wallet            as W
 import           Convex.Devnet.WalletServer      (getUTxOs, withWallet)
 import qualified Convex.Devnet.WalletServer      as WS
@@ -42,6 +49,7 @@ import           Convex.NodeQueries              (loadConnectInfo,
                                                   queryStakeAddresses,
                                                   queryStakePools)
 import qualified Convex.NodeQueries              as Queries
+import           Convex.Utils                    (failOnLeft)
 import qualified Convex.Utxos                    as Utxos
 import           Data.Aeson                      (FromJSON, ToJSON)
 import           Data.List                       (isInfixOf)
@@ -58,10 +66,15 @@ import           Test.Tasty.HUnit                (assertBool, assertEqual,
 main :: IO ()
 main = do
   setLocaleEncoding utf8
-  defaultMain $ testGroup "test"
+  defaultMain $ testGroup "node devnet tests"
     [ testCase "cardano-node is available" checkCardanoNode
     , testCase "start local node" startLocalNode
     , testCase "transition to conway era" transitionToConway
+    , testGroup "node devnet queries"
+        [ testCase "query network id" queryNetworkIdTest
+        , testCase "query system start" querySystemStartTest
+        , testCase "query era history" queryEraHistoryTest
+        ]
     , testCase "make a payment" makePayment
     , testCase "start local stake pool node" startLocalStakePoolNode
     , testCase "stake pool registration" registeredStakePoolNode
@@ -98,6 +111,62 @@ transitionToConway = do
           withCardanoNodeDevnetConfig tr tmp (forkIntoConwayInEpoch 0) defaultPortsConfig $ \RunningNode{rnConnectInfo} -> do
             Queries.queryEra rnConnectInfo
               >>= assertBool "Should be in conway era" . (==) (C.anyCardanoEra C.ConwayEra)
+
+queryNetworkIdTest :: IO ()
+queryNetworkIdTest = do
+  showLogsOnFailure $ \tr -> do
+    failAfter 5 $
+      withTempDir "cardano-cluster" $ \tmp -> do
+        withCardanoNodeDevnet tr tmp $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
+          let connectInfo = localNodeConnectInfo rnNetworkId rnNodeSocket
+          networkIdE <- runTracerMonadLogT nullTracer $ runMonadBlockchainCardanoNodeT connectInfo queryNetworkId
+          networkId <- failOnLeft (\(e :: MonadBlockchainError String) -> show e) networkIdE
+          assertEqual
+            "Queried networkId should be the same as the networkId provided as input"
+            rnNetworkId
+            networkId
+
+querySystemStartTest :: IO ()
+querySystemStartTest = do
+  showLogsOnFailure $ \tr -> do
+    failAfter 5 $
+      withTempDir "cardano-cluster" $ \tmp -> do
+        withCardanoNodeDevnet tr tmp $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
+          let connectInfo = localNodeConnectInfo rnNetworkId rnNodeSocket
+          void $
+            runTracerMonadLogT
+              nullTracer
+              (runMonadBlockchainCardanoNodeT connectInfo $ runMemoizedCardanoNodeStateQueryT action)
+            >>= failOnLeft (\(e :: MonadBlockchainError String) -> show e)
+ where
+   action :: MonadIO m => MonadState MemoizedCardanoNodeStateQueryResponses m => MonadBlockchain m => m ()
+   action = do
+     gets memoizedSystemStartQuery >>=
+       liftIO . assertEqual "The memoized value of SystemStart should be Nothing" Nothing
+     systemStart <- querySystemStart
+     gets memoizedSystemStartQuery >>=
+       liftIO . assertEqual "The memoized value of SystemStart should be Just" (Just systemStart)
+
+queryEraHistoryTest :: IO ()
+queryEraHistoryTest = do
+  showLogsOnFailure $ \tr -> do
+    failAfter 5 $
+      withTempDir "cardano-cluster" $ \tmp -> do
+        withCardanoNodeDevnet tr tmp $ \RunningNode{rnNetworkId, rnNodeSocket} -> do
+          let connectInfo = localNodeConnectInfo rnNetworkId rnNodeSocket
+          void $
+            runTracerMonadLogT
+              nullTracer
+              (runMonadBlockchainCardanoNodeT connectInfo $ runMemoizedCardanoNodeStateQueryT action)
+            >>= failOnLeft (\(e :: MonadBlockchainError String) -> show e)
+ where
+   action :: MonadIO m => MonadState MemoizedCardanoNodeStateQueryResponses m => MonadBlockchain m => m ()
+   action = do
+     gets memoizedSystemStartQuery >>=
+       liftIO . assertEqual "The memoized value of SystemStart should be Nothing" Nothing
+     systemStart <- querySystemStart
+     gets memoizedSystemStartQuery >>=
+       liftIO . assertEqual "The memoized value of SystemStart should be Just" (Just systemStart)
 
 startLocalStakePoolNode :: IO ()
 startLocalStakePoolNode = do
