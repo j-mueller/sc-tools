@@ -438,61 +438,32 @@ queryStakeAddressesTest = do
 
 withdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 withdrawalTest = do
-  poolId <- registerPool Wallet.w1
   stakeKey <- C.generateSigningKey C.AsStakeKey
-  drepKey <- C.generateSigningKey C.AsDRepKey
   let
     withdrawalAmount = 10_000_000
 
-    stakeHash =
-      C.verificationKeyHash . C.getVerificationKey $ stakeKey
+    stakeHash = C.verificationKeyHash . C.getVerificationKey $ stakeKey
 
     stakeCred = C.StakeCredentialByKey stakeHash
 
-    stakeCert =
-      C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
-      $ stakeCred
-    stakeCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate stakeCert
+    delegationDrepCert = C.makeStakeAddressAndDRepDelegationCertificate
+      C.ConwayEraOnwardsConway
+      stakeCred
+      (Ledger.DelegVote Ledger.DRepAlwaysAbstain)
+      0
+    delegDrepCertTx = BuildTx.execBuildTx $ BuildTx.addCertificate delegationDrepCert
 
-    delegStake = Ledger.DelegStake $ C.unStakePoolKeyHash poolId
-    delegationCert =
-      C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred delegStake
-    delegCertTx = BuildTx.execBuildTx $ do
-      BuildTx.addCertificate delegationCert
+  -- activate stake and delegate to drep with a single certificate
+  void $ tryBalanceAndSubmit mempty Wallet.w2 delegDrepCertTx TrailingChange [C.WitnessStakeKey stakeKey]
 
-    delegHash = C.verificationKeyHash . C.getVerificationKey $ drepKey
-    delegCred = Ledger.KeyHashObj $ C.unDRepKeyHash delegHash
-    drepCert = C.makeDrepRegistrationCertificate (C.DRepRegistrationRequirements C.ConwayEraOnwardsConway delegCred 0) Nothing
-    drepCertTx = BuildTx.execBuildTx $ BuildTx.addCertificate drepCert
+  let
+    stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
 
-    -- delegationDrepCert = C.makeStakeAddressAndDRepDelegationCertificate
-    --   C.ConwayEraOnwardsConway
-    --   stakeCred
-    --   delegStake
-    --   0
-    -- delegDrepCertTx = BuildTx.execBuildTx $ BuildTx.addCertificate delegationDrepCert
-
-    -- stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
-    -- withdrawalTx = execBuildTx $ do
-    --   BuildTx.addWithdrawal stakeAddress withdrawalAmount (C.KeyWitness C.KeyWitnessForStakeAddr)
-
-  -- activate stake
-  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
-  -- delegate to pool
-  void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
-  -- register drep
-  void $ tryBalanceAndSubmit mempty Wallet.w2 drepCertTx TrailingChange [C.WitnessDRepKey drepKey]
-  -- delegate to drep
-  -- FIXME (koslambrou) Need to fix this in order to enable withdrawal
-  -- void $ tryBalanceAndSubmit mempty Wallet.w2 delegDrepCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+    withdrawalTx = execBuildTx $ do
+      BuildTx.addWithdrawal stakeAddress withdrawalAmount (C.KeyWitness C.KeyWitnessForStakeAddr)
 
   -- modify the ledger state
   setReward stakeCred (C.quantityToLovelace withdrawalAmount)
 
   -- withdraw rewards
-  -- FIXME (koslambrou) After updating to Chang+1 protocol version 10, the following gives the following error:
-  --  Exception: user error (user error (ValidationError: ApplyTxFailure: ApplyTxError (ConwayWdrlNotDelegatedToDRep (KeyHash {unKeyHash = "d6f0088850dc2494b69cf89c27491031ca610041afacf98ad95a0d4a"} :| []) :| [])))
-  -- void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx TrailingChange [C.WitnessStakeKey stakeKey]
+  void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx TrailingChange [C.WitnessStakeKey stakeKey]
