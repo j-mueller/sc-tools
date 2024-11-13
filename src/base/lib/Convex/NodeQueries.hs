@@ -32,6 +32,7 @@ module Convex.NodeQueries(
   queryEpoch,
   queryLocalState,
   queryProtocolParameters,
+  queryProtocolParametersUpdate,
   queryStakePools,
   queryStakeAddresses,
   queryUTxOFilter
@@ -266,6 +267,13 @@ queryInSupportedEra connectInfo qry = do
 queryProtocolParameters :: LocalNodeConnectInfo -> IO (PParams StandardConway)
 queryProtocolParameters connectInfo = runEraQuery connectInfo $
   EraQuery{eqQuery = CAPI.QueryProtocolParameters, eqResult = id}
+
+-- | Get all the protocol parameter updates from the local cardano node
+--   Throws 'QueryException' if the node's era is not conway or if the connection
+--   to the node cannot be acquired
+queryProtocolParametersUpdate :: LocalNodeConnectInfo -> IO (Map (CAPI.Hash CAPI.GenesisKey) CAPI.ProtocolParametersUpdate)
+queryProtocolParametersUpdate connectInfo = runEraQuery @CAPI.ConwayEra connectInfo $
+  EraQuery{eqQuery = CAPI.QueryProtocolParametersUpdate, eqResult = id}
 
 -- | Get the stake and the IDs of the stake pool for a set of stake credentials
 --   Throws 'QueryException' if the node's era is not supported or if the connection

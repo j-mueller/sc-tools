@@ -91,32 +91,39 @@ epochSize = EpochSize 432_000
 slotLength :: SlotLength
 slotLength = mkSlotLength 1 -- 1 second
 
+latestProtVer :: L.ProtVer
+latestProtVer = L.ProtVer (toEnum 10) 0
+
 -- FIXME: Make this era independent
 
 protocolParameters :: PParams StandardConway
-protocolParameters = L.PParams $
-    L.emptyPParamsIdentity @(ConwayEra StandardCrypto)
-      & L.hkdMaxBHSizeL .~ 1_100
-      & L.hkdMaxBBSizeL .~ 90_112
-      & L.hkdMaxTxSizeL .~ 16_384
-      & L.hkdMinFeeAL .~ 44
-      & L.hkdMinFeeBL .~ 155_381
-      & L.hkdPoolDepositL .~ 500_000_000
-      & L.hkdCoinsPerUTxOByteL .~ L.CoinPerByte 4_310
-      & L.hkdPricesL .~ L.Prices
-          { L.prMem   = C.unsafeBoundedRational (577 % 10_000)
-          , L.prSteps = C.unsafeBoundedRational (721 % 10_000_000)
-          }
-      & L.hkdMaxTxExUnitsL .~ ExUnits { exUnitsSteps = 1_0000_000_000, exUnitsMem = 14_000_000}
-      & L.hkdMaxBlockExUnitsL .~ ExUnits{ exUnitsSteps = 20_000_000_000, exUnitsMem = 62_000_000 }
-      & L.hkdMaxValSizeL .~ 5_000
-      & L.hkdCollateralPercentageL .~ 150
-      & L.hkdMaxCollateralInputsL .~ 3
-      & L.hkdMinPoolCostL .~ 200_000
-      & L.hkdCostModelsL .~ CostModels.mkCostModels (Map.fromList [(PlutusV1, v1CostModel), (PlutusV2, v2CostModel), (PlutusV3, v3CostModel)])
-      & L.hkdMinFeeRefScriptCostPerByteL .~ C.unsafeBoundedRational 15
-      & L.hkdMinPoolCostL .~ 170_000_000
-      & L.hkdEMaxL .~ L.EpochInterval 18
+protocolParameters =
+  let pparams = L.PParams $
+        L.emptyPParamsIdentity @(ConwayEra StandardCrypto)
+          & L.hkdMaxBHSizeL .~ 1_100
+          & L.hkdMaxBBSizeL .~ 90_112
+          & L.hkdMaxTxSizeL .~ 16_384
+          & L.hkdMinFeeAL .~ 44
+          & L.hkdMinFeeBL .~ 155_381
+          & L.hkdPoolDepositL .~ 500_000_000
+          & L.hkdCoinsPerUTxOByteL .~ L.CoinPerByte 4_310
+          & L.hkdPricesL .~ L.Prices
+              { L.prMem   = C.unsafeBoundedRational (577 % 10_000)
+              , L.prSteps = C.unsafeBoundedRational (721 % 10_000_000)
+              }
+          & L.hkdMaxTxExUnitsL .~ ExUnits { exUnitsSteps = 1_0000_000_000, exUnitsMem = 14_000_000}
+          & L.hkdMaxBlockExUnitsL .~ ExUnits{ exUnitsSteps = 20_000_000_000, exUnitsMem = 62_000_000 }
+          & L.hkdMaxValSizeL .~ 5_000
+          & L.hkdCollateralPercentageL .~ 150
+          & L.hkdMaxCollateralInputsL .~ 3
+          & L.hkdMinPoolCostL .~ 200_000
+          & L.hkdCostModelsL .~ CostModels.mkCostModels (Map.fromList [(PlutusV1, v1CostModel), (PlutusV2, v2CostModel), (PlutusV3, v3CostModel)])
+          & L.hkdMinFeeRefScriptCostPerByteL .~ C.unsafeBoundedRational 15
+          & L.hkdMinPoolCostL .~ 170_000_000
+          & L.hkdEMaxL .~ L.EpochInterval 18
+    in
+      pparams
+        & L.ppProtocolVersionL .~ latestProtVer
 
 unsafeMkCostModel :: Language -> [Int64] -> CostModels.CostModel
 unsafeMkCostModel lang = either (error . show) id . CostModels.mkCostModel lang
@@ -474,7 +481,7 @@ v2CostModel = unsafeMkCostModel PlutusV2
 
 v3CostModel :: CostModels.CostModel
 v3CostModel = unsafeMkCostModel PlutusV3
-  [
+        [
             100788,
             420,
             1,
@@ -725,7 +732,53 @@ v3CostModel = unsafeMkCostModel PlutusV3
             43623,
             251,
             0,
-            1
+            1,
+            100181,
+            726,
+            719,
+            0,
+            1,
+            100181,
+            726,
+            719,
+            0,
+            1,
+            100181,
+            726,
+            719,
+            0,
+            1,
+            107878,
+            680,
+            0,
+            1,
+            95336,
+            1,
+            281145,
+            18848,
+            0,
+            1,
+            180194,
+            159,
+            1,
+            1,
+            158519,
+            8942,
+            0,
+            1,
+            159378,
+            8813,
+            0,
+            1,
+            107490,
+            3298,
+            1,
+            106057,
+            655,
+            1,
+            1964219,
+            24520,
+            3
         ]
 
 globals :: C.IsShelleyBasedEra era => NodeParams era -> Globals

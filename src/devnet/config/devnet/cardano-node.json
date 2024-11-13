@@ -13,6 +13,8 @@
   "LastKnownBlockVersion-Major": 6,
   "LastKnownBlockVersion-Minor": 0,
 
+  "ExperimentalHardForksEnabled": true,
+  "ExperimentalProtocolsEnabled": true,
   "TestShelleyHardForkAtEpoch": 0,
   "TestAllegraHardForkAtEpoch": 0,
   "TestMaryHardForkAtEpoch": 0,
@@ -74,8 +76,5 @@
     "mapSubtrace": {
       "cardano.node.metrics": { "subtrace": "Neutral" }
     }
-  },
-
-  "ExperimentalHardForksEnabled": true,
-  "ExperimentalProtocolsEnabled": true
+  }
 }
