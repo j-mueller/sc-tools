@@ -115,7 +115,7 @@ checkTransitionToConway = do
           Queries.queryEra rnConnectInfo >>= assertEqual "Should be in conway era" (C.anyCardanoEra C.ConwayEra)
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
-          void $ W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          void $ W.createSeededWallet C.BabbageEraOnwardsConway (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           majorProtVersionsRef <- newIORef []
           res <- C.liftIO $ runExceptT $ runNodeClient rnNodeConfigFile rnNodeSocket $ \_localNodeConnectInfo env -> do
             pure $ foldClient () NoLedgerStateArgs env $ \_catchingUp _ _ bim -> do
@@ -146,7 +146,7 @@ startLocalStakePoolNode = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
               nodeConfigFile  = tmp </> "cardano-node.json"
-          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          wllt <- W.createSeededWallet C.BabbageEraOnwardsConway (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
             withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001]) runningNode $ \RunningStakePoolNode{rspnNode} -> do
               runExceptT (loadConnectInfo (rnNodeConfigFile rspnNode) (rnNodeSocket rspnNode)) >>= \case
@@ -162,7 +162,7 @@ registeredStakePoolNode = do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
               nodeConfigFile  = tmp </> "cardano-node.json"
-          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          wllt <- W.createSeededWallet C.BabbageEraOnwardsConway (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           initialStakePools <- queryStakePools rnConnectInfo
           withTempDir "cardano-cluster-stakepool" $ \tmp' -> do
             withCardanoStakePoolNodeDevnetConfig (contramap TLNode tr) tmp' wllt defaultStakePoolNodeParams nodeConfigFile (PortsConfig 3002 [3001])  runningNode $ \_ -> do
@@ -181,7 +181,7 @@ stakePoolRewards = do
           let lovelacePerUtxo = 10_000_000_000
               numUtxos        = 4
               nodeConfigFile  = tmp </> "cardano-node.json"
-          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          wllt <- W.createSeededWallet C.BabbageEraOnwardsConway (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           let stakepoolParams = StakePoolNodeParams
                                   { spnCost   = 340_000_000
                                   , spnMargin = 1 % 100
@@ -232,7 +232,7 @@ makePayment = do
         withCardanoNodeDevnet (contramap TLNode tr) tmp $ \runningNode -> do
           let lovelacePerUtxo = 100_000_000
               numUtxos        = 10
-          wllt <- W.createSeededWallet (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
+          wllt <- W.createSeededWallet C.BabbageEraOnwardsConway (contramap TLWallet tr) runningNode numUtxos lovelacePerUtxo
           bal <- Utxos.totalBalance <$> W.walletUtxos runningNode wllt
           assertEqual "Wallet should have the expected balance" (fromIntegral numUtxos * lovelacePerUtxo) (C.lovelaceToQuantity $ C.selectLovelace bal)
 
