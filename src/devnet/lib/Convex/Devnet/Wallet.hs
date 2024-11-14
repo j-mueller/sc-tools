@@ -23,7 +23,7 @@ module Convex.Devnet.Wallet(
   runningNodeBlockchain
 ) where
 
-import           Cardano.Api                     (AddressInEra, ConwayEra,
+import           Cardano.Api                     (AddressInEra,
                                                   Quantity, Tx)
 import qualified Cardano.Api                     as C
 import           Control.Monad                   (replicateM)
@@ -64,7 +64,7 @@ walletUtxos RunningNode{rnConnectInfo, rnNetworkId} wllt =
 
 {-| Send @n@ times the given amount of lovelace to the address
 -}
-sendFaucetFundsTo :: Tracer IO WalletLog -> RunningNode -> AddressInEra ConwayEra -> Int -> Quantity -> IO (Tx ConwayEra)
+sendFaucetFundsTo :: forall era. C.IsBabbageBasedEra era => Tracer IO WalletLog -> RunningNode -> AddressInEra era -> Int -> Quantity -> IO (Tx era)
 sendFaucetFundsTo tracer node destination n amount = do
   fct <- faucet
   balanceAndSubmit tracer node fct (BuildTx.execBuildTx $ replicateM n (BuildTx.payToAddress destination (C.lovelaceToValue $ C.quantityToLovelace amount))) TrailingChange []
@@ -72,11 +72,11 @@ sendFaucetFundsTo tracer node destination n amount = do
 {-| Create a new wallet and send @n@ times the given amount of lovelace to it. Returns when the seed txn has been registered
 on the chain.
 -}
-createSeededWallet :: Tracer IO WalletLog -> RunningNode -> Int -> Quantity -> IO Wallet
-createSeededWallet tracer node@RunningNode{rnNetworkId, rnConnectInfo} n amount = do
+createSeededWallet :: forall era. C.IsBabbageBasedEra era => C.BabbageEraOnwards era -> Tracer IO WalletLog -> RunningNode -> Int -> Quantity -> IO Wallet
+createSeededWallet _babbageEraOnwards tracer node@RunningNode{rnNetworkId, rnConnectInfo} n amount = do
   wallet <- Wallet.generateWallet
   traceWith tracer (GeneratedWallet wallet)
-  sendFaucetFundsTo tracer node (Wallet.addressInEra rnNetworkId wallet) n amount >>= NodeQueries.waitForTx rnConnectInfo
+  sendFaucetFundsTo tracer node (Wallet.addressInEra @era rnNetworkId wallet) n amount >>= NodeQueries.waitForTx rnConnectInfo
   pure wallet
 
 {-| Run a 'MonadBlockchain' action, using the @Tracer@ for log messages and the
@@ -93,7 +93,7 @@ runningNodeBlockchain tracer RunningNode{rnConnectInfo} =
 
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
-balanceAndSubmit :: forall era. (C.IsBabbageBasedEra era) => Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder era -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx era)
+balanceAndSubmit :: forall era. C.IsBabbageBasedEra era => Tracer IO WalletLog -> RunningNode -> Wallet -> TxBuilder era -> ChangeOutputPosition -> [C.ShelleyWitnessSigningKey] -> IO (Tx era)
 balanceAndSubmit tracer node wallet tx changePosition keys = do
   n <- runningNodeBlockchain @era tracer node queryNetworkId
   let walletAddress = Wallet.addressInEra n wallet
@@ -103,7 +103,8 @@ balanceAndSubmit tracer node wallet tx changePosition keys = do
 {-| Balance and submit the transaction using the wallet's UTXOs
 -}
 balanceAndSubmitReturn
-  :: forall era. (C.IsBabbageBasedEra era)
+  :: forall era.
+  C.IsBabbageBasedEra era
   => Tracer IO WalletLog
   -> RunningNode
   -> Wallet

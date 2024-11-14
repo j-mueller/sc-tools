@@ -1,14 +1,15 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs              #-}
 
 module Convex.PlutusLedgerSpec where
 
-import qualified Cardano.Api.Shelley as C
-import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Convex.PlutusLedger (transAddressShelley, unTransAddressShelley)
-import Test.QuickCheck qualified as QC
-import Test.QuickCheck.Hedgehog qualified as QC
-import qualified Cardano.Api.Ledger as Shelley
+import qualified Cardano.Api.Ledger         as Shelley
+import qualified Cardano.Api.Shelley        as C
+import           Convex.PlutusLedger        (transAddressShelley,
+                                             unTransAddressShelley)
+import qualified Test.Gen.Cardano.Api.Typed as CGen
+import qualified Test.QuickCheck            as QC
+import qualified Test.QuickCheck.Hedgehog   as QC
 
 newtype ArbitraryNetworkMagic = ArbitraryNetworkMagic C.NetworkMagic
   deriving stock (Show)
@@ -29,5 +30,5 @@ prop_rountripAddressShelleyPlutusTranslation
   = do
   let nid = case n of Shelley.Mainnet -> C.Mainnet; Shelley.Testnet -> C.Testnet nm
   case unTransAddressShelley nid (transAddressShelley addr) of
-    Left _err -> False
+    Left _err   -> False
     Right addr' -> addr' == addr

@@ -68,6 +68,7 @@ module Convex.PlutusLedger(
 
 ) where
 
+import qualified Cardano.Api.Ledger         as Ledger
 import qualified Cardano.Api.Shelley        as C
 import           Cardano.Ledger.BaseTypes   (CertIx (..), TxIx (..))
 import           Cardano.Ledger.Credential  (Ptr (..))
@@ -115,7 +116,7 @@ transAssetId :: C.AssetId -> Value.AssetClass
 transAssetId C.AdaAssetId = Value.assetClass PV1.adaSymbol PV1.adaToken
 transAssetId (C.AssetId policyId assetName) =
     Value.assetClass
-        (transPolicyId $ policyId)
+        (transPolicyId policyId)
         (transAssetName $ toMaryAssetName assetName)
 
 toMaryAssetName :: C.AssetName -> Mary.AssetName
@@ -185,16 +186,16 @@ unTransStakeAddressReference (Just (PV1.StakingHash credential)) =
 unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
   Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
-unTransAddressInEra :: C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra C.ConwayEra)
+unTransAddressInEra :: C.IsShelleyBasedEra era => C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra era)
 unTransAddressInEra networkId addr =
-  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) <$>
+  C.AddressInEra (C.ShelleyAddressInEra C.shelleyBasedEra) <$>
     unTransAddressShelley networkId addr
 
 -- | @cardano-api@ address to @plutus@ address. Returns 'Nothing' for
 -- | byron addresses.
-transAddressInEra :: C.AddressInEra C.ConwayEra -> Maybe PV1.Address
+transAddressInEra :: C.AddressInEra era -> Maybe PV1.Address
 transAddressInEra = \case
-  C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraConway) shelleyAddr ->
+  C.AddressInEra (C.ShelleyAddressInEra _) shelleyAddr ->
     Just $ transAddressShelley shelleyAddr
   C.AddressInEra C.ByronAddressInAnyEra _ -> Nothing
 
@@ -227,8 +228,14 @@ transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToF
 unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
 unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
 
-unTransTxOutValue :: PV1.Value -> Either C.SerialiseAsRawBytesError (C.TxOutValue C.ConwayEra)
-unTransTxOutValue value = C.TxOutValueShelleyBased C.ShelleyBasedEraConway . C.toMaryValue <$> unTransValue value
+unTransTxOutValue :: forall era.
+  ( C.IsBabbageBasedEra era
+  , Eq (Ledger.Value (C.ShelleyLedgerEra era))
+  , Show (Ledger.Value (C.ShelleyLedgerEra era))
+  )
+  => PV1.Value
+  -> Either C.SerialiseAsRawBytesError (C.TxOutValue era)
+unTransTxOutValue value = C.TxOutValueShelleyBased C.shelleyBasedEra . C.toLedgerValue @era C.maryBasedEra <$> unTransValue value
 
 unTransValue :: PV1.Value -> Either C.SerialiseAsRawBytesError C.Value
 unTransValue =
@@ -256,5 +263,5 @@ unTransScriptDataHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.Has
 unTransScriptDataHash (P.DatumHash bs) =
   C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) (PlutusTx.fromBuiltin bs)
 
-unTransTxOutDatumHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx C.ConwayEra)
-unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.AlonzoEraOnwardsConway <$> unTransScriptDataHash datumHash
+unTransTxOutDatumHash :: C.IsAlonzoBasedEra era => P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx era)
+unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.alonzoBasedEra <$> unTransScriptDataHash datumHash
