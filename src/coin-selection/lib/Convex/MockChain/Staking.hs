@@ -3,13 +3,16 @@
 {-# LANGUAGE TypeApplications   #-}
 module Convex.MockChain.Staking (registerPool) where
 
-import qualified Cardano.Api.Ledger             as C
+import qualified Cardano.Api.Ledger             as Ledger
 import qualified Cardano.Api.Shelley            as C
+import qualified Cardano.Ledger.Core            as Ledger
+import           Control.Lens                   ((^.))
 import           Control.Monad                  (void)
 import           Control.Monad.Except           (MonadError)
 import           Control.Monad.IO.Class         (MonadIO (..))
 import qualified Convex.BuildTx                 as BuildTx
-import           Convex.Class                   (MonadMockchain)
+import           Convex.Class                   (MonadBlockchain (queryProtocolParameters),
+                                                 MonadMockchain)
 import           Convex.CoinSelection           (BalanceTxError,
                                                  ChangeOutputPosition (TrailingChange))
 import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
@@ -35,9 +38,11 @@ registerPool wallet = case C.conwayBasedEra @era of
 
       stakeCred = C.StakeCredentialByKey stakeHash
 
+    pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
+    let
       stakeCert =
         C.makeStakeAddressRegistrationCertificate
-        . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
+        . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
         $ stakeCred
       stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
 
@@ -46,7 +51,7 @@ registerPool wallet = case C.conwayBasedEra @era of
 
       delegationCert =
         C.makeStakeAddressDelegationCertificate
-        $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (C.DelegStake $ C.unStakePoolKeyHash poolId)
+        $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegStake $ C.unStakePoolKeyHash poolId)
 
       stakePoolParams =
         C.StakePoolParameters
