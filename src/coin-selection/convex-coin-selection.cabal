@@ -54,6 +54,7 @@ library
     -- cardano dependencies
     build-depends:
       cardano-api,
+      cardano-ledger-api,
       cardano-ledger-core -any,
       cardano-ledger-shelley,
       cardano-slotting,
@@ -78,7 +79,6 @@ test-suite convex-coin-selection-test
     QuickCheck,
     lens,
     cardano-ledger-api,
-    cardano-ledger-core,
     cardano-ledger-conway,
     cardano-ledger-shelley,
     convex-coin-selection,

@@ -6,13 +6,12 @@
 module Main(main) where
 
 import qualified Cardano.Api                    as C
-import qualified Cardano.Api.Ledger             as Ledger hiding (PlutusScript,
-                                                           TxId, TxIn)
+import qualified Cardano.Api.Ledger             as Ledger
 import qualified Cardano.Api.Shelley            as C
 import qualified Cardano.Ledger.Api             as Ledger
 import qualified Cardano.Ledger.Conway.Rules    as Rules
 import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
-import           Control.Lens                   (_3, _4, view, (&), (.~))
+import           Control.Lens                   (_3, _4, view, (&), (.~), (^.))
 import           Control.Monad                  (replicateM, void, when)
 import           Control.Monad.Except           (MonadError, runExceptT)
 import           Control.Monad.IO.Class         (MonadIO (..))
@@ -52,8 +51,7 @@ import           Convex.MockChain.Utils         (mockchainSucceeds,
 import           Convex.NodeParams              (ledgerProtocolParameters,
                                                  protocolParameters)
 import           Convex.Query                   (balancePaymentCredentials)
-import           Convex.Utils                   (failOnError, inBabbage,
-                                                 inConway)
+import           Convex.Utils                   (failOnError, inBabbage)
 import qualified Convex.Utxos                   as Utxos
 import           Convex.Wallet                  (Wallet)
 import qualified Convex.Wallet                  as Wallet
@@ -68,7 +66,6 @@ import           Data.List.NonEmpty             (NonEmpty (..))
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
 import qualified PlutusLedgerApi.V2             as PV2
-import qualified Scripts
 import qualified Test.QuickCheck.Gen            as Gen
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
@@ -76,6 +73,7 @@ import           Test.Tasty.HUnit               (Assertion, testCase)
 import qualified Test.Tasty.QuickCheck          as QC
 import           Test.Tasty.QuickCheck          (Property, classify,
                                                  testProperty)
+import qualified Scripts
 
 main :: IO ()
 main = defaultMain tests
@@ -106,11 +104,13 @@ tests = testGroup "unit tests"
     , testCase "large transactions" largeTransactionTest
     ]
   , testGroup "staking"
-    [ testCase "register a staking credential" (mockchainSucceeds $ failOnError registerStakingCredential)
-    , testCase "zero withdrawal" (mockchainSucceeds $ failOnError $ registerStakingCredential >> withdrawZero)
+    [ testCase "register a script staking credential with ShelleyCert" (mockchainSucceeds $ failOnError registerScriptStakingCredentialAsShelleyCert)
+    , testCase "register a script staking credential with ConwayCert" (mockchainSucceeds $ failOnError registerScriptStakingCredentialAsConwayCert)
+    , testCase "withdrawal zero trick with ShelleyCert" (mockchainSucceeds $ failOnError withdrawZeroTrickWithShelleyCert)
+    , testCase "withdrawal zero trick with ConwayCert" (mockchainSucceeds $ failOnError withdrawZeroTrickWithConwayCert)
     , testCase "register a stake pool" (mockchainSucceeds $ failOnError $ registerPool Wallet.w1)
     , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
-    , testCase "withdrawal" (mockchainSucceeds $ failOnError withdrawalTest)
+    , testCase "stake key withdrawal" (mockchainSucceeds $ failOnError stakeKeyWithdrawalTest)
     ]
   ]
 
@@ -373,21 +373,82 @@ matchingIndex = inBabbage @era $ do
   -- Spend the outputs in a single transaction
   void (tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ Scripts.spendMatchingIndex inputs) TrailingChange [])
 
-stakingCredential :: C.StakeCredential
-stakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
+scriptStakingCredential :: C.StakeCredential
+scriptStakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
 
-registerStakingCredential :: forall era m. (MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsConwayBasedEra era) => m C.TxIn
-registerStakingCredential = inConway @era $ do
-  let txBody = execBuildTx (BuildTx.addStakeCredentialCertificate stakingCredential)
+registerScriptStakingCredentialAsShelleyCert :: forall era m.
+  ( MonadMockchain era m
+  , MonadError (BalanceTxError era) m
+  , MonadFail m
+  , C.IsConwayBasedEra era
+  )
+  => m C.TxIn
+registerScriptStakingCredentialAsShelleyCert = do
+  txBody <- BuildTx.execBuildTxT $ BuildTx.addShelleyStakeCredentialRegistrationCertificateInConway scriptStakingCredential
   C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
-withdrawZero :: forall era m. (MonadIO m, MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => m ()
-withdrawZero = inBabbage @era $ do
+registerScriptStakingCredentialAsConwayCert :: forall era m.
+  ( MonadMockchain era m
+  , MonadError (BalanceTxError era) m
+  , MonadFail m
+  , C.IsConwayBasedEra era
+  , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+  )
+  => m C.TxIn
+registerScriptStakingCredentialAsConwayCert = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
+  pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
+  txBody <- BuildTx.execBuildTxT $ do
+    -- Need this for Conway certificates or we'll be getting 'MissingScriptWitnessesUTXOW'.
+    BuildTx.addStakeScriptWitness scriptStakingCredential Scripts.v2StakingScript ()
+    BuildTx.addConwayStakeCredentialRegistrationCertificate scriptStakingCredential (pp ^. Ledger.ppKeyDepositL)
+  C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
+
+withdrawZeroTrickWithShelleyCert :: forall era m.
+  ( MonadIO m
+  , MonadMockchain era m
+  , MonadError (BalanceTxError era) m
+  , MonadFail m
+  , C.IsConwayBasedEra era
+  , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+  )
+  => m ()
+withdrawZeroTrickWithShelleyCert = inBabbage @era $ do
+  void registerScriptStakingCredentialAsShelleyCert
+
   txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
   txI <- C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
   singleUTxO txI >>= \case
     Nothing -> fail "txI not found"
     Just{} -> pure ()
+
+  unregisterTx <- BuildTx.execBuildTxT $ do
+    BuildTx.addStakeScriptWitness scriptStakingCredential Scripts.v2StakingScript ()
+    BuildTx.addShelleyStakeCredentialUnregistrationCertificateInConway scriptStakingCredential
+  void $ tryBalanceAndSubmit mempty Wallet.w1 unregisterTx TrailingChange []
+
+withdrawZeroTrickWithConwayCert :: forall era m.
+  ( MonadIO m
+  , MonadMockchain era m
+  , MonadError (BalanceTxError era) m
+  , MonadFail m
+  , C.IsConwayBasedEra era
+  , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+  )
+  => m ()
+withdrawZeroTrickWithConwayCert = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
+  void registerScriptStakingCredentialAsConwayCert
+
+  txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
+  txI <- C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
+  singleUTxO txI >>= \case
+    Nothing -> fail "txI not found"
+    Just{} -> pure ()
+
+  pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
+  unregisterTx <- BuildTx.execBuildTxT $ do
+    BuildTx.addStakeScriptWitness scriptStakingCredential Scripts.v2StakingScript ()
+    BuildTx.addConwayStakeCredentialUnRegistrationCertificate scriptStakingCredential (pp ^. Ledger.ppKeyDepositL)
+  void $ tryBalanceAndSubmit mempty Wallet.w1 unregisterTx TrailingChange []
 
 matchingIndexMP :: forall m. (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 matchingIndexMP = do
@@ -408,9 +469,11 @@ queryStakeAddressesTest = do
 
     stakeCred = C.StakeCredentialByKey stakeHash
 
+  pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
+  let
     stakeCert =
       C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway 0
+      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
       $ stakeCred
 
     delegationCert =
@@ -436,8 +499,8 @@ queryStakeAddressesTest = do
   when (length rewards /= 1) $ fail "Expected 1 reward"
   when (length delegations /= 1) $ fail "Expected 1 delegation"
 
-withdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
-withdrawalTest = do
+stakeKeyWithdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+stakeKeyWithdrawalTest = do
   stakeKey <- C.generateSigningKey C.AsStakeKey
   let
     withdrawalAmount = 10_000_000
@@ -446,12 +509,14 @@ withdrawalTest = do
 
     stakeCred = C.StakeCredentialByKey stakeHash
 
-    delegationDrepCert = C.makeStakeAddressAndDRepDelegationCertificate
-      C.ConwayEraOnwardsConway
-      stakeCred
-      (Ledger.DelegVote Ledger.DRepAlwaysAbstain)
-      0
-    delegDrepCertTx = BuildTx.execBuildTx $ BuildTx.addCertificate delegationDrepCert
+  pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
+  let
+    delegDrepCertTx =
+      BuildTx.execBuildTx $
+        BuildTx.addConwayStakeCredentialRegistrationAndDelegationCertificate
+          stakeCred
+          (Ledger.DelegVote Ledger.DRepAlwaysAbstain)
+          (pp ^. Ledger.ppKeyDepositL)
 
   -- activate stake and delegate to drep with a single certificate
   void $ tryBalanceAndSubmit mempty Wallet.w2 delegDrepCertTx TrailingChange [C.WitnessStakeKey stakeKey]

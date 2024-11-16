@@ -28,7 +28,7 @@
         "minPoolCost": 0,
         "minUTxOValue": 0,
         "nOpt": 100,
-        "poolDeposit": 0,
+        "poolDeposit": 500000000,
         "protocolVersion": {
             "major": 10,
             "minor": 0
