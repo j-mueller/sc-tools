@@ -90,6 +90,7 @@ module Convex.BuildTx(
   addConwayStakeCredentialUnRegistrationCertificate,
   addStakeWitness,
   addStakeScriptWitness,
+  addStakeScriptWitnessRef,
   addStakeWitnessWithTxBody,
 
   -- ** Minting and burning tokens
@@ -350,7 +351,6 @@ addStakeWitness ::
 addStakeWitness credential witness =
   addBtx (over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, witness)))
 
--- mintPlutus :: forall redeemer lang era m. (Plutus.ToData redeemer, MonadBuildTx era m, C.HasScriptLanguageInEra lang era, C.IsAlonzoBasedEra era, C.IsPlutusScriptLanguage lang) => PlutusScript lang -> redeemer -> C.AssetName -> C.Quantity -> m ()
 {-| Add a stake script witness to the transaction.
 -}
 addStakeScriptWitness ::
@@ -366,6 +366,24 @@ addStakeScriptWitness ::
   -> m ()
 addStakeScriptWitness credential script redeemer = do
   let scriptWitness = buildScriptWitness script C.NoScriptDatumForStake redeemer
+  let witness = C.ScriptWitness C.ScriptWitnessForStakeAddr scriptWitness
+  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, witness)))
+
+{-| Add a stake script reference witness to the transaction.
+-}
+addStakeScriptWitnessRef ::
+  ( MonadBuildTx era m
+  , Plutus.ToData redeemer
+  , C.IsShelleyBasedEra era
+  , C.HasScriptLanguageInEra lang era
+  )
+  => C.StakeCredential
+  -> C.TxIn
+  -> C.PlutusScriptVersion lang
+  -> redeemer
+  -> m ()
+addStakeScriptWitnessRef credential txIn plutusScriptVersion redeemer = do
+  let scriptWitness = buildRefScriptWitness txIn plutusScriptVersion C.NoScriptDatumForStake redeemer
   let witness = C.ScriptWitness C.ScriptWitnessForStakeAddr scriptWitness
   addBtx (over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, witness)))
 
