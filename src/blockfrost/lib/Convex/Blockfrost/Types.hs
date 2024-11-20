@@ -104,6 +104,9 @@ data TxOutUnresolvedScript era =
     , txuScriptHash :: ScriptHash
     }
 
+{-| Convert a blockfrost 'UtxoOutput' to a @cardano-api@ 'C.TxOut C.CtxUTxO era',
+returning 'TxOutUnresolvedScript' if the output has a reference script.
+-}
 toTransactionOutput ::
   forall era.
   ( C.IsBabbageBasedEra era
