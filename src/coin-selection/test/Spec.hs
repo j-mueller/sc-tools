@@ -66,6 +66,7 @@ import           Data.List.NonEmpty             (NonEmpty (..))
 import qualified Data.Map                       as Map
 import qualified Data.Set                       as Set
 import qualified PlutusLedgerApi.V2             as PV2
+import qualified Scripts
 import qualified Test.QuickCheck.Gen            as Gen
 import           Test.Tasty                     (TestTree, defaultMain,
                                                  testGroup)
@@ -73,7 +74,6 @@ import           Test.Tasty.HUnit               (Assertion, testCase)
 import qualified Test.Tasty.QuickCheck          as QC
 import           Test.Tasty.QuickCheck          (Property, classify,
                                                  testProperty)
-import qualified Scripts
 
 main :: IO ()
 main = defaultMain tests
