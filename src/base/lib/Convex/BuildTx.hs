@@ -720,7 +720,7 @@ addCertificate :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.Certificate
 addCertificate cert =
   addBtx (over (L.txCertificates . L._TxCertificates . _1) ((:) cert))
 
-{-| Add a 'C.StakeCredential' registration as a ShelleyRelatedCerticate to the transaction in a pre-Conway era.
+{-| Add a 'C.StakeCredential' registration as a ShelleyRelatedCertificate to the transaction in a pre-Conway era.
 -}
 addShelleyStakeCredentialRegistrationCertificatePreConway :: forall era m.
   ( IsShelleyToBabbageEra era
@@ -732,7 +732,7 @@ addShelleyStakeCredentialRegistrationCertificatePreConway stakeCred = do
   let cert = C.makeStakeAddressRegistrationCertificate $ C.StakeAddrRegistrationPreConway shelleyToBabbageEra stakeCred
   addCertificate cert
 
-{-| Add a 'C.StakeCredential' deregistration as a ShelleyRelatedCerticate to the transaction in a pre-Conway era.
+{-| Add a 'C.StakeCredential' deregistration as a ShelleyRelatedCertificate to the transaction in a pre-Conway era.
 -}
 addShelleyStakeCredentialUnregistrationCertificatePreConway :: forall era m.
   ( IsShelleyToBabbageEra era
@@ -744,7 +744,7 @@ addShelleyStakeCredentialUnregistrationCertificatePreConway stakeCred = do
   let cert = C.makeStakeAddressUnregistrationCertificate $ C.StakeAddrRegistrationPreConway shelleyToBabbageEra stakeCred
   addCertificate cert
 
-{-| Add a 'C.StakeCredential' registration as a ShelleyRelatedCerticate to the transaction in Conway era.
+{-| Add a 'C.StakeCredential' registration as a ShelleyRelatedCertificate to the transaction in Conway era.
 -}
 addShelleyStakeCredentialRegistrationCertificateInConway :: forall era m.
   ( MonadBuildTx era m
@@ -756,7 +756,7 @@ addShelleyStakeCredentialRegistrationCertificateInConway stakeCred = do
   C.conwayEraOnwardsConstraints @era C.conwayBasedEra $
     addCertificate $ C.ConwayCertificate C.conwayBasedEra $ TxCert.RegTxCert $ C.toShelleyStakeCredential stakeCred
 
-{-| Add a 'C.StakeCredential' deregistration as a ShelleyRelatedCerticate to the transaction in Conway era.
+{-| Add a 'C.StakeCredential' deregistration as a ShelleyRelatedCertificate to the transaction in Conway era.
 -}
 addShelleyStakeCredentialUnregistrationCertificateInConway :: forall era m.
   ( MonadBuildTx era m
@@ -768,7 +768,7 @@ addShelleyStakeCredentialUnregistrationCertificateInConway stakeCred = do
   C.conwayEraOnwardsConstraints @era C.conwayBasedEra $
     addCertificate $ C.ConwayCertificate C.conwayBasedEra $ TxCert.UnRegTxCert $ C.toShelleyStakeCredential stakeCred
 
-{-| Add a 'C.StakeCredential' registration as a ConwayCerticate to the transaction.
+{-| Add a 'C.StakeCredential' registration as a ConwayCertificate to the transaction.
 -}
 addConwayStakeCredentialRegistrationCertificate :: forall era m.
   ( C.IsConwayBasedEra era
@@ -781,7 +781,7 @@ addConwayStakeCredentialRegistrationCertificate :: forall era m.
 addConwayStakeCredentialRegistrationCertificate stakeCred deposit = do
   addCertificate $ C.makeStakeAddressRegistrationCertificate $ C.StakeAddrRegistrationConway C.conwayBasedEra deposit stakeCred
 
-{-| Delegate to some delegatee in a ConwayCerticate to the transaction.
+{-| Delegate to some delegatee in a ConwayCertificate to the transaction.
 -}
 addConwayStakeCredentialDelegationCertificate :: forall era m.
   ( C.IsConwayBasedEra era
@@ -796,7 +796,7 @@ addConwayStakeCredentialDelegationCertificate stakeCred delegatee = do
           C.StakeDelegationRequirementsConwayOnwards C.conwayBasedEra stakeCred delegatee
   addCertificate cert
 
-{-| Register a 'C.StakeCredential' and delegate to some delegatee in a single ConwayCerticate to the transaction.
+{-| Register a 'C.StakeCredential' and delegate to some delegatee in a single ConwayCertificate to the transaction.
 -}
 addConwayStakeCredentialRegistrationAndDelegationCertificate :: forall era m.
   ( C.IsConwayBasedEra era
