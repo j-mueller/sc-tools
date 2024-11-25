@@ -35,11 +35,21 @@ library
     build-depends:
       base >= 4.14 && < 5,
       blockfrost-api >= 0.12.1.0,
+      blockfrost-client,
+      mtl,
       text,
+      primitive,
+      bytestring,
       cardano-api,
+      cardano-api:internal,
+      cardano-ledger-binary,
       convex-base,
+      convex-optics,
       safe-money,
-      cardano-binary
+      cardano-binary,
+      containers,
+      transformers,
+      lens
 
 test-suite convex-blockfrost-test
   import: lang
