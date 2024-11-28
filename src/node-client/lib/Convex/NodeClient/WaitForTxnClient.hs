@@ -85,7 +85,6 @@ instance (MonadIO m, MonadBlockchain era m, MonadLog m) => MonadBlockchain era (
       Left e -> pure $ Left e
       Right x -> do
         logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"
-        tmv <- liftIO (runWaitForTxn info env txi oldTip)
-        _ <- liftIO (atomically $ takeTMVar tmv)
+        _ <- liftIO (runWaitForTxn info env txi oldTip >>= atomically . takeTMVar)
         logInfoS $ "MonadBlockchainWaitingT.sendTx: Found " <> show txi
         pure $ Right x
