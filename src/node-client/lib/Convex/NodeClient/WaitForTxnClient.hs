@@ -37,9 +37,8 @@ import qualified Convex.NodeQueries         as NodeQueries
 {-| Start a 'waitForTxnClient' in a separate thread. Returns a TMVar that will contain the block that has the given
 transaction.
 -}
-runWaitForTxn :: LocalNodeConnectInfo -> Env -> TxId -> IO (TMVar BlockInMode)
-runWaitForTxn connectInfo env txi = do
-  tip' <- NodeQueries.queryChainPoint connectInfo
+runWaitForTxn :: LocalNodeConnectInfo -> Env -> TxId -> ChainPoint -> IO (TMVar BlockInMode)
+runWaitForTxn connectInfo env txi tip' = do
   tmv <- newEmptyTMVarIO
   _ <- forkIO $ C.connectToLocalNode connectInfo (protocols $ waitForTxnClient tmv tip' txi env)
   pure tmv
@@ -80,12 +79,13 @@ instance (MonadIO m, MonadBlockchain era m, MonadLog m) => MonadBlockchain era (
   sendTx tx = MonadBlockchainWaitingT $ do
     let txi = C.getTxId (C.getTxBody tx)
     (info, env) <- ask
-    tmv <- liftIO (runWaitForTxn info env txi)
+    oldTip <- liftIO (NodeQueries.queryChainPoint info)
     k <- sendTx tx
     case k of
       Left e -> pure $ Left e
       Right x -> do
         logInfoS $ "MonadBlockchainWaitingT.sendTx: Waiting for " <> show txi <> " to appear on the chain"
+        tmv <- liftIO (runWaitForTxn info env txi oldTip)
         _ <- liftIO (atomically $ takeTMVar tmv)
         logInfoS $ "MonadBlockchainWaitingT.sendTx: Found " <> show txi
         pure $ Right x
