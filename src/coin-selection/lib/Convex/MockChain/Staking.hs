@@ -1,27 +1,31 @@
-{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Convex.MockChain.Staking (registerPool) where
 
-import qualified Cardano.Api.Ledger             as Ledger
-import qualified Cardano.Api.Shelley            as C
-import qualified Cardano.Ledger.Core            as Ledger
-import           Control.Lens                   ((^.))
-import           Control.Monad                  (void)
-import           Control.Monad.Except           (MonadError)
-import           Control.Monad.IO.Class         (MonadIO (..))
-import qualified Convex.BuildTx                 as BuildTx
-import           Convex.Class                   (MonadBlockchain (queryProtocolParameters),
-                                                 MonadMockchain)
-import           Convex.CoinSelection           (BalanceTxError,
-                                                 ChangeOutputPosition (TrailingChange))
-import           Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
-import qualified Convex.MockChain.Defaults      as Defaults
-import           Convex.Wallet                  (Wallet)
-import           Data.Ratio                     ((%))
+import Cardano.Api.Ledger qualified as Ledger
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Core qualified as Ledger
+import Control.Lens ((^.))
+import Control.Monad (void)
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO (..))
+import Convex.BuildTx qualified as BuildTx
+import Convex.Class (
+  MonadBlockchain (queryProtocolParameters),
+  MonadMockchain,
+ )
+import Convex.CoinSelection (
+  BalanceTxError,
+  ChangeOutputPosition (TrailingChange),
+ )
+import Convex.MockChain.CoinSelection (tryBalanceAndSubmit)
+import Convex.MockChain.Defaults qualified as Defaults
+import Convex.Wallet (Wallet)
+import Data.Ratio ((%))
 
-{-| Run the 'Mockchain' action with registered pool
--}
+-- | Run the 'Mockchain' action with registered pool
 registerPool :: forall era m. (MonadIO m, MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsConwayBasedEra era) => Wallet -> m C.PoolId
 registerPool wallet = case C.conwayBasedEra @era of
   C.ConwayEraOnwardsConway -> do
@@ -42,16 +46,16 @@ registerPool wallet = case C.conwayBasedEra @era of
     let
       stakeCert =
         C.makeStakeAddressRegistrationCertificate
-        . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
-        $ stakeCred
+          . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
+          $ stakeCred
       stakeAddress = C.makeStakeAddress Defaults.networkId stakeCred
 
       stakePoolVerKey = C.getVerificationKey stakePoolKey
       poolId = C.verificationKeyHash stakePoolVerKey
 
       delegationCert =
-        C.makeStakeAddressDelegationCertificate
-        $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegStake $ C.unStakePoolKeyHash poolId)
+        C.makeStakeAddressDelegationCertificate $
+          C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegStake $ C.unStakePoolKeyHash poolId)
 
       stakePoolParams =
         C.StakePoolParameters
@@ -67,9 +71,9 @@ registerPool wallet = case C.conwayBasedEra @era of
 
       poolCert =
         C.makeStakePoolRegistrationCertificate
-        . C.StakePoolRegistrationRequirementsConwayOnwards C.ConwayEraOnwardsConway
-        . C.toShelleyPoolParams
-        $ stakePoolParams
+          . C.StakePoolRegistrationRequirementsConwayOnwards C.ConwayEraOnwardsConway
+          . C.toShelleyPoolParams
+          $ stakePoolParams
 
       stakeCertTx = BuildTx.execBuildTx $ do
         BuildTx.addCertificate stakeCert

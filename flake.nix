@@ -48,6 +48,7 @@
                     ghcide = "latest";
                     ghcid = "latest";
                     stylish-haskell = "latest";
+                    fourmolu = "latest";
                   };
                 };
                 inputMap = { "https://chap.intersectmbo.org/" = CHaP; };

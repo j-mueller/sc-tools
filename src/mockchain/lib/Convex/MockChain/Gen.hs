@@ -1,21 +1,23 @@
-{-| QuickCheck generators for @sc-tools@ types
--}
-module Convex.MockChain.Gen(
+-- | QuickCheck generators for @sc-tools@ types
+module Convex.MockChain.Gen (
   seed,
   signingKeyExtended,
   signingKey,
   stakeKey,
-  operator
-  ) where
+  operator,
+) where
 
-import qualified Cardano.Api            as C
-import           Cardano.Crypto.Seed    (Seed)
-import qualified Cardano.Crypto.Seed    as Seed
-import           Convex.Wallet.Operator (Operator (..), PaymentExtendedKey (..),
-                                         Signing)
-import qualified Data.ByteString        as BS
-import           Data.Proxy             (Proxy (..))
-import qualified Test.QuickCheck        as QC
+import Cardano.Api qualified as C
+import Cardano.Crypto.Seed (Seed)
+import Cardano.Crypto.Seed qualified as Seed
+import Convex.Wallet.Operator (
+  Operator (..),
+  PaymentExtendedKey (..),
+  Signing,
+ )
+import Data.ByteString qualified as BS
+import Data.Proxy (Proxy (..))
+import Test.QuickCheck qualified as QC
 
 -- | A seed value for cryptographic keys
 seed :: QC.Gen Seed

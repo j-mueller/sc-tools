@@ -1,6 +1,6 @@
 module Main where
 
-import qualified Convex.Wallet.Cli
+import Convex.Wallet.Cli qualified
 
 main :: IO ()
 main = Convex.Wallet.Cli.runMain
