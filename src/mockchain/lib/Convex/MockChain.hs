@@ -41,7 +41,8 @@ module Convex.MockChain(
   applyTransaction,
   -- * Plutus scripts
   PlutusWithContext(..),
-  fullyAppliedScript,
+  getFullyAppliedScript,
+  getPlutusArgs,
   -- * Mockchain implementation
   MockchainT(..),
   Mockchain,
@@ -169,8 +170,8 @@ import qualified UntypedPlutusCore                     as UPLC
 {-| Apply the plutus script to all its arguments and return a plutus
 program
 -}
-fullyAppliedScript :: NodeParams C.ConwayEra -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
-fullyAppliedScript params pwc@PlutusWithContext{pwcScript} = do
+getFullyAppliedScript :: NodeParams C.ConwayEra -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+getFullyAppliedScript params pwc@PlutusWithContext{pwcScript} = do
   let plutus = either id Plutus.Language.plutusFromRunnable pwcScript
       binScript = Plutus.Language.plutusBinary plutus
       pv = Plutus.MajorProtocolVersion $ getVersion $ pvMajor (Defaults.protVer params)
@@ -190,7 +191,7 @@ getPlutusArgs pwc =
   withRunnablePlutusWithContext
     pwc
     (const [])
-    plutusArgs
+    (const plutusArgs)
 
 withRunnablePlutusWithContext ::
   PlutusWithContext c ->
@@ -206,8 +207,8 @@ withRunnablePlutusWithContext PlutusWithContext {pwcProtocolVersion, pwcScript, 
         Right pr -> f pr pwcArgs
         Left err -> onError (PV3.CodecError err)
 
-plutusArgs :: forall l. Plutus.Language.PlutusLanguage l => Plutus.Language.PlutusRunnable l -> PlutusArgs l -> [PV3.Data]
-plutusArgs _runnable args = case Plutus.Language.isLanguage @l of
+plutusArgs :: forall l. Plutus.Language.PlutusLanguage l => PlutusArgs l -> [PV3.Data]
+plutusArgs args = case Plutus.Language.isLanguage @l of
   Plutus.Language.SPlutusV1 -> getPlutusArgsV1 args
   Plutus.Language.SPlutusV2 -> getPlutusArgsV2 args
   Plutus.Language.SPlutusV3 -> getPlutusArgsV3 args
@@ -553,7 +554,7 @@ evalMockchain0T :: Functor m => InitialUTXOs -> MockchainT C.ConwayEra m a -> m 
 evalMockchain0T dist action = evalMockchainT action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
 
 execMockchainIO :: MockchainIO era a -> NodeParams era -> MockChainState era -> IO (MockChainState era)
-execMockchainIO action nps = execMockchainT action nps
+execMockchainIO = execMockchainT
 
 execMockchain0IO :: InitialUTXOs -> MockchainIO C.ConwayEra a -> IO (MockChainState C.ConwayEra)
 execMockchain0IO dist action = execMockchainIO action Defaults.nodeParams (initialStateFor Defaults.nodeParams dist)
