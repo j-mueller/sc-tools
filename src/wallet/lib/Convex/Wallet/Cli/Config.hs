@@ -1,24 +1,25 @@
-{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE TypeFamilies       #-}
-module Convex.Wallet.Cli.Config(
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+
+module Convex.Wallet.Cli.Config (
   -- * Wallet config
-  Config(..),
-  configParser
+  Config (..),
+  configParser,
 ) where
 
-import           Options.Applicative (Parser, help, long, strOption)
+import Options.Applicative (Parser, help, long, strOption)
 
-data Config =
-  Config
-    { cardanoNodeConfigFile :: FilePath
-    , cardanoNodeSocket     :: FilePath
-    , walletFile            :: FilePath
-    }
-    deriving stock (Eq, Show)
+data Config
+  = Config
+  { cardanoNodeConfigFile :: FilePath
+  , cardanoNodeSocket :: FilePath
+  , walletFile :: FilePath
+  }
+  deriving stock (Eq, Show)
 
 configParser :: Parser Config
 configParser =
