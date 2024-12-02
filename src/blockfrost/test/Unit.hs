@@ -33,7 +33,7 @@ tests = testGroup "unit"
               (toAssetId $ AssetAmount $ Money.toSomeDiscrete (12 :: Money.Discrete' "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a76e7574636f696e" '(1, 1)))
 
               -- Note the difference in the asset names ('nutcoin' vs '6e7574636f696e')
-              -- This is because the 'FromString' instance of AssetName uses the UTF8 encoding of the string (which doesn't make sense for script hash token names)
+              -- This is because the 'IsString' instance of AssetName uses the UTF8 encoding of the string (which doesn't make sense for script hash token names)
               -- whereas blockfrost gives us the hex encoded bytestring
               (C.AssetId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7" "nutcoin", 12)
       , testCase "address"
