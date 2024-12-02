@@ -31,7 +31,11 @@ tests = testGroup "unit"
       , testCase "amount"
           $ assertEqual "asset ID should match"
               (toAssetId $ AssetAmount $ Money.toSomeDiscrete (12 :: Money.Discrete' "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a76e7574636f696e" '(1, 1)))
-              (C.AssetId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7" "6e7574636f696e", 12)
+
+              -- Note the difference in the asset names ('nutcoin' vs '6e7574636f696e')
+              -- This is because the 'FromString' instance of AssetName uses the UTF8 encoding of the string (which doesn't make sense for script hash token names)
+              -- whereas blockfrost gives us the hex encoded bytestring
+              (C.AssetId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7" "nutcoin", 12)
       , testCase "address"
           $ deserialiseAddress "addr1qxqs59lphg8g6qndelq8xwqn60ag3aeyfcp33c2kdp46a09re5df3pzwwmyq946axfcejy5n4x0y99wqpgtp2gd0k09qsgy6pz"
       , testCase "stake address"

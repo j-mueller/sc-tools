@@ -21,6 +21,7 @@ module Convex.Utxos(
   UtxoSet(..),
   fromUtxoTx,
   singleton,
+  fromList,
   PrettyBalance(..),
   _UtxoSet,
   totalBalance,
@@ -210,6 +211,11 @@ instance TxOutConstraints FromJSON ctx => FromJSON (C.InAnyCardanoEra (C.TxOut c
 -}
 singleton :: CS.IsCardanoEra era => TxIn -> (C.TxOut ctx era, a) -> UtxoSet ctx a
 singleton txi = UtxoSet . Map.singleton txi . first (C.InAnyCardanoEra C.cardanoEra)
+
+{-| @Map.fromList@
+-}
+fromList :: CS.IsCardanoEra era => [(TxIn, (C.TxOut ctx era, a))] -> UtxoSet ctx a
+fromList = UtxoSet . Map.fromList . fmap (second (first (C.InAnyCardanoEra C.cardanoEra)))
 
 {-| Change the context of the outputs in this utxo set to 'CtxUTxO'
 -}

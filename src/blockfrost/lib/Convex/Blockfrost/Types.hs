@@ -21,6 +21,7 @@ module Convex.Blockfrost.Types(
   TxOutUnresolvedScript(..),
   utxoOutput,
   addressUtxo,
+  addressUtxoTxIn,
   ScriptResolutionFailure(..),
   resolveScript,
   -- * CBOR
@@ -50,6 +51,7 @@ import           Blockfrost.Types.Shared.TxHash        (TxHash (..))
 import           Cardano.Api                           (HasTypeProxy (..))
 import qualified Cardano.Api.Ledger                    as C.Ledger
 import           Cardano.Api.SerialiseBech32           (SerialiseAsBech32 (..))
+import           Cardano.Api.SerialiseUsing            (UsingRawBytesHex (..))
 import           Cardano.Api.Shelley                   (Lovelace)
 import qualified Cardano.Api.Shelley                   as C
 import           Cardano.Binary                        (DecoderError)
@@ -86,16 +88,22 @@ toTxHash = textToIsString
 textToIsString :: (Coercible a Text.Text, IsString b) => a -> b
 textToIsString = fromString . Text.unpack . coerce
 
+hexTextToByteString :: C.SerialiseAsRawBytes a => Text.Text -> a
+hexTextToByteString t =
+  let UsingRawBytesHex x = fromString (Text.unpack t)
+  in x
+
 toAssetId :: Amount -> (C.AssetId, C.Quantity)
 toAssetId = \case
   AdaAmount lvl -> (C.AdaAssetId, C.lovelaceToQuantity $ toLovelace lvl)
   AssetAmount disc ->
     -- concatenation of asset policy ID and hex-encoded asset_name
-    let (policyText, assetName) = Text.splitAt 56 (Money.someDiscreteCurrency disc)
+    let txt                     = Money.someDiscreteCurrency disc
+        (policyText, assetName) = Text.splitAt 56 txt
         amount = Money.someDiscreteAmount disc
         -- TODO: We could also consider Money.someDiscreteScale
         --       but it looks like blockfrost just uses unitScale for native assets
-    in (C.AssetId (textToIsString policyText) (textToIsString assetName), C.Quantity amount)
+    in (C.AssetId (textToIsString policyText) (hexTextToByteString assetName), C.Quantity amount)
 
 toAddress :: C.IsCardanoEra era => Address -> Maybe (C.AddressInEra era)
 toAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
@@ -118,7 +126,7 @@ instance C.HasTypeProxy a => C.HasTypeProxy (CustomBech32 a) where
 
 instance C.SerialiseAsRawBytes a => C.SerialiseAsRawBytes (CustomBech32 a) where
   serialiseToRawBytes (CustomBech32 a) = C.serialiseToRawBytes a
-  deserialiseFromRawBytes asType = fmap CustomBech32 . C.deserialiseFromRawBytes (proxyToAsType Proxy)
+  deserialiseFromRawBytes _asType = fmap CustomBech32 . C.deserialiseFromRawBytes (proxyToAsType Proxy)
 
 -- The following two instances of @SerialiseAsBech32@ are used for generating payment credential queries that blockfrost understands
 -- See: https://github.com/blockfrost/blockfrost-utils/blob/master/src/validation.ts#L109-L128
@@ -186,10 +194,10 @@ resolveScript TxOutUnresolvedScript{txuOutput, txuScriptHash} = runExceptT $ inB
         PlutusV3 -> do
           s <- either (throwError . FailedToDeserialise _scriptType txuScriptHash . show) pure (C.deserialiseFromRawBytesHex (C.proxyToAsType $ Proxy @(C.PlutusScript C.PlutusScriptV3)) (Text.Encoding.encodeUtf8 text))
           pure (C.ReferenceScript (C.babbageBasedEra @era) (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3) (C.PlutusScript C.PlutusScriptV3 s)))
-        -- Timelock -> undefined -- Simple script
+        Timelock ->
+          error "resolveScript: Not implemented: Timelock"
+          undefined -- Simple script
       return (txuOutput & L._TxOut . _4 .~ refScript)
-      -- let refScript = C.ReferenceScript C.babbageBasedEra
-      -- undefined
 
 
 {-| Convert a blockfrost 'UtxoOutput' to a @cardano-api@ 'C.TxOut C.CtxUTxO era',
@@ -219,6 +227,12 @@ convertOutput addr_ amount dataHash inlineDatum refScriptHash = inBabbage @era $
       Nothing -> Right txuOutput
       Just txuScriptHash ->
         Left TxOutUnresolvedScript{txuOutput, txuScriptHash}
+
+{-| The utxo reference 'C.TxIn' of the 'AddressUtxo'
+-}
+addressUtxoTxIn :: AddressUtxo -> C.TxIn
+addressUtxoTxIn AddressUtxo{_addressUtxoTxHash, _addressUtxoOutputIndex} =
+  C.TxIn (toTxHash _addressUtxoTxHash) (C.TxIx $ fromIntegral _addressUtxoOutputIndex)
 
 {-| Convert a blockfrost 'AddressUtxo' to a @cardano-api@ 'C.TxOut C.CtxUTxO era',
 returning 'TxOutUnresolvedScript' if the output has a reference script.
