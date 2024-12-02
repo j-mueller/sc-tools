@@ -364,7 +364,6 @@ control over the capabilities they require.
 
 -- | A capability typeclass that provides methods for querying a chain indexer.
 --   See note [MonadUtxoQuery design].
---   NOTE: There are currently no implementations of this class in sc-tools.
 class Monad m => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain
