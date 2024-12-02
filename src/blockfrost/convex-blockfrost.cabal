@@ -38,7 +38,6 @@ library
       blockfrost-client,
       mtl,
       text,
-      primitive,
       bytestring,
       cardano-api,
       cardano-api:internal,
