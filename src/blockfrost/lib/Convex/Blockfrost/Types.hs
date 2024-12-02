@@ -58,11 +58,13 @@ import           Cardano.Binary                        (DecoderError)
 import           Cardano.Ledger.Binary.Encoding        (EncCBOR)
 import qualified Cardano.Ledger.Binary.Version         as Version
 import           Control.Applicative                   (Alternative (..))
-import           Control.Lens                          (_4, (&), (.~))
-import           Control.Monad.Except                  (runExceptT, throwError)
+import           Control.Lens                          (_4, (&), (.~), (<&>))
+import           Control.Monad.Except                  (MonadError (..),
+                                                        runExceptT, throwError)
 import           Control.Monad.Trans.Class             (lift)
 import qualified Convex.CardanoApi.Lenses              as L
 import           Convex.Utils                          (inBabbage)
+import qualified Data.ByteString.Base16                as Base16
 import qualified Data.ByteString.Lazy                  as BSL
 import           Data.Coerce                           (Coercible, coerce)
 import           Data.Maybe                            (fromMaybe)
@@ -173,7 +175,13 @@ data TxOutUnresolvedScript era =
 -}
 data ScriptResolutionFailure =
   ScriptNotFound ScriptHash
-  | FailedToDeserialise ScriptType ScriptHash String
+  | Base16DecodeError ScriptType ScriptHash String
+  | CBORError ScriptType ScriptHash DecoderError
+
+decodeScriptCbor :: forall lang m. (MonadError ScriptResolutionFailure m, C.IsScriptLanguage lang) => ScriptType -> ScriptHash -> Text.Text -> m (C.Script lang)
+decodeScriptCbor tp hsh text =
+  either (throwError . Base16DecodeError tp hsh) pure (Base16.decode $ Text.Encoding.encodeUtf8 text)
+  >>= either (throwError . CBORError tp hsh) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Script lang))
 
 {-| Load this output's reference script from blockfrost and return the full output
 -}
@@ -185,20 +193,15 @@ resolveScript TxOutUnresolvedScript{txuOutput, txuScriptHash} = runExceptT $ inB
     Just text -> do
       Script{_scriptType} <- lift (Client.getScript txuScriptHash) -- We need this call to figure out what language the script is
       refScript <- case _scriptType of
-        PlutusV1 -> do
-          s <- either (throwError . FailedToDeserialise _scriptType txuScriptHash . show) pure (C.deserialiseFromRawBytesHex (C.proxyToAsType $ Proxy @(C.PlutusScript C.PlutusScriptV1)) (Text.Encoding.encodeUtf8 text))
-          pure (C.ReferenceScript (C.babbageBasedEra @era) (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1) (C.PlutusScript C.PlutusScriptV1 s)))
-        PlutusV2 -> do
-          s <- either (throwError . FailedToDeserialise _scriptType txuScriptHash . show) pure (C.deserialiseFromRawBytesHex (C.proxyToAsType $ Proxy @(C.PlutusScript C.PlutusScriptV2)) (Text.Encoding.encodeUtf8 text))
-          pure (C.ReferenceScript (C.babbageBasedEra @era) (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2) (C.PlutusScript C.PlutusScriptV2 s)))
-        PlutusV3 -> do
-          s <- either (throwError . FailedToDeserialise _scriptType txuScriptHash . show) pure (C.deserialiseFromRawBytesHex (C.proxyToAsType $ Proxy @(C.PlutusScript C.PlutusScriptV3)) (Text.Encoding.encodeUtf8 text))
-          pure (C.ReferenceScript (C.babbageBasedEra @era) (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3) (C.PlutusScript C.PlutusScriptV3 s)))
+        PlutusV1 ->
+          decodeScriptCbor _scriptType txuScriptHash text <&> C.ReferenceScript (C.babbageBasedEra @era) . C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1)
+        PlutusV2 ->
+          decodeScriptCbor _scriptType txuScriptHash text <&> C.ReferenceScript (C.babbageBasedEra @era) . C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2)
+        PlutusV3 ->
+          decodeScriptCbor _scriptType txuScriptHash text <&> C.ReferenceScript (C.babbageBasedEra @era) . C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3)
         Timelock ->
-          error "resolveScript: Not implemented: Timelock"
-          undefined -- Simple script
+          decodeScriptCbor _scriptType txuScriptHash text <&> C.ReferenceScript (C.babbageBasedEra @era) . C.ScriptInAnyLang C.SimpleScriptLanguage
       return (txuOutput & L._TxOut . _4 .~ refScript)
-
 
 {-| Convert a blockfrost 'UtxoOutput' to a @cardano-api@ 'C.TxOut C.CtxUTxO era',
 returning 'TxOutUnresolvedScript' if the output has a reference script.
