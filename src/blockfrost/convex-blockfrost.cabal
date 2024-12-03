@@ -1,7 +1,7 @@
 cabal-version: 3.0
-name:          convex-coin-selection
+name:          convex-blockfrost
 version:       0.3.0.0
-synopsis:      Coin selection algorithm for Cardano transactions
+synopsis:      Blockfrost backend for @MonadBlockchain@
 license: Apache-2.0
 license-files:
   LICENSE
@@ -27,68 +27,43 @@ common lang
 
 library
     import: lang
-    exposed-modules:
-      Convex.CoinSelection
-      Convex.CoinSelection.Class
-      Convex.MockChain.CoinSelection
-      Convex.MockChain.Staking
-      Convex.Query
-      Convex.UTxOCompatibility
     hs-source-dirs: lib
+    exposed-modules:
+      Convex.Blockfrost
+      Convex.Blockfrost.Types
     build-depends:
-      aeson,
-      base >= 4.14.0,
-      containers >= 0.6.5,
-      exceptions,
-      lens,
-      contra-tracer,
-      convex-mockchain,
+      base >= 4.14 && < 5,
+      base16-bytestring,
+      blockfrost-api >= 0.12.1.0,
+      blockfrost-client,
+      mtl,
+      text,
+      bytestring,
+      cardano-api,
+      cardano-api:internal,
+      cardano-ledger-binary,
       convex-base,
       convex-optics,
-      convex-wallet,
-      data-default,
-      primitive,
-      servant-client,
-      text
-
-    -- cardano dependencies
-    build-depends:
-      cardano-api,
-      cardano-ledger-core -any,
-      cardano-ledger-shelley,
-      cardano-slotting,
+      safe-money,
+      cardano-binary,
+      containers,
       transformers,
-      mtl,
+      streaming,
+      lens
 
-test-suite convex-coin-selection-test
+test-suite convex-blockfrost-test
   import: lang
   type: exitcode-stdio-1.0
   hs-source-dirs:     test
-  ghc-options: -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas -fno-specialise
   main-is:
     Spec.hs
   other-modules:
-    Scripts
-    Scripts.MatchingIndex
+    Unit
   build-depends:
     base >= 4.14.0,
+    convex-blockfrost,
     tasty,
     tasty-hunit,
-    tasty-quickcheck,
-    QuickCheck,
-    lens,
-    cardano-ledger-api,
-    cardano-ledger-conway,
-    cardano-ledger-shelley,
-    convex-coin-selection,
-    convex-mockchain,
-    convex-base,
-    convex-optics,
-    convex-wallet,
     cardano-api,
-    containers,
-    plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib},
-    plutus-ledger-api,
-    plutus-tx,
-    plutus-tx-plugin,
-    mtl
+    safe-money,
+    blockfrost-api

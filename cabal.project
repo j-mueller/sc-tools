@@ -28,6 +28,7 @@ tests: True
 
 packages:
   src/base
+  src/blockfrost
   src/coin-selection
   src/devnet
   src/mockchain
