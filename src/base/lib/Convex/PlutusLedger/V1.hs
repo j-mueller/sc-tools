@@ -3,9 +3,9 @@
 {-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE TupleSections    #-}
 {-# LANGUAGE TypeApplications #-}
-{-| Translating between cardano-api/cardano-ledger and plutus representations
+{-| Translating between cardano-api/cardano-ledger and plutus V1 representations
 -}
-module Convex.PlutusLedger(
+module Convex.PlutusLedger.V1 (
   -- * Script hashes
   transScriptHash,
   unTransScriptHash,
@@ -213,7 +213,7 @@ unTransAddressShelley networkId (PV1.Address cred staking) =
     <*> unTransStakeAddressReference staking
 
 unTransTxOutRef :: PV1.TxOutRef -> Either C.SerialiseAsRawBytesError C.TxIn
-unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId=PV1.TxId bs, PV1.txOutRefIdx} =
+unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId = PV1.TxId bs, PV1.txOutRefIdx} =
   let i = C.deserialiseFromRawBytes C.AsTxId $ PlutusTx.fromBuiltin bs
   in C.TxIn <$> i <*> pure (C.TxIx $ fromIntegral txOutRefIdx)
 
@@ -265,3 +265,4 @@ unTransScriptDataHash (P.DatumHash bs) =
 
 unTransTxOutDatumHash :: C.IsAlonzoBasedEra era => P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx era)
 unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.alonzoBasedEra <$> unTransScriptDataHash datumHash
+
