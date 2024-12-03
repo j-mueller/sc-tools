@@ -27,7 +27,9 @@ module Convex.Blockfrost.Types(
   -- * CBOR
   toCBORString,
   -- * Payment credential
-  fromPaymentCredential
+  fromPaymentCredential,
+  -- * Genesis related
+  systemStart
 ) where
 
 import qualified Blockfrost.Client.Cardano.Scripts     as Client
@@ -43,6 +45,8 @@ import           Blockfrost.Types.Shared.Ada           (Lovelaces)
 import           Blockfrost.Types.Shared.Address       (Address (..))
 import           Blockfrost.Types.Shared.Amount        (Amount (..))
 import           Blockfrost.Types.Shared.CBOR          (CBORString (..))
+import Cardano.Slotting.Time (SystemStart(..))
+import Blockfrost.Types.Cardano.Genesis (Genesis(..))
 import           Blockfrost.Types.Shared.DatumHash     (DatumHash (..))
 import           Blockfrost.Types.Shared.PolicyId      (PolicyId (..))
 import           Blockfrost.Types.Shared.Quantity      (Quantity (..))
@@ -51,6 +55,7 @@ import           Blockfrost.Types.Shared.TxHash        (TxHash (..))
 import           Cardano.Api                           (HasTypeProxy (..))
 import qualified Cardano.Api.Ledger                    as C.Ledger
 import           Cardano.Api.SerialiseBech32           (SerialiseAsBech32 (..))
+import Data.Time.Clock.POSIX qualified as Clock
 import           Cardano.Api.SerialiseUsing            (UsingRawBytesHex (..))
 import           Cardano.Api.Shelley                   (Lovelace)
 import qualified Cardano.Api.Shelley                   as C
@@ -253,3 +258,9 @@ addressUtxo AddressUtxo{_addressUtxoAddress, _addressUtxoAmount, _addressUtxoDat
 -}
 toCBORString :: EncCBOR v => v -> CBORString
 toCBORString = CBORString . BSL.fromStrict . C.Ledger.serialize' Version.shelleyProtVer
+
+{-| The 'SystemStart' value
+-}
+systemStart :: Genesis -> SystemStart
+systemStart =
+  SystemStart . Clock.posixSecondsToUTCTime . _genesisSystemStart

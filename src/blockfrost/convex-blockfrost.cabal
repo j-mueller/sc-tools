@@ -30,6 +30,7 @@ library
     hs-source-dirs: lib
     exposed-modules:
       Convex.Blockfrost
+      Convex.Blockfrost.MonadBlockchain
       Convex.Blockfrost.Types
     build-depends:
       base >= 4.14 && < 5,
@@ -42,6 +43,7 @@ library
       cardano-api,
       cardano-api:internal,
       cardano-ledger-binary,
+      cardano-slotting,
       convex-base,
       convex-optics,
       safe-money,
@@ -49,6 +51,7 @@ library
       containers,
       transformers,
       streaming,
+      time,
       lens
 
 test-suite convex-blockfrost-test
