@@ -34,63 +34,81 @@ module Convex.Blockfrost.Types(
   systemStart,
   -- * Misc.
   poolId,
+  eraSummary,
   -- * API queries
   pagedStream
 ) where
 
-import           Blockfrost.Client                     (PoolId (..))
-import qualified Blockfrost.Client                     as Client
-import qualified Blockfrost.Client.Cardano.Scripts     as Client
-import           Blockfrost.Client.Types               (MonadBlockfrost)
-import qualified Blockfrost.Client.Types               as Types
-import           Blockfrost.Types.Cardano.Addresses    (AddressUtxo (..))
-import           Blockfrost.Types.Cardano.Genesis      (Genesis (..))
-import           Blockfrost.Types.Cardano.Scripts      (InlineDatum (..),
-                                                        Script (..),
-                                                        ScriptCBOR (..),
-                                                        ScriptDatumCBOR (..),
-                                                        ScriptType (..))
-import           Blockfrost.Types.Cardano.Transactions (TransactionCBOR (..),
-                                                        UtxoOutput (..))
-import           Blockfrost.Types.Shared.Ada           (Lovelaces)
-import           Blockfrost.Types.Shared.Address       (Address (..))
-import           Blockfrost.Types.Shared.Amount        (Amount (..))
-import           Blockfrost.Types.Shared.CBOR          (CBORString (..))
-import           Blockfrost.Types.Shared.DatumHash     (DatumHash (..))
-import           Blockfrost.Types.Shared.PolicyId      (PolicyId (..))
-import           Blockfrost.Types.Shared.Quantity      (Quantity (..))
-import           Blockfrost.Types.Shared.ScriptHash    (ScriptHash (..))
-import           Blockfrost.Types.Shared.TxHash        (TxHash (..))
-import           Cardano.Api                           (HasTypeProxy (..))
-import qualified Cardano.Api.Ledger                    as C.Ledger
-import           Cardano.Api.SerialiseBech32           (SerialiseAsBech32 (..))
-import           Cardano.Api.SerialiseUsing            (UsingRawBytesHex (..))
-import           Cardano.Api.Shelley                   (Lovelace)
-import qualified Cardano.Api.Shelley                   as C
-import           Cardano.Binary                        (DecoderError)
-import           Cardano.Ledger.Binary.Encoding        (EncCBOR)
-import qualified Cardano.Ledger.Binary.Version         as Version
-import           Cardano.Slotting.Time                 (SystemStart (..))
-import           Control.Applicative                   (Alternative (..))
-import           Control.Lens                          (_4, (&), (.~), (<&>))
-import           Control.Monad.Except                  (MonadError (..),
-                                                        runExceptT, throwError)
-import           Control.Monad.Trans.Class             (lift)
-import qualified Convex.CardanoApi.Lenses              as L
-import           Convex.Utils                          (inBabbage)
-import qualified Data.ByteString.Base16                as Base16
-import qualified Data.ByteString.Lazy                  as BSL
-import           Data.Coerce                           (Coercible, coerce)
-import           Data.Maybe                            (fromMaybe)
-import           Data.Proxy                            (Proxy (..))
-import           Data.String                           (IsString (..))
-import qualified Data.Text                             as Text
-import qualified Data.Text.Encoding                    as Text.Encoding
-import qualified Data.Time.Clock.POSIX                 as Clock
-import qualified GHC.IsList                            as L
+import           Blockfrost.Client                              (Epoch (..),
+                                                                 EpochLength (..),
+                                                                 NetworkEraBound (..),
+                                                                 NetworkEraParameters (..),
+                                                                 NetworkEraSummary (..),
+                                                                 PoolId (..),
+                                                                 Slot (..))
+import qualified Blockfrost.Client                              as Client
+import           Blockfrost.Client.Types                        (MonadBlockfrost)
+import qualified Blockfrost.Client.Types                        as Types
+import           Blockfrost.Types.Cardano.Addresses             (AddressUtxo (..))
+import           Blockfrost.Types.Cardano.Genesis               (Genesis (..))
+import           Blockfrost.Types.Cardano.Scripts               (InlineDatum (..),
+                                                                 Script (..),
+                                                                 ScriptCBOR (..),
+                                                                 ScriptDatumCBOR (..),
+                                                                 ScriptType (..))
+import           Blockfrost.Types.Cardano.Transactions          (TransactionCBOR (..),
+                                                                 UtxoOutput (..))
+import           Blockfrost.Types.Shared.Ada                    (Lovelaces)
+import           Blockfrost.Types.Shared.Address                (Address (..))
+import           Blockfrost.Types.Shared.Amount                 (Amount (..))
+import           Blockfrost.Types.Shared.CBOR                   (CBORString (..))
+import           Blockfrost.Types.Shared.DatumHash              (DatumHash (..))
+import           Blockfrost.Types.Shared.PolicyId               (PolicyId (..))
+import           Blockfrost.Types.Shared.Quantity               (Quantity (..))
+import           Blockfrost.Types.Shared.ScriptHash             (ScriptHash (..))
+import           Blockfrost.Types.Shared.TxHash                 (TxHash (..))
+import           Cardano.Api                                    (HasTypeProxy (..))
+import qualified Cardano.Api.Ledger                             as C.Ledger
+import           Cardano.Api.SerialiseBech32                    (SerialiseAsBech32 (..))
+import           Cardano.Api.SerialiseUsing                     (UsingRawBytesHex (..))
+import           Cardano.Api.Shelley                            (Lovelace)
+import qualified Cardano.Api.Shelley                            as C
+import           Cardano.Binary                                 (DecoderError)
+import           Cardano.Ledger.Binary.Encoding                 (EncCBOR)
+import qualified Cardano.Ledger.Binary.Version                  as Version
+import           Cardano.Slotting.Slot                          (EpochSize (..))
+import           Cardano.Slotting.Time                          (RelativeTime (..),
+                                                                 SystemStart (..),
+                                                                 mkSlotLength)
+import           Control.Applicative                            (Alternative (..))
+import           Control.Lens                                   (_4, (&), (.~),
+                                                                 (<&>))
+import           Control.Monad.Except                           (MonadError (..),
+                                                                 runExceptT,
+                                                                 throwError)
+import           Control.Monad.Trans.Class                      (lift)
+import qualified Convex.CardanoApi.Lenses                       as L
+import           Convex.Utils                                   (inBabbage)
+import qualified Data.ByteString.Base16                         as Base16
+import qualified Data.ByteString.Lazy                           as BSL
+import           Data.Coerce                                    (Coercible,
+                                                                 coerce)
+import           Data.Maybe                                     (fromMaybe)
+import           Data.Proxy                                     (Proxy (..))
+import           Data.String                                    (IsString (..))
+import qualified Data.Text                                      as Text
+import qualified Data.Text.Encoding                             as Text.Encoding
+import qualified Data.Time.Clock.POSIX                          as Clock
+import qualified GHC.IsList                                     as L
 import qualified Money
-import qualified Streaming.Prelude                     as S
-import           Streaming.Prelude                     (Of, Stream)
+import qualified Ouroboros.Consensus.Block.Abstract             as Ouroboros
+import           Ouroboros.Consensus.HardFork.History.EraParams (EraParams (..),
+                                                                 SafeZone (StandardSafeZone))
+import           Ouroboros.Consensus.HardFork.History.Summary   (Bound (..),
+                                                                 EraEnd (..),
+                                                                 EraSummary (..))
+import qualified Streaming.Prelude                              as S
+import           Streaming.Prelude                              (Of, Stream)
 
 toLovelace :: Lovelaces -> Lovelace
 toLovelace = C.Ledger.Coin . toInteger
@@ -303,3 +321,34 @@ pagedStream action = flip S.for S.each $ flip S.unfoldr 1 $ \pageNumber -> do
   action paged >>= \case
     [] -> pure (Left ())
     xs -> pure (Right (xs, succ pageNumber))
+
+slot :: Slot -> C.SlotNo
+slot (Slot n) = C.SlotNo (fromInteger n)
+
+epoch :: Epoch -> C.EpochNo
+epoch (Epoch e) = C.EpochNo (fromInteger e)
+
+epochSize :: EpochLength -> EpochSize
+epochSize = coerce
+
+eraSummary :: NetworkEraSummary -> EraSummary
+eraSummary NetworkEraSummary{_networkEraStart, _networkEraEnd, _networkEraParameters} =
+  let eraEnd =
+        let NetworkEraBound{_boundEpoch, _boundSlot, _boundTime} = _networkEraEnd
+        in EraEnd Bound{boundTime = RelativeTime _boundTime, boundSlot = slot _boundSlot, boundEpoch = epoch _boundEpoch}
+      eraStart =
+        let NetworkEraBound{_boundEpoch, _boundSlot, _boundTime} = _networkEraStart
+        in Bound{boundTime = RelativeTime _boundTime, boundSlot = slot _boundSlot, boundEpoch = epoch _boundEpoch}
+      eraParams =
+        let NetworkEraParameters{_parametersEpochLength, _parametersSlotLength, _parametersSafeZone} = _networkEraParameters
+        in EraParams
+            { eraEpochSize = epochSize _parametersEpochLength
+            , eraSlotLength = mkSlotLength _parametersSlotLength
+            , eraSafeZone = StandardSafeZone _parametersSafeZone
+            , eraGenesisWin = Ouroboros.GenesisWindow (2 * 2160) -- 2 * max-rollbacks
+            }
+  in EraSummary
+      { eraEnd
+      , eraStart
+      , eraParams
+      }

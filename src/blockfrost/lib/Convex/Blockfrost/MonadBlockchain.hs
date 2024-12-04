@@ -1,52 +1,62 @@
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE NamedFieldPuns  #-}
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections   #-}
+{-# LANGUAGE LambdaCase       #-}
+{-# LANGUAGE NamedFieldPuns   #-}
+{-# LANGUAGE RankNTypes       #-}
+{-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE TupleSections    #-}
+{-# LANGUAGE TypeApplications #-}
 {-| blockfrost-based implementation of MonadBlockchain
 -}
 module Convex.Blockfrost.MonadBlockchain(
   BlockfrostState(..)
 ) where
 
-import qualified Blockfrost.Client                      as Client
-import           Blockfrost.Client.Cardano.Transactions (submitTx)
-import           Blockfrost.Client.Types                (MonadBlockfrost (..),
-                                                         SortOrder (Ascending))
-import           Blockfrost.Types.Cardano.Epochs        (EpochInfo (..))
-import           Blockfrost.Types.Cardano.Genesis       (Genesis)
-import qualified Blockfrost.Types.Cardano.Genesis       as Genesis
-import           Blockfrost.Types.Shared.CBOR           (CBORString (..))
-import           Cardano.Api                            (ConwayEra, NetworkId,
-                                                         Tx, TxId, TxIn (..),
-                                                         serialiseToCBOR)
-import           Cardano.Api.NetworkId                  (fromNetworkMagic)
-import           Cardano.Api.Shelley                    (CtxUTxO, PoolId, TxOut,
-                                                         UTxO)
-import qualified Cardano.Api.Shelley                    as C
-import           Cardano.Slotting.Time                  (SystemStart)
-import           Control.Lens                           (Lens', at,
-                                                         makeLensesFor, use,
-                                                         (.=), (<>=), (?=))
-import           Control.Monad.Except                   (runExceptT)
-import           Control.Monad.IO.Class                 (MonadIO (..))
-import           Control.Monad.State                    (MonadState)
-import           Convex.Blockfrost.Orphans              ()
-import qualified Convex.Blockfrost.Types                as Types
-import           Convex.Class                           (ValidationError)
-import           Convex.Utils                           (txnUtxos)
-import           Data.Bifunctor                         (Bifunctor (second))
-import qualified Data.ByteString.Lazy                   as BSL
-import           Data.Map                               (Map)
-import qualified Data.Map                               as Map
-import           Data.Set                               (Set)
-import qualified Data.Set                               as Set
-import           Data.Time.Clock                        (UTCTime,
-                                                         getCurrentTime)
-import qualified Data.Time.Clock.POSIX                  as Clock
-import           Data.Traversable                       (for)
-import           Ouroboros.Network.Magic                (NetworkMagic (..))
-import qualified Streaming.Prelude                      as S
+import qualified Blockfrost.Client                            as Client
+import           Blockfrost.Client.Cardano.Transactions       (submitTx)
+import           Blockfrost.Client.Types                      (MonadBlockfrost (..),
+                                                               SortOrder (Ascending))
+import           Blockfrost.Types.Cardano.Epochs              (EpochInfo (..))
+import           Blockfrost.Types.Cardano.Genesis             (Genesis)
+import qualified Blockfrost.Types.Cardano.Genesis             as Genesis
+import           Blockfrost.Types.Shared.CBOR                 (CBORString (..))
+import           Cardano.Api                                  (ConwayEra,
+                                                               NetworkId, Tx,
+                                                               TxId, TxIn (..),
+                                                               serialiseToCBOR)
+import           Cardano.Api.NetworkId                        (fromNetworkMagic)
+import           Cardano.Api.Shelley                          (CtxUTxO, PoolId,
+                                                               TxOut, UTxO)
+import qualified Cardano.Api.Shelley                          as C
+import           Cardano.Slotting.Time                        (SystemStart)
+import           Control.Lens                                 (Lens', at,
+                                                               makeLensesFor,
+                                                               use, (.=), (<>=),
+                                                               (?=))
+import           Control.Monad.Except                         (runExceptT)
+import           Control.Monad.IO.Class                       (MonadIO (..))
+import           Control.Monad.State                          (MonadState)
+import           Convex.Blockfrost.Orphans                    ()
+import qualified Convex.Blockfrost.Types                      as Types
+import           Convex.Class                                 (ValidationError)
+import           Convex.Utils                                 (txnUtxos)
+import           Data.Bifunctor                               (Bifunctor (second))
+import qualified Data.ByteString.Lazy                         as BSL
+import           Data.Map                                     (Map)
+import qualified Data.Map                                     as Map
+import           Data.Maybe                                   (fromJust)
+import           Data.Set                                     (Set)
+import qualified Data.Set                                     as Set
+import           Data.SOP.NonEmpty                            (NonEmpty (..))
+import qualified Data.SOP.NonEmpty                            as NonEmpty
+import           Data.Time.Clock                              (UTCTime,
+                                                               getCurrentTime)
+import qualified Data.Time.Clock.POSIX                        as Clock
+import           Data.Traversable                             (for)
+import           Ouroboros.Consensus.Cardano.Block            (CardanoEras,
+                                                               StandardCrypto)
+import qualified Ouroboros.Consensus.HardFork.History.Qry     as Qry
+import qualified Ouroboros.Consensus.HardFork.History.Summary as Summary
+import           Ouroboros.Network.Magic                      (NetworkMagic (..))
+import qualified Streaming.Prelude                            as S
 
 -- TODO
 -- protocol params
@@ -72,6 +82,9 @@ data BlockfrostState =
       -- ^ Resolved tx inputs. We keep them around for a while because the
       --   lookup on blockfrost is quite expensive (in terms HTTP requests
       --   and CPU/memory usage)
+
+    , bfsEraHistory :: Maybe C.EraHistory
+      -- ^ Era history
     }
 
 makeLensesFor
@@ -79,6 +92,7 @@ makeLensesFor
   , ("bfsEndOfEpoch", "endOfEpoch")
   , ("bfsStakePools", "stakePools")
   , ("bfsTxInputs", "txInputs")
+  , ("bfsEraHistory", "eraHistory")
   ]
   ''BlockfrostState
 
@@ -111,6 +125,7 @@ emptyBlockfrostState =
     , bfsEndOfEpoch = Nothing
     , bfsStakePools = Nothing
     , bfsTxInputs   = Map.empty
+    , bfsEraHistory = Nothing
     }
 
 getGenesis :: (MonadBlockfrost m, MonadState BlockfrostState m) => m Genesis
@@ -161,3 +176,16 @@ resolveTxIn txI@(TxIn txId (C.TxIx txIx)) = getOrRetrieve (txInputs . at txI) $ 
 getUtxoByTxIn :: (MonadBlockfrost m, MonadState BlockfrostState m) => Set TxIn -> m (UTxO ConwayEra)
 getUtxoByTxIn txIns = fmap (C.UTxO . Map.fromList) $ for (Set.toList txIns) $ \txIn ->
   (txIn,) <$> resolveTxIn txIn
+
+{-| Get the 'EraHistory' for slot time computations
+-}
+getEraHistory :: (MonadBlockfrost m, MonadState BlockfrostState m) => m C.EraHistory
+getEraHistory = getOrRetrieve eraHistory $ do
+  networkEras <- Client.getNetworkEras
+  let summaries :: [Summary.EraSummary] = fmap Types.eraSummary networkEras
+  pure
+    $ C.EraHistory
+    $ Qry.mkInterpreter
+    $ Summary.Summary
+    $ fromJust (error "getEraHistory: Unexpected number of entries")
+    $ NonEmpty.nonEmptyFromList @(CardanoEras StandardCrypto) summaries

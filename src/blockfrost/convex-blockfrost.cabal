@@ -54,7 +54,10 @@ library
       streaming,
       time,
       lens,
-      ouroboros-network-api
+      ouroboros-network-api,
+      ouroboros-consensus,
+      ouroboros-consensus-cardano,
+      sop-extras
 
 test-suite convex-blockfrost-test
   import: lang
