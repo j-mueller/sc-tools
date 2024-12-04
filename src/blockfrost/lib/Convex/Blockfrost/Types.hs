@@ -12,6 +12,7 @@ module Convex.Blockfrost.Types(
   toQuantity,
   toPolicyId,
   toTxHash,
+  fromTxHash,
   toAssetId,
   toAddress,
   toStakeAddress,
@@ -26,27 +27,35 @@ module Convex.Blockfrost.Types(
   resolveScript,
   -- * CBOR
   toCBORString,
+  decodeTransactionCBOR,
   -- * Payment credential
   fromPaymentCredential,
   -- * Genesis related
-  systemStart
+  systemStart,
+  -- * Misc.
+  poolId,
+  -- * API queries
+  pagedStream
 ) where
 
+import           Blockfrost.Client                     (PoolId (..))
+import qualified Blockfrost.Client                     as Client
 import qualified Blockfrost.Client.Cardano.Scripts     as Client
 import           Blockfrost.Client.Types               (MonadBlockfrost)
+import qualified Blockfrost.Client.Types               as Types
 import           Blockfrost.Types.Cardano.Addresses    (AddressUtxo (..))
+import           Blockfrost.Types.Cardano.Genesis      (Genesis (..))
 import           Blockfrost.Types.Cardano.Scripts      (InlineDatum (..),
                                                         Script (..),
                                                         ScriptCBOR (..),
                                                         ScriptDatumCBOR (..),
                                                         ScriptType (..))
-import           Blockfrost.Types.Cardano.Transactions (UtxoOutput (..))
+import           Blockfrost.Types.Cardano.Transactions (TransactionCBOR (..),
+                                                        UtxoOutput (..))
 import           Blockfrost.Types.Shared.Ada           (Lovelaces)
 import           Blockfrost.Types.Shared.Address       (Address (..))
 import           Blockfrost.Types.Shared.Amount        (Amount (..))
 import           Blockfrost.Types.Shared.CBOR          (CBORString (..))
-import Cardano.Slotting.Time (SystemStart(..))
-import Blockfrost.Types.Cardano.Genesis (Genesis(..))
 import           Blockfrost.Types.Shared.DatumHash     (DatumHash (..))
 import           Blockfrost.Types.Shared.PolicyId      (PolicyId (..))
 import           Blockfrost.Types.Shared.Quantity      (Quantity (..))
@@ -55,13 +64,13 @@ import           Blockfrost.Types.Shared.TxHash        (TxHash (..))
 import           Cardano.Api                           (HasTypeProxy (..))
 import qualified Cardano.Api.Ledger                    as C.Ledger
 import           Cardano.Api.SerialiseBech32           (SerialiseAsBech32 (..))
-import Data.Time.Clock.POSIX qualified as Clock
 import           Cardano.Api.SerialiseUsing            (UsingRawBytesHex (..))
 import           Cardano.Api.Shelley                   (Lovelace)
 import qualified Cardano.Api.Shelley                   as C
 import           Cardano.Binary                        (DecoderError)
 import           Cardano.Ledger.Binary.Encoding        (EncCBOR)
 import qualified Cardano.Ledger.Binary.Version         as Version
+import           Cardano.Slotting.Time                 (SystemStart (..))
 import           Control.Applicative                   (Alternative (..))
 import           Control.Lens                          (_4, (&), (.~), (<&>))
 import           Control.Monad.Except                  (MonadError (..),
@@ -77,8 +86,11 @@ import           Data.Proxy                            (Proxy (..))
 import           Data.String                           (IsString (..))
 import qualified Data.Text                             as Text
 import qualified Data.Text.Encoding                    as Text.Encoding
+import qualified Data.Time.Clock.POSIX                 as Clock
 import qualified GHC.IsList                            as L
 import qualified Money
+import qualified Streaming.Prelude                     as S
+import           Streaming.Prelude                     (Of, Stream)
 
 toLovelace :: Lovelaces -> Lovelace
 toLovelace = C.Ledger.Coin . toInteger
@@ -92,6 +104,9 @@ toPolicyId = textToIsString
 toTxHash :: TxHash -> C.TxId
 toTxHash = textToIsString
 
+fromTxHash :: C.TxId -> TxHash
+fromTxHash = TxHash . C.serialiseToRawBytesHexText
+
 textToIsString :: (Coercible a Text.Text, IsString b) => a -> b
 textToIsString = fromString . Text.unpack . coerce
 
@@ -99,6 +114,9 @@ hexTextToByteString :: C.SerialiseAsRawBytes a => Text.Text -> a
 hexTextToByteString t =
   let UsingRawBytesHex x = fromString (Text.unpack t)
   in x
+
+poolId :: PoolId -> C.PoolId
+poolId = textToIsString
 
 toAssetId :: Amount -> (C.AssetId, C.Quantity)
 toAssetId = \case
@@ -180,13 +198,18 @@ data TxOutUnresolvedScript era =
 -}
 data ScriptResolutionFailure =
   ScriptNotFound ScriptHash
-  | Base16DecodeError ScriptType ScriptHash String
-  | CBORError ScriptType ScriptHash DecoderError
+  | ScriptDecodingError ScriptType ScriptHash DecodingError
+  deriving stock (Eq, Show)
+
+data DecodingError
+  = Base16DecodeError String
+  | CBORError DecoderError
+  deriving stock (Eq, Show)
 
 decodeScriptCbor :: forall lang m. (MonadError ScriptResolutionFailure m, C.IsScriptLanguage lang) => ScriptType -> ScriptHash -> Text.Text -> m (C.Script lang)
 decodeScriptCbor tp hsh text =
-  either (throwError . Base16DecodeError tp hsh) pure (Base16.decode $ Text.Encoding.encodeUtf8 text)
-  >>= either (throwError . CBORError tp hsh) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Script lang))
+  either (throwError . ScriptDecodingError tp hsh . Base16DecodeError) pure (Base16.decode $ Text.Encoding.encodeUtf8 text)
+  >>= either (throwError . ScriptDecodingError tp hsh . CBORError) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Script lang))
 
 {-| Load this output's reference script from blockfrost and return the full output
 -}
@@ -259,8 +282,24 @@ addressUtxo AddressUtxo{_addressUtxoAddress, _addressUtxoAmount, _addressUtxoDat
 toCBORString :: EncCBOR v => v -> CBORString
 toCBORString = CBORString . BSL.fromStrict . C.Ledger.serialize' Version.shelleyProtVer
 
+{-| Decode a full transaction from a CBOR hex string
+-}
+decodeTransactionCBOR :: MonadError DecodingError m => TransactionCBOR -> m (C.Tx C.ConwayEra)
+decodeTransactionCBOR TransactionCBOR{_transactionCBORCbor} =
+  either (throwError . Base16DecodeError) pure (Base16.decode $ Text.Encoding.encodeUtf8 _transactionCBORCbor)
+  >>= either (throwError . CBORError) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Tx C.ConwayEra))
+
 {-| The 'SystemStart' value
 -}
 systemStart :: Genesis -> SystemStart
 systemStart =
   SystemStart . Clock.posixSecondsToUTCTime . _genesisSystemStart
+
+{-| Stream a list of results from a paged query
+-}
+pagedStream :: Monad m => (Types.Paged -> m [a]) -> Stream (Of a) m ()
+pagedStream action = flip S.for S.each $ flip S.unfoldr 1 $ \pageNumber -> do
+  let paged = Client.Paged{Client.countPerPage = 100, Client.pageNumber = pageNumber}
+  action paged >>= \case
+    [] -> pure (Left ())
+    xs -> pure (Right (xs, succ pageNumber))
