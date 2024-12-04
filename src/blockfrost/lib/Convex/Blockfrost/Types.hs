@@ -35,6 +35,7 @@ module Convex.Blockfrost.Types(
   -- * Misc.
   poolId,
   eraSummary,
+  slot,
   -- * API queries
   pagedStream
 ) where

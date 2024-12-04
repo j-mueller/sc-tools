@@ -10,6 +10,7 @@ module Convex.Blockfrost.MonadBlockchain(
   BlockfrostState(..)
 ) where
 
+import           Blockfrost.Client                            (Block (..))
 import qualified Blockfrost.Client                            as Client
 import           Blockfrost.Client.Cardano.Transactions       (submitTx)
 import           Blockfrost.Client.Types                      (MonadBlockfrost (..),
@@ -26,7 +27,8 @@ import           Cardano.Api.NetworkId                        (fromNetworkMagic)
 import           Cardano.Api.Shelley                          (CtxUTxO, PoolId,
                                                                TxOut, UTxO)
 import qualified Cardano.Api.Shelley                          as C
-import           Cardano.Slotting.Time                        (SystemStart)
+import           Cardano.Slotting.Time                        (SlotLength,
+                                                               SystemStart)
 import           Control.Lens                                 (Lens', at,
                                                                makeLensesFor,
                                                                use, (.=), (<>=),
@@ -37,7 +39,8 @@ import           Control.Monad.State                          (MonadState)
 import           Convex.Blockfrost.Orphans                    ()
 import qualified Convex.Blockfrost.Types                      as Types
 import           Convex.Class                                 (ValidationError)
-import           Convex.Utils                                 (txnUtxos)
+import           Convex.Utils                                 (slotToUtcTime,
+                                                               txnUtxos)
 import           Data.Bifunctor                               (Bifunctor (second))
 import qualified Data.ByteString.Lazy                         as BSL
 import           Data.Map                                     (Map)
@@ -61,10 +64,10 @@ import qualified Streaming.Prelude                            as S
 -- TODO
 -- protocol params
 -- stake addresses
--- era history
--- slot no
 
 -- DONE
+-- slot no
+-- era history
 -- utxoByTxIn
 -- send Tx
 -- query network id
@@ -189,3 +192,15 @@ getEraHistory = getOrRetrieve eraHistory $ do
     $ Summary.Summary
     $ fromJust (error "getEraHistory: Unexpected number of entries")
     $ NonEmpty.nonEmptyFromList @(CardanoEras StandardCrypto) summaries
+
+{-| Get the current slot number, slot length and UTC time of the start
+of the current slot.
+-}
+getSlotNo :: (MonadBlockfrost m, MonadState BlockfrostState m) => m (C.SlotNo, SlotLength, UTCTime)
+getSlotNo = do
+  (eraHistory@(C.EraHistory interpreter), systemStart) <- (,) <$> getEraHistory <*> getSystemStart
+  Block{_blockSlot} <- Client.getLatestBlock
+  let currentSlot = maybe (error "getSlotNo: Expected slot") Types.slot _blockSlot
+  let utctime     = either (error . (<>) "getSlotNo: slotToUtcTime failed " . show) id (slotToUtcTime eraHistory systemStart currentSlot)
+      l           = either (error . (<>) "getSlotNo: slotToSlotLength failed " . show) id (Qry.interpretQuery interpreter $ Qry.slotToSlotLength currentSlot)
+  pure (currentSlot, l, utctime)
