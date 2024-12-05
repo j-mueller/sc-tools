@@ -10,7 +10,8 @@ module Convex.Blockfrost.MonadBlockchain(
   BlockfrostState(..)
 ) where
 
-import           Blockfrost.Client                            (Block (..))
+import           Blockfrost.Client                            (AccountInfo (..),
+                                                               Block (..))
 import qualified Blockfrost.Client                            as Client
 import           Blockfrost.Client.Cardano.Transactions       (submitTx)
 import           Blockfrost.Client.Types                      (MonadBlockfrost (..),
@@ -26,8 +27,9 @@ import           Cardano.Api                                  (ConwayEra,
 import           Cardano.Api.NetworkId                        (fromNetworkMagic)
 import           Cardano.Api.Shelley                          (CtxUTxO,
                                                                LedgerProtocolParameters (..),
-                                                               PoolId, TxOut,
-                                                               UTxO)
+                                                               PoolId,
+                                                               StakeCredential,
+                                                               TxOut, UTxO)
 import qualified Cardano.Api.Shelley                          as C
 import           Cardano.Slotting.Time                        (SlotLength,
                                                                SystemStart)
@@ -90,6 +92,8 @@ data BlockfrostState =
 
     , bfsProtocolParams :: Maybe (LedgerProtocolParameters ConwayEra)
 
+    , bfsStakeRewards   :: Map StakeCredential (C.Quantity, Maybe PoolId)
+
     , bfsEraHistory     :: Maybe C.EraHistory
       -- ^ Era history
     }
@@ -100,6 +104,7 @@ makeLensesFor
   , ("bfsStakePools", "stakePools")
   , ("bfsTxInputs", "txInputs")
   , ("bfsProtocolParams", "protocolParams")
+  , ("bfsStakeRewards", "stakeRewards")
   , ("bfsEraHistory", "eraHistory")
   ]
   ''BlockfrostState
@@ -121,6 +126,7 @@ checkCurrentEpoch = do
       -- reset everything
       stakePools .= Nothing
       protocolParams .= Nothing
+      stakeRewards .= mempty
 
       -- the (txIn -> txOut) mapping does not change at the epoch boundary.
       -- So there is no risk of returning stale / incorrect data.
@@ -219,3 +225,11 @@ getProtocolParams = do
   checkCurrentEpoch
   getOrRetrieve protocolParams $
     LedgerProtocolParameters . Types.protocolParametersConway <$> Client.getLatestEpochProtocolParams
+
+-- getStakeAddresses :: (MonadBlockfrost m, MonadState BlockfrostState m) => Set C.StakeCredential -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
+-- getStakeAddresses = undefined
+
+getStakeRewardsSingle :: (MonadBlockfrost m, MonadState BlockfrostState m) => C.StakeCredential -> m (C.Quantity, Maybe PoolId)
+getStakeRewardsSingle cred = getOrRetrieve (stakeRewards . at cred) $ do
+  AccountInfo{_accountInfoPoolId, _accountInfoWithdrawableAmount} <- Client.getAccount (_ cred)
+  undefined
