@@ -6,8 +6,6 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE UndecidableInstances #-}
 
--- Need this because of missing instances for BlockfrostClientT
-{-# OPTIONS_GHC -Wno-orphans #-}
 {-| Blockfrost-backed implementation of @MonadBlockchain@
 -}
 module Convex.Blockfrost(
@@ -19,14 +17,14 @@ module Convex.Blockfrost(
 
 import qualified Blockfrost.Client         as Client
 import           Blockfrost.Client.Types   (BlockfrostClientT, BlockfrostError,
-                                            MonadBlockfrost (..), Project)
+                                            Project)
 import qualified Blockfrost.Client.Types   as Types
 import qualified Cardano.Api               as C
 import           Control.Monad             ((>=>))
 import           Control.Monad.Except      (ExceptT (..), liftEither,
                                             runExceptT)
 import           Control.Monad.IO.Class    (MonadIO (..))
-import           Control.Monad.Trans.Class (MonadTrans (..))
+import           Convex.Blockfrost.Orphans ()
 import qualified Convex.Blockfrost.Types   as Types
 import           Convex.Class              (MonadUtxoQuery (..))
 import qualified Convex.Utxos              as Utxos
@@ -40,10 +38,6 @@ class using blockfrost's API
 -}
 newtype BlockfrostT m a = BlockfrostT{ unBlockfrostT :: BlockfrostClientT m a }
   deriving newtype (Functor, Applicative, Monad, MonadIO)
-
-instance MonadBlockfrost m => MonadBlockfrost (ExceptT e m) where
-  liftBlockfrostClient = lift . liftBlockfrostClient
-  getConf = lift getConf
 
 -- TODO: More instances (need to be defined on BlockfrostClientT')
 
@@ -69,16 +63,7 @@ lookupUtxo addr = runExceptT $ do
 streamUtxos :: Types.MonadBlockfrost m => C.PaymentCredential -> Stream (Of (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))) m ()
 streamUtxos a =
   S.mapM lookupUtxo
-  $ pagedStream (\p -> Client.getAddressUtxos' (Types.fromPaymentCredential a) p Client.Ascending)
-
-{-| Stream a list of results from a paged query
--}
-pagedStream :: Monad m => (Types.Paged -> m [a]) -> Stream (Of a) m ()
-pagedStream action = flip S.for S.each $ flip S.unfoldr 1 $ \pageNumber -> do
-  let paged = Client.Paged{Client.countPerPage = 100, Client.pageNumber = pageNumber}
-  action paged >>= \case
-    [] -> pure (Left ())
-    xs -> pure (Right (xs, succ pageNumber))
+  $ Types.pagedStream (\p -> Client.getAddressUtxos' (Types.fromPaymentCredential a) p Client.Ascending)
 
 {-| Run the 'BlockfrostT' transformer using the given blockfrost 'Project'
 -}
