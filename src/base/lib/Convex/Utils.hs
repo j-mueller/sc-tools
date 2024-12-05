@@ -73,7 +73,7 @@ import           Control.Monad.Result                     (ResultT, throwError)
 import qualified Control.Monad.Result                     as Result
 import           Control.Monad.Trans.Except               (ExceptT, runExceptT)
 import           Convex.MonadLog                          (MonadLog, logWarnS)
-import           Convex.PlutusLedger                      (transPOSIXTime,
+import           Convex.PlutusLedger.V1                   (transPOSIXTime,
                                                            unTransPOSIXTime)
 import           Data.Aeson                               (Result (..),
                                                            fromJSON, object,

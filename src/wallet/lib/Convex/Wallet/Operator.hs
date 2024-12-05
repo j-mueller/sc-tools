@@ -40,7 +40,7 @@ import           Cardano.Api              (CtxTx, PaymentCredential, TxOut)
 import qualified Cardano.Api.Shelley      as C
 import           Convex.CardanoApi.Lenses (emptyTxOut)
 import           Convex.Class             (MonadBlockchain (queryNetworkId))
-import           Convex.PlutusLedger      (transPubKeyHash, transStakeKeyHash)
+import           Convex.PlutusLedger.V1   (transPubKeyHash, transStakeKeyHash)
 import           Convex.Utils             (readSigningKeyFromFile,
                                            readStakingKeyFromFile,
                                            readVerificationKeyFromFile)

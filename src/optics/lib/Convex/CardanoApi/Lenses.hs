@@ -65,8 +65,7 @@ module Convex.CardanoApi.Lenses(
   -- ** Witnesses
   _KeyWitness,
   _ScriptWitness,
-  _PlutusScriptWitnessV1,
-  _PlutusScriptWitnessV2,
+  _PlutusScriptWitness,
 
   -- ** Build tx
   _BuildTxWith,
@@ -559,23 +558,30 @@ _ScriptData = prism' from to where
   from :: a -> C.ScriptData
   from = Scripts.toScriptData
 
-_PlutusScriptWitnessV1 :: forall era witctx. Prism' (C.ScriptWitness witctx era) (C.ScriptLanguageInEra C.PlutusScriptV1 era, C.PlutusScriptVersion C.PlutusScriptV1, C.PlutusScriptOrReferenceInput C.PlutusScriptV1, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits)
-_PlutusScriptWitnessV1 = prism' from to where
-  from :: (C.ScriptLanguageInEra C.PlutusScriptV1 era, C.PlutusScriptVersion C.PlutusScriptV1, C.PlutusScriptOrReferenceInput C.PlutusScriptV1, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits) -> C.ScriptWitness witctx era
-  from (lang, v, i, dtr, red, ex) = C.PlutusScriptWitness lang v i dtr red ex
+_PlutusScriptWitness
+  :: forall era lang witctx.
+  C.PlutusScriptVersion lang
+  -> Prism'
+       (C.ScriptWitness witctx era)
+       ( C.ScriptLanguageInEra lang era
+       , C.PlutusScriptVersion lang
+       , C.PlutusScriptOrReferenceInput lang
+       , C.ScriptDatum witctx
+       , C.ScriptRedeemer
+       , C.ExecutionUnits
+       )
+_PlutusScriptWitness lang = prism' from (to lang) where
+  from :: (C.ScriptLanguageInEra lang era, C.PlutusScriptVersion lang, C.PlutusScriptOrReferenceInput lang, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits) -> C.ScriptWitness witctx era
+  from (era, v, i, dtr, red, ex) = C.PlutusScriptWitness era v i dtr red ex
 
-  to :: C.ScriptWitness witctx era -> Maybe (C.ScriptLanguageInEra C.PlutusScriptV1 era, C.PlutusScriptVersion C.PlutusScriptV1, C.PlutusScriptOrReferenceInput C.PlutusScriptV1, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits)
-  to (C.PlutusScriptWitness era C.PlutusScriptV1 i dtr red ex) = Just (era, C.PlutusScriptV1, i, dtr, red, ex)
-  to _ = Nothing
-
-_PlutusScriptWitnessV2 :: forall era witctx. Prism' (C.ScriptWitness witctx era) (C.ScriptLanguageInEra C.PlutusScriptV2 era, C.PlutusScriptVersion C.PlutusScriptV2, C.PlutusScriptOrReferenceInput C.PlutusScriptV2, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits)
-_PlutusScriptWitnessV2 = prism' from to where
-  from :: (C.ScriptLanguageInEra C.PlutusScriptV2 era, C.PlutusScriptVersion C.PlutusScriptV2, C.PlutusScriptOrReferenceInput C.PlutusScriptV2, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits) -> C.ScriptWitness witctx era
-  from (lang, v, i, dtr, red, ex) = C.PlutusScriptWitness lang v i dtr red ex
-
-  to :: C.ScriptWitness witctx era -> Maybe (C.ScriptLanguageInEra C.PlutusScriptV2 era, C.PlutusScriptVersion C.PlutusScriptV2, C.PlutusScriptOrReferenceInput C.PlutusScriptV2, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits)
-  to (C.PlutusScriptWitness era C.PlutusScriptV2 i dtr red ex) = Just (era, C.PlutusScriptV2, i, dtr, red, ex)
-  to _ = Nothing
+  to :: C.PlutusScriptVersion lang -> C.ScriptWitness witctx era -> Maybe (C.ScriptLanguageInEra lang era, C.PlutusScriptVersion lang, C.PlutusScriptOrReferenceInput lang, C.ScriptDatum witctx, C.ScriptRedeemer, C.ExecutionUnits)
+  to C.PlutusScriptV1 (C.PlutusScriptWitness era C.PlutusScriptV1 i dtr red ex) = Just (era, lang, i, dtr, red, ex)
+  to C.PlutusScriptV2 (C.PlutusScriptWitness era C.PlutusScriptV2 i dtr red ex) = Just (era, lang, i, dtr, red, ex)
+  to C.PlutusScriptV3 (C.PlutusScriptWitness era C.PlutusScriptV3 i dtr red ex) = Just (era, lang, i, dtr, red, ex)
+  to C.PlutusScriptV1 (C.PlutusScriptWitness {}) = Nothing
+  to C.PlutusScriptV2 (C.PlutusScriptWitness {}) = Nothing
+  to C.PlutusScriptV3 (C.PlutusScriptWitness {}) = Nothing
+  to _ C.SimpleScriptWitness {} = Nothing
 
 _TxValidityNoLowerBound :: forall era. Prism' (C.TxValidityLowerBound era) ()
 _TxValidityNoLowerBound = prism' from to where

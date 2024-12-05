@@ -36,7 +36,8 @@ library
       Convex.NodeQueries
       Convex.NodeQueries.Debug
       Convex.NodeParams
-      Convex.PlutusLedger
+      Convex.PlutusLedger.V1
+      Convex.PlutusLedger.V3
       Convex.PlutusTx
       Convex.Utils
       Convex.Utxos

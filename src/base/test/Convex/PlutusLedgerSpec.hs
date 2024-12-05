@@ -5,7 +5,7 @@ module Convex.PlutusLedgerSpec where
 
 import qualified Cardano.Api.Ledger         as Shelley
 import qualified Cardano.Api.Shelley        as C
-import           Convex.PlutusLedger        (transAddressShelley,
+import           Convex.PlutusLedger.V1     (transAddressShelley,
                                              unTransAddressShelley)
 import qualified Test.Gen.Cardano.Api.Typed as CGen
 import qualified Test.QuickCheck            as QC
