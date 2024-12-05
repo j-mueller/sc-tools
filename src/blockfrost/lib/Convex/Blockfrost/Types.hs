@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE NamedFieldPuns     #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TupleSections      #-}
 {-# LANGUAGE TypeApplications   #-}
 {-# LANGUAGE TypeFamilies       #-}
 {-| Conversion between blockfrost and @cardano-api@ types
@@ -25,6 +26,8 @@ module Convex.Blockfrost.Types(
   addressUtxoTxIn,
   ScriptResolutionFailure(..),
   resolveScript,
+  -- * Protocol parameters
+  protocolParametersConway,
   -- * CBOR
   toCBORString,
   decodeTransactionCBOR,
@@ -40,12 +43,14 @@ module Convex.Blockfrost.Types(
   pagedStream
 ) where
 
-import           Blockfrost.Client                              (Epoch (..),
+import           Blockfrost.Client                              (CostModelsRaw (..),
+                                                                 Epoch (..),
                                                                  EpochLength (..),
                                                                  NetworkEraBound (..),
                                                                  NetworkEraParameters (..),
                                                                  NetworkEraSummary (..),
                                                                  PoolId (..),
+                                                                 ProtocolParams (..),
                                                                  Slot (..))
 import qualified Blockfrost.Client                              as Client
 import           Blockfrost.Client.Types                        (MonadBlockfrost)
@@ -70,13 +75,23 @@ import           Blockfrost.Types.Shared.ScriptHash             (ScriptHash (..)
 import           Blockfrost.Types.Shared.TxHash                 (TxHash (..))
 import           Cardano.Api                                    (HasTypeProxy (..))
 import qualified Cardano.Api.Ledger                             as C.Ledger
+import qualified Cardano.Api.Ledger                             as L
 import           Cardano.Api.SerialiseBech32                    (SerialiseAsBech32 (..))
 import           Cardano.Api.SerialiseUsing                     (UsingRawBytesHex (..))
 import           Cardano.Api.Shelley                            (Lovelace)
 import qualified Cardano.Api.Shelley                            as C
 import           Cardano.Binary                                 (DecoderError)
+import qualified Cardano.Ledger.Alonzo.PParams                  as L
+import qualified Cardano.Ledger.Babbage.PParams                 as L
+import qualified Cardano.Ledger.BaseTypes                       as BaseTypes
 import           Cardano.Ledger.Binary.Encoding                 (EncCBOR)
 import qualified Cardano.Ledger.Binary.Version                  as Version
+import           Cardano.Ledger.Conway.PParams                  (ConwayEraPParams (..))
+import qualified Cardano.Ledger.Conway.PParams                  as L
+import           Cardano.Ledger.Core                            (PParams,
+                                                                 downgradePParams)
+import qualified Cardano.Ledger.Plutus.CostModels               as CostModels
+import qualified Cardano.Ledger.Plutus.Language                 as Plutus.Language
 import           Cardano.Slotting.Slot                          (EpochSize (..))
 import           Cardano.Slotting.Time                          (RelativeTime (..),
                                                                  SystemStart (..),
@@ -90,17 +105,22 @@ import           Control.Monad.Except                           (MonadError (..)
 import           Control.Monad.Trans.Class                      (lift)
 import qualified Convex.CardanoApi.Lenses                       as L
 import           Convex.Utils                                   (inBabbage)
+import           Data.Bifunctor                                 (Bifunctor (..))
 import qualified Data.ByteString.Base16                         as Base16
 import qualified Data.ByteString.Lazy                           as BSL
 import           Data.Coerce                                    (Coercible,
                                                                  coerce)
-import           Data.Maybe                                     (fromMaybe)
+import           Data.Int                                       (Int64)
+import qualified Data.Map                                       as Map
+import           Data.Maybe                                     (fromMaybe,
+                                                                 mapMaybe)
 import           Data.Proxy                                     (Proxy (..))
 import           Data.String                                    (IsString (..))
 import qualified Data.Text                                      as Text
 import qualified Data.Text.Encoding                             as Text.Encoding
 import qualified Data.Time.Clock.POSIX                          as Clock
 import qualified GHC.IsList                                     as L
+import           GHC.Num.Natural                                (Natural)
 import qualified Money
 import qualified Ouroboros.Consensus.Block.Abstract             as Ouroboros
 import           Ouroboros.Consensus.HardFork.History.EraParams (EraParams (..),
@@ -108,6 +128,8 @@ import           Ouroboros.Consensus.HardFork.History.EraParams (EraParams (..),
 import           Ouroboros.Consensus.HardFork.History.Summary   (Bound (..),
                                                                  EraEnd (..),
                                                                  EraSummary (..))
+import           Ouroboros.Consensus.Shelley.Eras               (StandardConway)
+import qualified Ouroboros.Consensus.Shelley.Eras               as Ledger.Eras
 import qualified Streaming.Prelude                              as S
 import           Streaming.Prelude                              (Of, Stream)
 
@@ -133,6 +155,9 @@ hexTextToByteString :: C.SerialiseAsRawBytes a => Text.Text -> a
 hexTextToByteString t =
   let UsingRawBytesHex x = fromString (Text.unpack t)
   in x
+
+quantity :: Quantity -> Natural
+quantity (Quantity n) = fromInteger n
 
 poolId :: PoolId -> C.PoolId
 poolId = textToIsString
@@ -353,3 +378,119 @@ eraSummary NetworkEraSummary{_networkEraStart, _networkEraEnd, _networkEraParame
       , eraStart
       , eraParams
       }
+
+costModels :: CostModelsRaw -> L.CostModels
+costModels =
+  let unsafeMkCostModel :: Plutus.Language.Language -> [Int64] -> CostModels.CostModel
+      unsafeMkCostModel lang = either (error . show) id . CostModels.mkCostModel lang
+      mkModel (scriptType, cost) = do
+        l <- plutusLanguage scriptType
+        pure (l, unsafeMkCostModel l (fromInteger <$> cost))
+  in
+      CostModels.mkCostModels
+      . Map.fromList
+      . mapMaybe mkModel
+      . Map.toList
+      . unCostModelsRaw
+
+plutusLanguage :: ScriptType -> Maybe Plutus.Language.Language
+plutusLanguage = \case
+  PlutusV1 -> Just Plutus.Language.PlutusV1
+  PlutusV2 -> Just Plutus.Language.PlutusV2
+  PlutusV3 -> Just Plutus.Language.PlutusV3
+  Timelock -> Nothing
+
+{- Note [Protocol Parameter Conversion]
+
+The protocol parameters type varies from era to era.
+
+Blockfrost captures all possible protocol parameters in a single 'ProtocolParams'
+type. In the Conway era, a number of fields were added to the protocol
+parameters that appear as optional ('Maybe') in the 'ProtocolParams' but are
+in fact mandatory. Some examples are "min ref script cost per byte" and
+the drep / pool voting related parameters.
+
+When converting from 'ProtocolParams' to conway-era params, if one of those
+mandatory fields is missing, we use the default from the conway genesis file
+on mainnet.
+
+-}
+
+{-| Convert the 'ProtocolParams' to conway-era ledger params.
+See note [Protocol Parameter Conversion]
+-}
+protocolParametersConway :: ProtocolParams -> PParams StandardConway
+protocolParametersConway pp =
+  let votingThresholdFromRational = C.unsafeBoundedRational @BaseTypes.UnitInterval . fromMaybe 0.51 in
+  L.PParams $
+    L.emptyPParamsIdentity @StandardConway
+      & L.hkdMinFeeAL .~ L.Coin (_protocolParamsMinFeeA pp)
+      & L.hkdMinFeeBL .~ L.Coin (_protocolParamsMinFeeB pp)
+      & L.hkdMaxBBSizeL .~ fromInteger (_protocolParamsMaxBlockSize pp)
+      & L.hkdMaxTxSizeL .~ fromInteger (_protocolParamsMaxTxSize pp)
+      & L.hkdMaxBHSizeL .~ fromInteger (_protocolParamsMaxBlockHeaderSize  pp)
+      & L.hkdKeyDepositL .~ toLovelace (_protocolParamsKeyDeposit  pp)
+      & L.hkdPoolDepositL .~ toLovelace (_protocolParamsKeyDeposit  pp)
+      & L.hkdEMaxL .~ L.EpochInterval (fromInteger (_protocolParamsEMax pp))
+      & L.hkdNOptL .~ fromInteger (_protocolParamsNOpt  pp)
+      & L.hkdA0L .~ C.unsafeBoundedRational (_protocolParamsA0 pp) -- TODO: Is unsafeBoundedRational ok to use here?
+      & L.hkdRhoL .~ C.unsafeBoundedRational (_protocolParamsRho pp)
+      & L.hkdTauL .~ C.unsafeBoundedRational (_protocolParamsTau pp)
+      -- & L.hkdDL .~ _ (_protocolParamsDecentralisationParam pp)
+      -- & L.hkdExtraEntropyL .~
+      --     maybe BaseTypes.NeutralNonce (BaseTypes.Nonce . _) (_protocolParamsExtraEntropy pp)
+      -- & L.hkdExtraEntropyL .~ _ (_protocolParamsExtraEntropy pp)
+      -- & L.ppProtocolVersionL .~
+      --     L.ProtVer
+      --       { L.pvMajor = _ (_protocolParamsProtocolMajorVer  pp)
+      --       , L.pvMinor = _ (_protocolParamsProtocolMinorVer  pp)
+      --       }
+      & L.hkdMinPoolCostL .~ toLovelace (_protocolParamsMinPoolCost pp)
+      & L.hkdCostModelsL .~ costModels (_protocolParamsCostModelsRaw pp)
+      & L.hkdPricesL .~ L.Prices
+          { L.prMem   = C.unsafeBoundedRational (_protocolParamsPriceMem pp)
+          , L.prSteps = C.unsafeBoundedRational (_protocolParamsPriceStep  pp)
+          }
+      & L.hkdMaxTxExUnitsL .~ L.ExUnits
+          { L.exUnitsSteps = quantity (_protocolParamsMaxTxExSteps  pp)
+          , L.exUnitsMem = quantity (_protocolParamsMaxTxExMem pp)
+          }
+      & L.hkdMaxBlockExUnitsL .~ L.ExUnits
+          { L.exUnitsSteps = quantity (_protocolParamsMaxBlockExSteps pp)
+          , L.exUnitsMem = quantity (_protocolParamsMaxBlockExMem pp)
+          }
+      & L.hkdMaxValSizeL .~ quantity (_protocolParamsMaxValSize pp)
+      & L.hkdCollateralPercentageL .~ fromInteger (_protocolParamsCollateralPercent pp)
+      & L.hkdMaxCollateralInputsL .~ fromInteger (_protocolParamsMaxCollateralInputs pp)
+      & L.hkdCoinsPerUTxOByteL .~ L.CoinPerByte (toLovelace (_protocolParamsCoinsPerUtxoSize pp))
+
+      -- Conway-specific values
+      -- see note [Protocol Parameter Conversion]
+      & L.hkdPoolVotingThresholdsL .~
+          L.PoolVotingThresholds
+            { L.pvtMotionNoConfidence    = votingThresholdFromRational (_protocolParamsPvtMotionNoConfidence pp)
+            , L.pvtCommitteeNormal       = votingThresholdFromRational (_protocolParamsPvtCommitteeNormal pp)
+            , L.pvtCommitteeNoConfidence = votingThresholdFromRational (_protocolParamsPvtCommitteeNoConfidence pp)
+            , L.pvtHardForkInitiation    = votingThresholdFromRational (_protocolParamsPvtHardForkInitiation pp)
+            , L.pvtPPSecurityGroup       = votingThresholdFromRational (_protocolParamsPvtppSecurityGroup pp)
+            }
+      & L.hkdDRepVotingThresholdsL .~
+          L.DRepVotingThresholds
+            { L.dvtMotionNoConfidence    = votingThresholdFromRational (_protocolParamsDvtMotionNoConfidence pp)
+            , L.dvtCommitteeNormal       = votingThresholdFromRational (_protocolParamsDvtCommitteeNormal pp)
+            , L.dvtCommitteeNoConfidence = votingThresholdFromRational (_protocolParamsDvtCommitteeNoConfidence pp)
+            , L.dvtUpdateToConstitution  = votingThresholdFromRational (_protocolParamsDvtUpdateToConstitution pp)
+            , L.dvtHardForkInitiation    = votingThresholdFromRational (_protocolParamsDvtHardForkInitiation pp)
+            , L.dvtPPNetworkGroup        = votingThresholdFromRational (_protocolParamsDvtPPNetworkGroup pp)
+            , L.dvtPPEconomicGroup       = votingThresholdFromRational (_protocolParamsDvtPPEconomicGroup pp)
+            , L.dvtPPTechnicalGroup      = votingThresholdFromRational (_protocolParamsDvtPPTechnicalGroup pp)
+            , L.dvtPPGovGroup            = votingThresholdFromRational (_protocolParamsDvtPPGovGroup pp)
+            , L.dvtTreasuryWithdrawal    = votingThresholdFromRational (_protocolParamsDvtTreasuryWithdrawal pp)
+            }
+      & L.hkdCommitteeMinSizeL .~ maybe 7 quantity (_protocolParamsCommitteeMinSize pp)
+      & L.hkdCommitteeMaxTermLengthL .~ BaseTypes.EpochInterval (maybe 146 (fromIntegral . quantity) (_protocolParamsCommitteeMaxTermLength pp))
+      & L.hkdGovActionLifetimeL .~ BaseTypes.EpochInterval (maybe 6 (fromIntegral . quantity) (_protocolParamsGovActionLifetime pp))
+      & L.hkdGovActionDepositL .~ maybe 100_000_000_000 toLovelace (_protocolParamsGovActionDeposit pp)
+      & L.hkdDRepDepositL .~ maybe 500_000_000 toLovelace (_protocolParamsDrepDeposit pp)
+      & L.hkdDRepActivityL .~ BaseTypes.EpochInterval (maybe 20 (fromIntegral . quantity)  (_protocolParamsDrepActivity pp))
+      & L.hkdMinFeeRefScriptCostPerByteL .~ C.unsafeBoundedRational (fromMaybe 15 (_protocolParamsMinFeeRefScriptCostPerByte pp))

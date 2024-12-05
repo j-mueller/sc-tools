@@ -24,8 +24,10 @@ import           Cardano.Api                                  (ConwayEra,
                                                                TxId, TxIn (..),
                                                                serialiseToCBOR)
 import           Cardano.Api.NetworkId                        (fromNetworkMagic)
-import           Cardano.Api.Shelley                          (CtxUTxO, PoolId,
-                                                               TxOut, UTxO)
+import           Cardano.Api.Shelley                          (CtxUTxO,
+                                                               LedgerProtocolParameters (..),
+                                                               PoolId, TxOut,
+                                                               UTxO)
 import qualified Cardano.Api.Shelley                          as C
 import           Cardano.Slotting.Time                        (SlotLength,
                                                                SystemStart)
@@ -62,10 +64,10 @@ import           Ouroboros.Network.Magic                      (NetworkMagic (..)
 import qualified Streaming.Prelude                            as S
 
 -- TODO
--- protocol params
 -- stake addresses
 
 -- DONE
+-- protocol params
 -- slot no
 -- era history
 -- utxoByTxIn
@@ -76,17 +78,19 @@ import qualified Streaming.Prelude                            as S
 
 data BlockfrostState =
   BlockfrostState
-    { bfsGenesis    :: Maybe Genesis
-    , bfsEndOfEpoch :: Maybe UTCTime
+    { bfsGenesis        :: Maybe Genesis
+    , bfsEndOfEpoch     :: Maybe UTCTime
       -- ^ End of current epoch
-    , bfsStakePools :: Maybe (Set PoolId)
+    , bfsStakePools     :: Maybe (Set PoolId)
       -- ^ Stake pool IDs
-    , bfsTxInputs   :: Map TxIn (TxOut CtxUTxO ConwayEra)
+    , bfsTxInputs       :: Map TxIn (TxOut CtxUTxO ConwayEra)
       -- ^ Resolved tx inputs. We keep them around for a while because the
       --   lookup on blockfrost is quite expensive (in terms HTTP requests
       --   and CPU/memory usage)
 
-    , bfsEraHistory :: Maybe C.EraHistory
+    , bfsProtocolParams :: Maybe (LedgerProtocolParameters ConwayEra)
+
+    , bfsEraHistory     :: Maybe C.EraHistory
       -- ^ Era history
     }
 
@@ -95,6 +99,7 @@ makeLensesFor
   , ("bfsEndOfEpoch", "endOfEpoch")
   , ("bfsStakePools", "stakePools")
   , ("bfsTxInputs", "txInputs")
+  , ("bfsProtocolParams", "protocolParams")
   , ("bfsEraHistory", "eraHistory")
   ]
   ''BlockfrostState
@@ -115,6 +120,7 @@ checkCurrentEpoch = do
 
       -- reset everything
       stakePools .= Nothing
+      protocolParams .= Nothing
 
       -- the (txIn -> txOut) mapping does not change at the epoch boundary.
       -- So there is no risk of returning stale / incorrect data.
@@ -128,6 +134,7 @@ emptyBlockfrostState =
     , bfsEndOfEpoch = Nothing
     , bfsStakePools = Nothing
     , bfsTxInputs   = Map.empty
+    , bfsProtocolParams = Nothing
     , bfsEraHistory = Nothing
     }
 
@@ -204,3 +211,11 @@ getSlotNo = do
   let utctime     = either (error . (<>) "getSlotNo: slotToUtcTime failed " . show) id (slotToUtcTime eraHistory systemStart currentSlot)
       l           = either (error . (<>) "getSlotNo: slotToSlotLength failed " . show) id (Qry.interpretQuery interpreter $ Qry.slotToSlotLength currentSlot)
   pure (currentSlot, l, utctime)
+
+{-| Get the current protocol parameters
+-}
+getProtocolParams :: (MonadBlockfrost m, MonadState BlockfrostState m) => m (LedgerProtocolParameters ConwayEra)
+getProtocolParams = do
+  checkCurrentEpoch
+  getOrRetrieve protocolParams $
+    LedgerProtocolParameters . Types.protocolParametersConway <$> Client.getLatestEpochProtocolParams
