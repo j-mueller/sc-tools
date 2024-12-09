@@ -1,13 +1,27 @@
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE NamedFieldPuns   #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE TemplateHaskell  #-}
-{-# LANGUAGE TupleSections    #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeApplications  #-}
 {-| blockfrost-based implementation of MonadBlockchain
 -}
 module Convex.Blockfrost.MonadBlockchain(
-  BlockfrostState(..)
+  BlockfrostState(..),
+  emptyBlockfrostState,
+
+  -- * 'MonadBlockchain' related functions
+  sendTxBlockfrost,
+  getUtxoByTxIn,
+  getProtocolParams,
+  getStakeAddresses,
+  getStakePools,
+  getSystemStart,
+  getEraHistory,
+  getSlotNo,
+  getNetworkId
 ) where
 
 import           Blockfrost.Client                            (AccountInfo (..),
@@ -27,9 +41,8 @@ import           Cardano.Api                                  (ConwayEra,
 import           Cardano.Api.NetworkId                        (fromNetworkMagic)
 import           Cardano.Api.Shelley                          (CtxUTxO,
                                                                LedgerProtocolParameters (..),
-                                                               PoolId,
-                                                               StakeCredential,
-                                                               TxOut, UTxO)
+                                                               PoolId, TxOut,
+                                                               UTxO)
 import qualified Cardano.Api.Shelley                          as C
 import           Cardano.Slotting.Time                        (SlotLength,
                                                                SystemStart)
@@ -49,10 +62,10 @@ import           Data.Bifunctor                               (Bifunctor (second
 import qualified Data.ByteString.Lazy                         as BSL
 import           Data.Map                                     (Map)
 import qualified Data.Map                                     as Map
-import           Data.Maybe                                   (fromJust)
+import           Data.Maybe                                   (fromJust,
+                                                               mapMaybe)
 import           Data.Set                                     (Set)
 import qualified Data.Set                                     as Set
-import           Data.SOP.NonEmpty                            (NonEmpty (..))
 import qualified Data.SOP.NonEmpty                            as NonEmpty
 import           Data.Time.Clock                              (UTCTime,
                                                                getCurrentTime)
@@ -64,19 +77,6 @@ import qualified Ouroboros.Consensus.HardFork.History.Qry     as Qry
 import qualified Ouroboros.Consensus.HardFork.History.Summary as Summary
 import           Ouroboros.Network.Magic                      (NetworkMagic (..))
 import qualified Streaming.Prelude                            as S
-
--- TODO
--- stake addresses
-
--- DONE
--- protocol params
--- slot no
--- era history
--- utxoByTxIn
--- send Tx
--- query network id
--- stake pools
--- system start
 
 data BlockfrostState =
   BlockfrostState
@@ -92,7 +92,7 @@ data BlockfrostState =
 
     , bfsProtocolParams :: Maybe (LedgerProtocolParameters ConwayEra)
 
-    , bfsStakeRewards   :: Map StakeCredential (C.Quantity, Maybe PoolId)
+    , bfsStakeRewards   :: Map C.StakeAddress (C.Quantity, Maybe PoolId)
 
     , bfsEraHistory     :: Maybe C.EraHistory
       -- ^ Era history
@@ -142,6 +142,7 @@ emptyBlockfrostState =
     , bfsTxInputs   = Map.empty
     , bfsProtocolParams = Nothing
     , bfsEraHistory = Nothing
+    , bfsStakeRewards = Map.empty
     }
 
 getGenesis :: (MonadBlockfrost m, MonadState BlockfrostState m) => m Genesis
@@ -211,10 +212,10 @@ of the current slot.
 -}
 getSlotNo :: (MonadBlockfrost m, MonadState BlockfrostState m) => m (C.SlotNo, SlotLength, UTCTime)
 getSlotNo = do
-  (eraHistory@(C.EraHistory interpreter), systemStart) <- (,) <$> getEraHistory <*> getSystemStart
+  (eraHistory_@(C.EraHistory interpreter), systemStart) <- (,) <$> getEraHistory <*> getSystemStart
   Block{_blockSlot} <- Client.getLatestBlock
   let currentSlot = maybe (error "getSlotNo: Expected slot") Types.slot _blockSlot
-  let utctime     = either (error . (<>) "getSlotNo: slotToUtcTime failed " . show) id (slotToUtcTime eraHistory systemStart currentSlot)
+  let utctime     = either (error . (<>) "getSlotNo: slotToUtcTime failed " . show) id (slotToUtcTime eraHistory_ systemStart currentSlot)
       l           = either (error . (<>) "getSlotNo: slotToSlotLength failed " . show) id (Qry.interpretQuery interpreter $ Qry.slotToSlotLength currentSlot)
   pure (currentSlot, l, utctime)
 
@@ -226,10 +227,22 @@ getProtocolParams = do
   getOrRetrieve protocolParams $
     LedgerProtocolParameters . Types.protocolParametersConway <$> Client.getLatestEpochProtocolParams
 
--- getStakeAddresses :: (MonadBlockfrost m, MonadState BlockfrostState m) => Set C.StakeCredential -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
--- getStakeAddresses = undefined
+{-| Look up the stake rewards and delegation targets
+-}
+getStakeAddresses :: (MonadBlockfrost m, MonadState BlockfrostState m) => Set C.StakeCredential -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
+getStakeAddresses credentials = do
+  entries <-
+    traverse (\cred -> C.StakeAddress <$> fmap C.toShelleyNetwork getNetworkId <*> pure (C.toShelleyStakeCredential cred)) (Set.toList credentials)
+    >>= traverse (\r -> (r,) <$> getStakeRewardsSingle r)
+  pure
+    ( Map.fromList $ fmap (second fst) entries
+    , Map.fromList $ mapMaybe (traverse snd) entries)
 
-getStakeRewardsSingle :: (MonadBlockfrost m, MonadState BlockfrostState m) => C.StakeCredential -> m (C.Quantity, Maybe PoolId)
-getStakeRewardsSingle cred = getOrRetrieve (stakeRewards . at cred) $ do
-  AccountInfo{_accountInfoPoolId, _accountInfoWithdrawableAmount} <- Client.getAccount (_ cred)
-  undefined
+getStakeRewardsSingle :: (MonadBlockfrost m, MonadState BlockfrostState m) => C.StakeAddress -> m (C.Quantity, Maybe PoolId)
+getStakeRewardsSingle cred = getOrRetrieve (stakeRewards . at cred) (stakeRewardsForAddress cred)
+
+stakeRewardsForAddress :: MonadBlockfrost m => C.StakeAddress -> m (C.Quantity, Maybe PoolId)
+stakeRewardsForAddress addr = do
+  AccountInfo{_accountInfoPoolId, _accountInfoControlledAmount} <- Client.getAccount (Types.fromStakeAddress addr)
+  pure ( C.lovelaceToQuantity $ Types.toLovelace _accountInfoControlledAmount
+       , fmap Types.poolId _accountInfoPoolId)

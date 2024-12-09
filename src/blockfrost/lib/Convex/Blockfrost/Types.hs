@@ -33,6 +33,7 @@ module Convex.Blockfrost.Types(
   decodeTransactionCBOR,
   -- * Payment credential
   fromPaymentCredential,
+  fromStakeAddress,
   -- * Genesis related
   systemStart,
   -- * Misc.
@@ -86,10 +87,8 @@ import qualified Cardano.Ledger.Babbage.PParams                 as L
 import qualified Cardano.Ledger.BaseTypes                       as BaseTypes
 import           Cardano.Ledger.Binary.Encoding                 (EncCBOR)
 import qualified Cardano.Ledger.Binary.Version                  as Version
-import           Cardano.Ledger.Conway.PParams                  (ConwayEraPParams (..))
 import qualified Cardano.Ledger.Conway.PParams                  as L
-import           Cardano.Ledger.Core                            (PParams,
-                                                                 downgradePParams)
+import           Cardano.Ledger.Core                            (PParams)
 import qualified Cardano.Ledger.Plutus.CostModels               as CostModels
 import qualified Cardano.Ledger.Plutus.Language                 as Plutus.Language
 import           Cardano.Slotting.Slot                          (EpochSize (..))
@@ -105,7 +104,6 @@ import           Control.Monad.Except                           (MonadError (..)
 import           Control.Monad.Trans.Class                      (lift)
 import qualified Convex.CardanoApi.Lenses                       as L
 import           Convex.Utils                                   (inBabbage)
-import           Data.Bifunctor                                 (Bifunctor (..))
 import qualified Data.ByteString.Base16                         as Base16
 import qualified Data.ByteString.Lazy                           as BSL
 import           Data.Coerce                                    (Coercible,
@@ -129,7 +127,6 @@ import           Ouroboros.Consensus.HardFork.History.Summary   (Bound (..),
                                                                  EraEnd (..),
                                                                  EraSummary (..))
 import           Ouroboros.Consensus.Shelley.Eras               (StandardConway)
-import qualified Ouroboros.Consensus.Shelley.Eras               as Ledger.Eras
 import qualified Streaming.Prelude                              as S
 import           Streaming.Prelude                              (Of, Stream)
 
@@ -159,8 +156,10 @@ hexTextToByteString t =
 quantity :: Quantity -> Natural
 quantity (Quantity n) = fromInteger n
 
+-- pool1axzm26vduyuxgw0x9ddh4vkvn7q5hyd558l0t9c08p556lf2zaj
 poolId :: PoolId -> C.PoolId
-poolId = textToIsString
+poolId (PoolId text) =
+  either (error . show) id $ C.deserialiseFromBech32 (proxyToAsType $ Proxy @(C.Hash C.StakePoolKey)) text
 
 toAssetId :: Amount -> (C.AssetId, C.Quantity)
 toAssetId = \case
@@ -184,28 +183,52 @@ toAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
 --       See https://github.com/blockfrost/blockfrost-haskell/issues/68
 fromPaymentCredential :: C.PaymentCredential -> Address
 fromPaymentCredential = \case
-  C.PaymentCredentialByKey key       -> Address $ C.serialiseToBech32 $ CustomBech32 key
-  C.PaymentCredentialByScript script -> Address $ C.serialiseToBech32 $ CustomBech32 script
+  C.PaymentCredentialByKey key       -> Address $ C.serialiseToBech32 $ CustomBech32Payment key
+  C.PaymentCredentialByScript script -> Address $ C.serialiseToBech32 $ CustomBech32Payment script
 
-newtype CustomBech32 a = CustomBech32 a
 
-instance C.HasTypeProxy a => C.HasTypeProxy (CustomBech32 a) where
-  newtype AsType (CustomBech32 a) = CustomBech32Type (AsType a)
-  proxyToAsType _proxy = CustomBech32Type (proxyToAsType Proxy)
+newtype CustomBech32Payment a = CustomBech32Payment a
 
-instance C.SerialiseAsRawBytes a => C.SerialiseAsRawBytes (CustomBech32 a) where
-  serialiseToRawBytes (CustomBech32 a) = C.serialiseToRawBytes a
-  deserialiseFromRawBytes _asType = fmap CustomBech32 . C.deserialiseFromRawBytes (proxyToAsType Proxy)
+instance C.HasTypeProxy a => C.HasTypeProxy (CustomBech32Payment a) where
+  newtype AsType (CustomBech32Payment a) = CustomBech32PaymentType (AsType a)
+  proxyToAsType _proxy = CustomBech32PaymentType (proxyToAsType Proxy)
+
+instance C.SerialiseAsRawBytes a => C.SerialiseAsRawBytes (CustomBech32Payment a) where
+  serialiseToRawBytes (CustomBech32Payment a) = C.serialiseToRawBytes a
+  deserialiseFromRawBytes _asType = fmap CustomBech32Payment . C.deserialiseFromRawBytes (proxyToAsType Proxy)
 
 -- The following two instances of @SerialiseAsBech32@ are used for generating payment credential queries that blockfrost understands
 -- See: https://github.com/blockfrost/blockfrost-utils/blob/master/src/validation.ts#L109-L128
-instance C.SerialiseAsBech32 (CustomBech32 (C.Hash C.PaymentKey)) where
+instance C.SerialiseAsBech32 (CustomBech32Payment (C.Hash C.PaymentKey)) where
   bech32PrefixFor _ = "addr_vkh"
   bech32PrefixesPermitted _ = ["addr_vkh"]
 
-instance C.SerialiseAsBech32 (CustomBech32 C.ScriptHash) where
+instance C.SerialiseAsBech32 (CustomBech32Payment C.ScriptHash) where
   bech32PrefixFor _ = "script"
   bech32PrefixesPermitted _ = ["script"]
+
+fromStakeAddress :: C.StakeAddress -> Address
+fromStakeAddress = Address . C.serialiseToBech32
+
+newtype CustomBech32Stake a = CustomBech32Stake a
+
+instance C.HasTypeProxy a => C.HasTypeProxy (CustomBech32Stake a) where
+  newtype AsType (CustomBech32Stake a) = CustomBech32StakeType (AsType a)
+  proxyToAsType _proxy = CustomBech32StakeType (proxyToAsType Proxy)
+
+instance C.SerialiseAsRawBytes a => C.SerialiseAsRawBytes (CustomBech32Stake a) where
+  serialiseToRawBytes (CustomBech32Stake a) = C.serialiseToRawBytes a
+  deserialiseFromRawBytes _asType = fmap CustomBech32Stake . C.deserialiseFromRawBytes (proxyToAsType Proxy)
+
+-- The following two instances of @SerialiseAsBech32@ are used for generating payment credential queries that blockfrost understands
+-- See: https://github.com/blockfrost/blockfrost-utils/blob/master/src/validation.ts#L109-L128
+instance C.SerialiseAsBech32 (CustomBech32Stake (C.Hash C.StakeKey)) where
+  bech32PrefixFor _ = "stake"
+  bech32PrefixesPermitted _ = ["stake"]
+
+instance C.SerialiseAsBech32 (CustomBech32Stake C.ScriptHash) where
+  bech32PrefixFor _ = "stake"
+  bech32PrefixesPermitted _ = ["stake"]
 
 toStakeAddress :: Address -> Maybe C.StakeAddress
 toStakeAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
