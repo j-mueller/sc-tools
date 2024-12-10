@@ -10,6 +10,7 @@
 -}
 module Convex.Blockfrost(
   BlockfrostT(..),
+  evalBlockfrostT,
   runBlockfrostT,
   -- * Utility functions
   streamUtxos
@@ -25,7 +26,7 @@ import           Control.Monad.Except              (liftEither, runExceptT)
 import           Control.Monad.IO.Class            (MonadIO (..))
 import           Control.Monad.State.Strict        (StateT)
 import qualified Control.Monad.State.Strict        as State
-import           Convex.Blockfrost.MonadBlockchain (BlockfrostState)
+import           Convex.Blockfrost.MonadBlockchain (BlockfrostCache)
 import qualified Convex.Blockfrost.MonadBlockchain as MonadBlockchain
 import           Convex.Blockfrost.Orphans         ()
 import qualified Convex.Blockfrost.Types           as Types
@@ -40,7 +41,7 @@ import           Streaming.Prelude                 (Of, Stream)
 {-| Monad transformer that implements the @MonadBlockchain@
 class using blockfrost's API
 -}
-newtype BlockfrostT m a = BlockfrostT{ unBlockfrostT :: StateT BlockfrostState (BlockfrostClientT m) a }
+newtype BlockfrostT m a = BlockfrostT{ unBlockfrostT :: StateT BlockfrostCache (BlockfrostClientT m) a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, Types.MonadBlockfrost)
 
 -- TODO: More instances (need to be defined on BlockfrostClientT')
@@ -82,8 +83,17 @@ streamUtxos a =
 
 {-| Run the 'BlockfrostT' transformer using the given blockfrost 'Project'
 -}
-runBlockfrostT :: MonadIO m => Project -> BlockfrostT m a -> m (Either BlockfrostError a)
-runBlockfrostT proj =
+evalBlockfrostT :: MonadIO m => Project -> BlockfrostT m a -> m (Either BlockfrostError a)
+evalBlockfrostT proj =
   Types.runBlockfrostClientT proj
-  . flip State.evalStateT MonadBlockchain.emptyBlockfrostState
+  . flip State.evalStateT MonadBlockchain.emptyBlockfrostCache
+  . unBlockfrostT
+
+{-| Run the 'BlockfrostT' transformer using the given blockfrost 'Project' and the 'BlockfrostCache'
+Returns the new blockfrost state.
+-}
+runBlockfrostT :: MonadIO m => BlockfrostCache -> Project -> BlockfrostT m a -> m (Either BlockfrostError (a, BlockfrostCache))
+runBlockfrostT state proj =
+  Types.runBlockfrostClientT proj
+  . flip State.runStateT state
   . unBlockfrostT

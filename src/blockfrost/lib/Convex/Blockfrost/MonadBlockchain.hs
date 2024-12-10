@@ -9,8 +9,8 @@
 {-| blockfrost-based implementation of MonadBlockchain
 -}
 module Convex.Blockfrost.MonadBlockchain(
-  BlockfrostState(..),
-  emptyBlockfrostState,
+  BlockfrostCache(..),
+  emptyBlockfrostCache,
 
   -- * 'MonadBlockchain' related functions
   sendTxBlockfrost,
@@ -78,8 +78,10 @@ import qualified Ouroboros.Consensus.HardFork.History.Summary as Summary
 import           Ouroboros.Network.Magic                      (NetworkMagic (..))
 import qualified Streaming.Prelude                            as S
 
-data BlockfrostState =
-  BlockfrostState
+{-| Local cache of responses from Blockfrost API
+-}
+data BlockfrostCache =
+  BlockfrostCache
     { bfsGenesis        :: Maybe Genesis
     , bfsEndOfEpoch     :: Maybe UTCTime
       -- ^ End of current epoch
@@ -107,12 +109,12 @@ makeLensesFor
   , ("bfsStakeRewards", "stakeRewards")
   , ("bfsEraHistory", "eraHistory")
   ]
-  ''BlockfrostState
+  ''BlockfrostCache
 
 {-| Check whether the next epoch has begun, and expire
     all short-lived data if necessary.
 -}
-checkCurrentEpoch :: (MonadBlockfrost m, MonadState BlockfrostState m) => m ()
+checkCurrentEpoch :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m ()
 checkCurrentEpoch = do
   epochEnd <- use endOfEpoch
   now <- liftIO getCurrentTime
@@ -133,9 +135,10 @@ checkCurrentEpoch = do
       -- But we still clear the txInputs map here to avoid memory leaks.
       txInputs   .= mempty
 
-emptyBlockfrostState :: BlockfrostState
-emptyBlockfrostState =
-  BlockfrostState
+-- | Initial (empty) cache
+emptyBlockfrostCache :: BlockfrostCache
+emptyBlockfrostCache =
+  BlockfrostCache
     { bfsGenesis    = Nothing
     , bfsEndOfEpoch = Nothing
     , bfsStakePools = Nothing
@@ -145,7 +148,7 @@ emptyBlockfrostState =
     , bfsStakeRewards = Map.empty
     }
 
-getGenesis :: (MonadBlockfrost m, MonadState BlockfrostState m) => m Genesis
+getGenesis :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m Genesis
 getGenesis = getOrRetrieve genesis Client.getLedgerGenesis
 
 {-| Get a field from the state, using the action to load the value
@@ -159,13 +162,13 @@ getOrRetrieve lens action = use lens >>= \case
     lens ?= k
     pure k
 
-getSystemStart :: (MonadBlockfrost m, MonadState BlockfrostState m) => m SystemStart
+getSystemStart :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m SystemStart
 getSystemStart = Types.systemStart <$> getGenesis
 
-getNetworkId :: (MonadBlockfrost m, MonadState BlockfrostState m) => m NetworkId
+getNetworkId :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m NetworkId
 getNetworkId = fromNetworkMagic . NetworkMagic . fromIntegral . Genesis._genesisNetworkMagic <$> getGenesis
 
-getStakePools :: (MonadBlockfrost m, MonadState BlockfrostState m) => m (Set PoolId)
+getStakePools :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m (Set PoolId)
 getStakePools = do
   checkCurrentEpoch
   getOrRetrieve stakePools $
@@ -180,7 +183,7 @@ sendTxBlockfrost =
 {-| Get a single 'TxIn'. If it is not in the cache, download the entire transaction
     and add all of its UTxOs to the cache.
 -}
-resolveTxIn :: (MonadBlockfrost m, MonadState BlockfrostState m) => TxIn -> m (TxOut CtxUTxO ConwayEra)
+resolveTxIn :: (MonadBlockfrost m, MonadState BlockfrostCache m) => TxIn -> m (TxOut CtxUTxO ConwayEra)
 resolveTxIn txI@(TxIn txId (C.TxIx txIx)) = getOrRetrieve (txInputs . at txI) $ do
   utxos <- runExceptT (Client.getTxCBOR (Types.fromTxHash txId) >>= Types.decodeTransactionCBOR)
           -- FIXME: Error handling
@@ -190,13 +193,13 @@ resolveTxIn txI@(TxIn txId (C.TxIx txIx)) = getOrRetrieve (txInputs . at txI) $ 
 
 {-| Resolve the given tx inputs
 -}
-getUtxoByTxIn :: (MonadBlockfrost m, MonadState BlockfrostState m) => Set TxIn -> m (UTxO ConwayEra)
+getUtxoByTxIn :: (MonadBlockfrost m, MonadState BlockfrostCache m) => Set TxIn -> m (UTxO ConwayEra)
 getUtxoByTxIn txIns = fmap (C.UTxO . Map.fromList) $ for (Set.toList txIns) $ \txIn ->
   (txIn,) <$> resolveTxIn txIn
 
 {-| Get the 'EraHistory' for slot time computations
 -}
-getEraHistory :: (MonadBlockfrost m, MonadState BlockfrostState m) => m C.EraHistory
+getEraHistory :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m C.EraHistory
 getEraHistory = getOrRetrieve eraHistory $ do
   networkEras <- Client.getNetworkEras
   let summaries :: [Summary.EraSummary] = fmap Types.eraSummary networkEras
@@ -210,7 +213,7 @@ getEraHistory = getOrRetrieve eraHistory $ do
 {-| Get the current slot number, slot length and UTC time of the start
 of the current slot.
 -}
-getSlotNo :: (MonadBlockfrost m, MonadState BlockfrostState m) => m (C.SlotNo, SlotLength, UTCTime)
+getSlotNo :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m (C.SlotNo, SlotLength, UTCTime)
 getSlotNo = do
   (eraHistory_@(C.EraHistory interpreter), systemStart) <- (,) <$> getEraHistory <*> getSystemStart
   Block{_blockSlot} <- Client.getLatestBlock
@@ -221,7 +224,7 @@ getSlotNo = do
 
 {-| Get the current protocol parameters
 -}
-getProtocolParams :: (MonadBlockfrost m, MonadState BlockfrostState m) => m (LedgerProtocolParameters ConwayEra)
+getProtocolParams :: (MonadBlockfrost m, MonadState BlockfrostCache m) => m (LedgerProtocolParameters ConwayEra)
 getProtocolParams = do
   checkCurrentEpoch
   getOrRetrieve protocolParams $
@@ -229,7 +232,7 @@ getProtocolParams = do
 
 {-| Look up the stake rewards and delegation targets
 -}
-getStakeAddresses :: (MonadBlockfrost m, MonadState BlockfrostState m) => Set C.StakeCredential -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
+getStakeAddresses :: (MonadBlockfrost m, MonadState BlockfrostCache m) => Set C.StakeCredential -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
 getStakeAddresses credentials = do
   entries <-
     traverse (\cred -> C.StakeAddress <$> fmap C.toShelleyNetwork getNetworkId <*> pure (C.toShelleyStakeCredential cred)) (Set.toList credentials)
@@ -238,11 +241,12 @@ getStakeAddresses credentials = do
     ( Map.fromList $ fmap (second fst) entries
     , Map.fromList $ mapMaybe (traverse snd) entries)
 
-getStakeRewardsSingle :: (MonadBlockfrost m, MonadState BlockfrostState m) => C.StakeAddress -> m (C.Quantity, Maybe PoolId)
+getStakeRewardsSingle :: (MonadBlockfrost m, MonadState BlockfrostCache m) => C.StakeAddress -> m (C.Quantity, Maybe PoolId)
 getStakeRewardsSingle cred = getOrRetrieve (stakeRewards . at cred) (stakeRewardsForAddress cred)
 
 stakeRewardsForAddress :: MonadBlockfrost m => C.StakeAddress -> m (C.Quantity, Maybe PoolId)
 stakeRewardsForAddress addr = do
   AccountInfo{_accountInfoPoolId, _accountInfoControlledAmount} <- Client.getAccount (Types.fromStakeAddress addr)
   pure ( C.lovelaceToQuantity $ Types.toLovelace _accountInfoControlledAmount
-       , fmap Types.poolId _accountInfoPoolId)
+       , fmap Types.poolId _accountInfoPoolId
+       )

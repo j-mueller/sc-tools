@@ -459,15 +459,6 @@ protocolParametersConway pp =
       & L.hkdA0L .~ C.unsafeBoundedRational (_protocolParamsA0 pp) -- TODO: Is unsafeBoundedRational ok to use here?
       & L.hkdRhoL .~ C.unsafeBoundedRational (_protocolParamsRho pp)
       & L.hkdTauL .~ C.unsafeBoundedRational (_protocolParamsTau pp)
-      -- & L.hkdDL .~ _ (_protocolParamsDecentralisationParam pp)
-      -- & L.hkdExtraEntropyL .~
-      --     maybe BaseTypes.NeutralNonce (BaseTypes.Nonce . _) (_protocolParamsExtraEntropy pp)
-      -- & L.hkdExtraEntropyL .~ _ (_protocolParamsExtraEntropy pp)
-      -- & L.ppProtocolVersionL .~
-      --     L.ProtVer
-      --       { L.pvMajor = _ (_protocolParamsProtocolMajorVer  pp)
-      --       , L.pvMinor = _ (_protocolParamsProtocolMinorVer  pp)
-      --       }
       & L.hkdMinPoolCostL .~ toLovelace (_protocolParamsMinPoolCost pp)
       & L.hkdCostModelsL .~ costModels (_protocolParamsCostModelsRaw pp)
       & L.hkdPricesL .~ L.Prices
