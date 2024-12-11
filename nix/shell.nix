@@ -23,9 +23,8 @@ in
     #       To maintain a the same hooks for both nix and non-nix environment you should update the `.pre-commit-config.yaml.nonix`
     #       (`cp .pre-commit-config.yaml .pre-commit-config.yaml.nonix`).
     #       This step is necessary because `.pre-commit-config.yaml` is ignored by git.
-    # TODO To enable in a future PR
-    # cabal-fmt.enable = true;
-    stylish-haskell.enable = true;
+    cabal-fmt.enable = true;
+    fourmolu.enable = true;
     # nixpkgs-fmt.enable = true;
   };
 }

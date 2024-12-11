@@ -226,7 +226,10 @@ addTxBody :: C.Tx C.ConwayEra -> GraphBuilder ()
 addTxBody transaction = do
   let i = C.getTxId $ C.getTxBody transaction
       (C.Tx (C.TxBody content) _witnesses) = transaction
-      C.TxBodyContent{C.txWithdrawals=C.TxWithdrawals _ withdrawals} = content
+      withdrawals =
+        case C.txWithdrawals content of
+          C.TxWithdrawalsNone -> []
+          C.TxWithdrawals _ w -> w
       Coin n = view L.txFee content
   let labels =
         [ A.FieldLabel "Transaction"

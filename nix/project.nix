@@ -4,12 +4,28 @@ let
   sha256map = {
   };
 
+  cardano-node = inputs.cardano-node.packages.cardano-node;
+  cardano-cli = inputs.cardano-cli.legacyPackages.cardano-cli;
+
   modules = [
     ({ config, ... }: {
       packages = {
-        # TODO
-        # convex-base.ghcOptions = [ "-Werror" ];
-        # convex-coin-selection.ghcOptions = [ "-Werror" ];
+        # TODO Fails because `cardano-cli`, and `cardano-node` is not on PATH
+        # when running tests with Nix. I don't know how to include packages as
+        # inputs when running tests (doesn't seem supported by Haskell.nix). The
+        # alternative would be to allow env variables in complement to absolute
+        # paths, and use preCheck to set the env variables.
+        convex-devnet.doCheck = false;
+
+        # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
+        convex-base.ghcOptions = [ "-Werror" ];
+        convex-coin-selection.ghcOptions = [ "-Werror" ];
+        convex-blockfrost.ghcOptions = [ "-Werror" ];
+        convex-devnet.ghcOptions = [ "-Werror" ];
+        convex-mockchain.ghcOptions = [ "-Werror" ];
+        convex-node-client.ghcOptions = [ "-Werror" ];
+        convex-optics.ghcOptions = [ "-Werror" ];
+        convex-wallet.ghcOptions = [ "-Werror" ];
       };
     })
   ];
