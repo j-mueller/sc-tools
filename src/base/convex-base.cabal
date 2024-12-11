@@ -61,7 +61,7 @@ library
     build-depends:
       convex-optics,
 
-      cardano-api == 10.1.0.0,
+      cardano-api == 10.4.0.0,
       cardano-ledger-core,
       cardano-crypto-wrapper,
 
