@@ -1,10 +1,10 @@
-{-# LANGUAGE GADTs            #-}
-{-# LANGUAGE LambdaCase       #-}
-{-# LANGUAGE NamedFieldPuns   #-}
-{-# LANGUAGE TupleSections    #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
-{-| Translating between cardano-api/cardano-ledger and plutus V1 representations
--}
+
+-- | Translating between cardano-api/cardano-ledger and plutus V1 representations
 module Convex.PlutusLedger.V1 (
   -- * Script hashes
   transScriptHash,
@@ -15,10 +15,8 @@ module Convex.PlutusLedger.V1 (
   -- * Key hashes
   transPubKeyHash,
   unTransPubKeyHash,
-
   transStakeKeyHash,
   unTransStakeKeyHash,
-
   transStakePoolKeyHash,
   unTransStakePoolKeyHash,
 
@@ -26,26 +24,20 @@ module Convex.PlutusLedger.V1 (
   transAssetName,
   toMaryAssetName,
   unTransAssetName,
-
   transPolicyId,
   unTransPolicyId,
-
   transAssetId,
   unTransAssetId,
 
   -- * Credentials and addresses
   transCredential,
   unTransCredential,
-
   transStakeCredential,
   unTransStakeCredential,
-
   transStakeAddressReference,
   unTransStakeAddressReference,
-
   unTransAddressInEra,
   transAddressInEra,
-
   unTransAddressShelley,
   transAddressShelley,
 
@@ -59,33 +51,31 @@ module Convex.PlutusLedger.V1 (
 
   -- * Value
   unTransTxOutValue,
-
   transValue,
   unTransValue,
 
   -- * Scripts
   unTransPlutusScript,
-
 ) where
 
-import qualified Cardano.Api.Ledger         as Ledger
-import qualified Cardano.Api.Shelley        as C
-import           Cardano.Ledger.BaseTypes   (CertIx (..), TxIx (..))
-import           Cardano.Ledger.Credential  (Ptr (..))
-import qualified Cardano.Ledger.Mary.Value  as Mary (AssetName (..))
-import qualified Codec.Serialise            as Codec
-import qualified Data.ByteString.Lazy       as BSL
-import           Data.ByteString.Short      (fromShort)
-import qualified Data.ByteString.Short      as Short
-import           Data.Functor               ((<&>))
-import           Data.Time.Clock.POSIX      (POSIXTime)
-import           GHC.IsList                 (IsList (fromList, toList))
-import           PlutusLedgerApi.Common     (SerialisedScript)
-import qualified PlutusLedgerApi.V1         as PV1
-import qualified PlutusLedgerApi.V1.Scripts as P
-import qualified PlutusLedgerApi.V1.Value   as Value
-import qualified PlutusTx.AssocMap          as Map
-import qualified PlutusTx.Prelude           as PlutusTx
+import Cardano.Api.Ledger qualified as Ledger
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.BaseTypes (CertIx (..), TxIx (..))
+import Cardano.Ledger.Credential (Ptr (..))
+import Cardano.Ledger.Mary.Value qualified as Mary (AssetName (..))
+import Codec.Serialise qualified as Codec
+import Data.ByteString.Lazy qualified as BSL
+import Data.ByteString.Short (fromShort)
+import Data.ByteString.Short qualified as Short
+import Data.Functor ((<&>))
+import Data.Time.Clock.POSIX (POSIXTime)
+import GHC.IsList (IsList (fromList, toList))
+import PlutusLedgerApi.Common (SerialisedScript)
+import PlutusLedgerApi.V1 qualified as PV1
+import PlutusLedgerApi.V1.Scripts qualified as P
+import PlutusLedgerApi.V1.Value qualified as Value
+import PlutusTx.AssocMap qualified as Map
+import PlutusTx.Prelude qualified as PlutusTx
 
 -- | Translate a script hash from @cardano-api@ to @plutus@
 transScriptHash :: C.ScriptHash -> PV1.ScriptHash
@@ -115,26 +105,26 @@ unTransPolicyId (PV1.CurrencySymbol bs) =
 transAssetId :: C.AssetId -> Value.AssetClass
 transAssetId C.AdaAssetId = Value.assetClass PV1.adaSymbol PV1.adaToken
 transAssetId (C.AssetId policyId assetName) =
-    Value.assetClass
-        (transPolicyId policyId)
-        (transAssetName $ toMaryAssetName assetName)
+  Value.assetClass
+    (transPolicyId policyId)
+    (transAssetName $ toMaryAssetName assetName)
 
 toMaryAssetName :: C.AssetName -> Mary.AssetName
 toMaryAssetName (C.AssetName n) = Mary.AssetName $ Short.toShort n
 
 unTransAssetId :: Value.AssetClass -> Either C.SerialiseAsRawBytesError C.AssetId
 unTransAssetId (Value.AssetClass (currencySymbol, tokenName))
-    | currencySymbol == PV1.adaSymbol && tokenName == PV1.adaToken =
-        pure C.AdaAssetId
-    | otherwise =
-        C.AssetId
-            <$> unTransPolicyId currencySymbol
-            <*> pure (unTransAssetName tokenName)
+  | currencySymbol == PV1.adaSymbol && tokenName == PV1.adaToken =
+      pure C.AdaAssetId
+  | otherwise =
+      C.AssetId
+        <$> unTransPolicyId currencySymbol
+        <*> pure (unTransAssetName tokenName)
 
 unTransPubKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Hash C.PaymentKey)
 unTransPubKeyHash (PV1.PubKeyHash pkh) =
   let bsx = PlutusTx.fromBuiltin pkh
-  in C.deserialiseFromRawBytes (C.AsHash C.AsPaymentKey) bsx
+   in C.deserialiseFromRawBytes (C.AsHash C.AsPaymentKey) bsx
 
 transPubKeyHash :: C.Hash C.PaymentKey -> PV1.PubKeyHash
 transPubKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
@@ -145,7 +135,7 @@ transStakeKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
 unTransStakeKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Hash C.StakeKey)
 unTransStakeKeyHash (PV1.PubKeyHash pkh) =
   let bsx = PlutusTx.fromBuiltin pkh
-  in C.deserialiseFromRawBytes (C.AsHash C.AsStakeKey) bsx
+   in C.deserialiseFromRawBytes (C.AsHash C.AsStakeKey) bsx
 
 transStakePoolKeyHash :: C.Hash C.StakePoolKey -> PV1.PubKeyHash
 transStakePoolKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBytes
@@ -153,7 +143,7 @@ transStakePoolKeyHash = PV1.PubKeyHash . PlutusTx.toBuiltin . C.serialiseToRawBy
 unTransStakePoolKeyHash :: PV1.PubKeyHash -> Either C.SerialiseAsRawBytesError (C.Hash C.StakePoolKey)
 unTransStakePoolKeyHash (PV1.PubKeyHash pkh) =
   let bsx = PlutusTx.fromBuiltin pkh
-  in C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) bsx
+   in C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) bsx
 
 unTransCredential :: PV1.Credential -> Either C.SerialiseAsRawBytesError C.PaymentCredential
 unTransCredential = \case
@@ -162,7 +152,7 @@ unTransCredential = \case
 
 transCredential :: C.PaymentCredential -> PV1.Credential
 transCredential = \case
-  C.PaymentCredentialByKey k    -> PV1.PubKeyCredential (transPubKeyHash k)
+  C.PaymentCredentialByKey k -> PV1.PubKeyCredential (transPubKeyHash k)
   C.PaymentCredentialByScript k -> PV1.ScriptCredential (transScriptHash k)
 
 transStakeAddressReference :: C.StakeAddressReference -> Maybe PV1.StakingCredential
@@ -186,13 +176,14 @@ unTransStakeAddressReference (Just (PV1.StakingHash credential)) =
 unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
   Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
-unTransAddressInEra :: C.IsShelleyBasedEra era => C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra era)
+unTransAddressInEra :: (C.IsShelleyBasedEra era) => C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra era)
 unTransAddressInEra networkId addr =
-  C.AddressInEra (C.ShelleyAddressInEra C.shelleyBasedEra) <$>
-    unTransAddressShelley networkId addr
+  C.AddressInEra (C.ShelleyAddressInEra C.shelleyBasedEra)
+    <$> unTransAddressShelley networkId addr
 
--- | @cardano-api@ address to @plutus@ address. Returns 'Nothing' for
--- | byron addresses.
+{- | @cardano-api@ address to @plutus@ address. Returns 'Nothing' for
+| byron addresses.
+-}
 transAddressInEra :: C.AddressInEra era -> Maybe PV1.Address
 transAddressInEra = \case
   C.AddressInEra (C.ShelleyAddressInEra _) shelleyAddr ->
@@ -215,12 +206,12 @@ unTransAddressShelley networkId (PV1.Address cred staking) =
 unTransTxOutRef :: PV1.TxOutRef -> Either C.SerialiseAsRawBytesError C.TxIn
 unTransTxOutRef PV1.TxOutRef{PV1.txOutRefId = PV1.TxId bs, PV1.txOutRefIdx} =
   let i = C.deserialiseFromRawBytes C.AsTxId $ PlutusTx.fromBuiltin bs
-  in C.TxIn <$> i <*> pure (C.TxIx $ fromIntegral txOutRefIdx)
+   in C.TxIn <$> i <*> pure (C.TxIx $ fromIntegral txOutRefIdx)
 
 transTxOutRef :: C.TxIn -> PV1.TxOutRef
 transTxOutRef (C.TxIn txId (C.TxIx ix)) =
   let i = PV1.TxId $ PlutusTx.toBuiltin $ C.serialiseToRawBytes txId
-  in PV1.TxOutRef i (fromIntegral ix)
+   in PV1.TxOutRef i (fromIntegral ix)
 
 transPOSIXTime :: POSIXTime -> PV1.POSIXTime
 transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToFrac posixTimeSeconds))
@@ -228,34 +219,35 @@ transPOSIXTime posixTimeSeconds = PV1.POSIXTime (floor @Rational (1000 * realToF
 unTransPOSIXTime :: PV1.POSIXTime -> POSIXTime
 unTransPOSIXTime (PV1.POSIXTime pt) = realToFrac @Rational $ fromIntegral pt / 1000
 
-unTransTxOutValue :: forall era.
-  ( C.IsBabbageBasedEra era
-  , Eq (Ledger.Value (C.ShelleyLedgerEra era))
-  , Show (Ledger.Value (C.ShelleyLedgerEra era))
-  )
+unTransTxOutValue
+  :: forall era
+   . ( C.IsBabbageBasedEra era
+     , Eq (Ledger.Value (C.ShelleyLedgerEra era))
+     , Show (Ledger.Value (C.ShelleyLedgerEra era))
+     )
   => PV1.Value
   -> Either C.SerialiseAsRawBytesError (C.TxOutValue era)
 unTransTxOutValue value = C.TxOutValueShelleyBased C.shelleyBasedEra . C.toLedgerValue @era C.maryBasedEra <$> unTransValue value
 
 unTransValue :: PV1.Value -> Either C.SerialiseAsRawBytesError C.Value
 unTransValue =
-    fmap fromList . traverse toSingleton . Value.flattenValue
-  where
-    toSingleton (cs, tn, q) =
-        unTransAssetId (Value.assetClass cs tn) <&> (, C.Quantity q)
+  fmap fromList . traverse toSingleton . Value.flattenValue
+ where
+  toSingleton (cs, tn, q) =
+    unTransAssetId (Value.assetClass cs tn) <&> (,C.Quantity q)
 
 transValue :: C.Value -> PV1.Value
 transValue =
   let t (assetId, C.Quantity quantity) =
         let Value.AssetClass (sym, tn) = transAssetId assetId
-        in (sym, Map.singleton tn quantity)
-  in PV1.Value . Map.safeFromList . fmap t . toList
+         in (sym, Map.singleton tn quantity)
+   in PV1.Value . Map.safeFromList . fmap t . toList
 
 unTransPlutusScript
-    :: C.SerialiseAsRawBytes plutusScript
-    => C.AsType plutusScript
-    -> SerialisedScript
-    -> Either C.SerialiseAsRawBytesError plutusScript
+  :: (C.SerialiseAsRawBytes plutusScript)
+  => C.AsType plutusScript
+  -> SerialisedScript
+  -> Either C.SerialiseAsRawBytesError plutusScript
 unTransPlutusScript asPlutusScriptType =
   C.deserialiseFromRawBytes asPlutusScriptType . BSL.toStrict . Codec.serialise
 
@@ -263,6 +255,5 @@ unTransScriptDataHash :: P.DatumHash -> Either C.SerialiseAsRawBytesError (C.Has
 unTransScriptDataHash (P.DatumHash bs) =
   C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) (PlutusTx.fromBuiltin bs)
 
-unTransTxOutDatumHash :: C.IsAlonzoBasedEra era => P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx era)
+unTransTxOutDatumHash :: (C.IsAlonzoBasedEra era) => P.DatumHash -> Either C.SerialiseAsRawBytesError (C.TxOutDatum ctx era)
 unTransTxOutDatumHash datumHash = C.TxOutDatumHash C.alonzoBasedEra <$> unTransScriptDataHash datumHash
-

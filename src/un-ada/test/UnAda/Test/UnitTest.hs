@@ -1,55 +1,71 @@
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE ViewPatterns       #-}
-{-| Unit tests for UnAda
--}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
+
+-- | Unit tests for UnAda
 module UnAda.Test.UnitTest (
-tests
+  tests,
 ) where
 
-import qualified Cardano.Api.Shelley            as C
-import           Control.Lens                   (mapped, over)
-import           Control.Monad                  (void)
-import           Convex.BuildTx                 (payToAddress, setMinAdaDeposit)
-import           Convex.CardanoApi.Lenses       (emptyTx)
-import qualified Convex.CardanoApi.Lenses       as L
-import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadMockchain)
-import           Convex.CoinSelection           (ChangeOutputPosition (TrailingChange))
-import           Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
-import qualified Convex.MockChain.Defaults      as Defaults
-import           Convex.MockChain.Utils         (mockchainSucceeds)
-import           Convex.Utils                   (failOnError)
-import           Convex.Wallet                  (Wallet)
-import qualified Convex.Wallet                  as Wallet
-import qualified Convex.Wallet.MockWallet       as Wallet
-import           Data.Function                  ((&))
-import           Plutus.V1.Ledger.Interval      (Extended (..), LowerBound (..),
-                                                 interval)
-import           Plutus.V1.Ledger.Time          (POSIXTime (..), POSIXTimeRange)
-import           PlutusCore.Data                (Data (..))
-import qualified PlutusTx
-import           Test.Tasty                     (TestTree, testGroup)
-import           Test.Tasty.HUnit               (Assertion, testCase,
-                                                 testCaseSteps)
-import           UnAda.OffChain.Transaction     (burnUnAda, findUnAdaOutputs,
-                                                 mintUnAda)
-import           UnAda.OffChain.Value           (unLovelaceValue)
-import           UnAda.OnChain.Types            (BuiltinData (FiniteExtended, FinitePOSIXTimeRange, ItvlBound, UnAdaStateBuiltin),
-                                                 UnAdaState (..))
+import Cardano.Api.Shelley qualified as C
+import Control.Lens (mapped, over)
+import Control.Monad (void)
+import Convex.BuildTx (payToAddress, setMinAdaDeposit)
+import Convex.CardanoApi.Lenses (emptyTx)
+import Convex.CardanoApi.Lenses qualified as L
+import Convex.Class (
+  MonadBlockchain (..),
+  MonadMockchain,
+ )
+import Convex.CoinSelection (ChangeOutputPosition (TrailingChange))
+import Convex.MockChain.CoinSelection (balanceAndSubmit, paymentTo)
+import Convex.MockChain.Defaults qualified as Defaults
+import Convex.MockChain.Utils (mockchainSucceeds)
+import Convex.Utils (failOnError)
+import Convex.Wallet (Wallet)
+import Convex.Wallet qualified as Wallet
+import Convex.Wallet.MockWallet qualified as Wallet
+import Data.Function ((&))
+import Plutus.V1.Ledger.Interval (
+  Extended (..),
+  LowerBound (..),
+  interval,
+ )
+import Plutus.V1.Ledger.Time (POSIXTime (..), POSIXTimeRange)
+import PlutusCore.Data (Data (..))
+import PlutusTx qualified
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (
+  Assertion,
+  testCase,
+  testCaseSteps,
+ )
+import UnAda.OffChain.Transaction (
+  burnUnAda,
+  findUnAdaOutputs,
+  mintUnAda,
+ )
+import UnAda.OffChain.Value (unLovelaceValue)
+import UnAda.OnChain.Types (
+  BuiltinData (FiniteExtended, FinitePOSIXTimeRange, ItvlBound, UnAdaStateBuiltin),
+  UnAdaState (..),
+ )
 
 tests :: TestTree
-tests = testGroup "unit tests"
-  [ testCase "mint some un-Ada" canMintUnAda
-  , testCase "burn some un-Ada" canBurnUnAda
-  , testGroup "ToData / FromData"
-      [ testCaseSteps "toData UnAdaState" toDataUnAdaState
-      , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
-      , testCaseSteps "builtin pattern Extended.Finite" builtinPatternExtendedFinite
-      , testCaseSteps "builtin pattern LowerBound" builtinPatternLowerBound
-      , testCaseSteps "builtin pattern POSIXTimeRange" builtinPatternRange
-      ]
-  ]
+tests =
+  testGroup
+    "unit tests"
+    [ testCase "mint some un-Ada" canMintUnAda
+    , testCase "burn some un-Ada" canBurnUnAda
+    , testGroup
+        "ToData / FromData"
+        [ testCaseSteps "toData UnAdaState" toDataUnAdaState
+        , testCaseSteps "builtin pattern UnAdaState" builtinPatternUnAdaState
+        , testCaseSteps "builtin pattern Extended.Finite" builtinPatternExtendedFinite
+        , testCaseSteps "builtin pattern LowerBound" builtinPatternLowerBound
+        , testCaseSteps "builtin pattern POSIXTimeRange" builtinPatternRange
+        ]
+    ]
 
 canMintUnAda :: Assertion
 canMintUnAda = mockchainSucceeds (failOnError mintSomeUnAda)
@@ -75,22 +91,23 @@ canBurnUnAda = mockchainSucceeds $ failOnError $ do
 unAdaPaymentTo :: (MonadBlockchain m, MonadMockchain m, MonadError BalanceTxError m) => C.Quantity -> Wallet -> Wallet -> m (C.Tx C.BabbageEra)
 unAdaPaymentTo q wFrom wTo = do
   let vl = unLovelaceValue q
-      tx = emptyTx
-            & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
+      tx =
+        emptyTx
+          & payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+          & over (L.txOuts . mapped) (setMinAdaDeposit Defaults.ledgerProtocolParameters)
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
   void $ wTo `paymentTo` wFrom
   balanceAndSubmit wFrom tx TrailingChange
 
-{-| Get exactly 1 un-Ada output from the transaction. Fails if there are 0 or more than one
+{- | Get exactly 1 un-Ada output from the transaction. Fails if there are 0 or more than one
 un-Ada outputs.
 -}
-getUnAdaOutput :: MonadFail m => C.Tx C.BabbageEra -> m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
+getUnAdaOutput :: (MonadFail m) => C.Tx C.BabbageEra -> m (C.TxIn, (C.TxOut C.CtxTx C.BabbageEra, UnAdaState))
 getUnAdaOutput tx = case findUnAdaOutputs tx of
-  []  -> fail "getUnAdaOutput: Found no outputs locked by the unAda validator, expected 1"
+  [] -> fail "getUnAdaOutput: Found no outputs locked by the unAda validator, expected 1"
   [k] -> pure k
-  xs  -> fail $ "getUnAdaOutput: Found " <> show (length xs) <> " outputs locked by the unAda validator, expected 1"
+  xs -> fail $ "getUnAdaOutput: Found " <> show (length xs) <> " outputs locked by the unAda validator, expected 1"
 
 testState :: UnAdaState
 testState = UnAdaState{spendAfter = POSIXTime 1000, mps = "aabbccddeeff"}
@@ -98,10 +115,11 @@ testState = UnAdaState{spendAfter = POSIXTime 1000, mps = "aabbccddeeff"}
 toDataUnAdaState :: (String -> IO ()) -> Assertion
 toDataUnAdaState step = do
   case PlutusTx.toData testState of
-    Constr 0
+    Constr
+      0
       [ I 1000
-      , B _
-      ] -> pure ()
+        , B _
+        ] -> pure ()
     x -> do
       step (show x)
       fail "unexpected format"

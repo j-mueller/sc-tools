@@ -1,46 +1,58 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE NamedFieldPuns    #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
-{-| CLI interface for a wallet
--}
-module Convex.Wallet.Cli(
-  runMain
-  ) where
+{-# LANGUAGE TypeApplications #-}
 
-import qualified Cardano.Api                            as C
-import           Control.Concurrent                     (forkIO)
-import           Control.Exception                      (bracket)
-import           Control.Monad                          (void)
-import           Control.Monad.Except                   (MonadError (..))
-import           Control.Monad.IO.Class                 (MonadIO (..))
-import           Control.Monad.Trans.Except             (runExceptT)
-import           Convex.MonadLog                        (MonadLog,
-                                                         MonadLogKatipT (..),
-                                                         logInfo, logInfoS,
-                                                         logWarnS)
-import           Convex.NodeClient.Types                (runNodeClient)
-import           Convex.NodeQueries                     (loadConnectInfo)
-import           Convex.Utxos                           (PrettyBalance (..))
-import qualified Convex.Wallet                          as Wallet
-import qualified Convex.Wallet.API                      as API
-import           Convex.Wallet.Cli.Command              (CliCommand (..),
-                                                         commandParser)
-import           Convex.Wallet.Cli.Config               (Config (..))
-import qualified Convex.Wallet.NodeClient.BalanceClient as NC
-import           Convex.Wallet.Operator                 (OperatorConfigVerification,
-                                                         loadOperatorFilesVerification,
-                                                         operatorAddress,
-                                                         operatorPaymentCredential)
-import qualified Convex.Wallet.WalletState              as WalletState
-import           Data.Maybe                             (fromMaybe)
-import qualified Katip                                  as K
-import           Options.Applicative                    (customExecParser,
-                                                         disambiguate, helper,
-                                                         idm, info, prefs,
-                                                         showHelpOnEmpty,
-                                                         showHelpOnError)
-import           System.IO                              (stdout)
+-- | CLI interface for a wallet
+module Convex.Wallet.Cli (
+  runMain,
+) where
+
+import Cardano.Api qualified as C
+import Control.Concurrent (forkIO)
+import Control.Exception (bracket)
+import Control.Monad (void)
+import Control.Monad.Except (MonadError (..))
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Trans.Except (runExceptT)
+import Convex.MonadLog (
+  MonadLog,
+  MonadLogKatipT (..),
+  logInfo,
+  logInfoS,
+  logWarnS,
+ )
+import Convex.NodeClient.Types (runNodeClient)
+import Convex.NodeQueries (loadConnectInfo)
+import Convex.Utxos (PrettyBalance (..))
+import Convex.Wallet qualified as Wallet
+import Convex.Wallet.API qualified as API
+import Convex.Wallet.Cli.Command (
+  CliCommand (..),
+  commandParser,
+ )
+import Convex.Wallet.Cli.Config (Config (..))
+import Convex.Wallet.NodeClient.BalanceClient qualified as NC
+import Convex.Wallet.Operator (
+  OperatorConfigVerification,
+  loadOperatorFilesVerification,
+  operatorAddress,
+  operatorPaymentCredential,
+ )
+import Convex.Wallet.WalletState qualified as WalletState
+import Data.Maybe (fromMaybe)
+import Katip qualified as K
+import Options.Applicative (
+  customExecParser,
+  disambiguate,
+  helper,
+  idm,
+  info,
+  prefs,
+  showHelpOnEmpty,
+  showHelpOnError,
+ )
+import System.IO (stdout)
 
 runMain :: IO ()
 runMain = do
@@ -48,15 +60,18 @@ runMain = do
   initLogEnv <- K.initLogEnv "wallet" "cli"
   let makeLogEnv = K.registerScribe "stdout-main" mainScribe K.defaultScribeSettings initLogEnv
   bracket makeLogEnv K.closeScribes $ \le -> K.runKatipContextT le () "main" $ runMonadLogKatipT $ do
-    command <- liftIO (customExecParser
-                        (prefs $ disambiguate <> showHelpOnEmpty <> showHelpOnError)
-                        (info (helper <*> commandParser) idm))
+    command <-
+      liftIO
+        ( customExecParser
+            (prefs $ disambiguate <> showHelpOnEmpty <> showHelpOnError)
+            (info (helper <*> commandParser) idm)
+        )
     result <- runExceptT $ do
       case command of
-        GenerateWallet            -> generateWallet
+        GenerateWallet -> generateWallet
         GenerateSigningKey{verificationKeyFile, signingKeyFile} -> generateSigningKey verificationKeyFile signingKeyFile
-        RunWallet config op port  -> runWallet le port config op
-        ShowAddress config op     -> void (showAddress config op)
+        RunWallet config op port -> runWallet le port config op
+        ShowAddress config op -> void (showAddress config op)
     case result of
       Left err -> do
         logWarnS "Error in runMain"
