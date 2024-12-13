@@ -10,23 +10,18 @@
 module Convex.UtxoMod(
   replaceHash,
   tryReplaceHash,
-  replaceHashAnyLang,
-  FullTx(..)
+  replaceHashAnyLang
 ) where
 
-import           Cardano.Api      (Hash, Script, ScriptHash,
-                                   ScriptInAnyLang (..))
-import qualified Cardano.Api      as C
-import           Cardano.Binary   (DecoderError)
-import           Control.Monad    (guard)
-import           Data.Aeson       (FromJSON (..), ToJSON (..), withObject, (.:))
-import           Data.Aeson.Types (object, (.=))
-import           Data.ByteString  (ByteString)
-import qualified Data.ByteString  as BS
-import           Data.Functor     (($>))
-import           Data.Map         (Map)
-import           Data.Proxy       (Proxy (..))
-import           GHC.Generics     (Generic)
+import           Cardano.Api     (Hash, Script, ScriptHash,
+                                  ScriptInAnyLang (..))
+import qualified Cardano.Api     as C
+import           Cardano.Binary  (DecoderError)
+import           Control.Monad   (guard)
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
+import           Data.Functor    (($>))
+import           Data.Proxy      (Proxy (..))
 
 {-| Replace all occurrences of a hash in the serialised script
 with a new hash. Throws an 'error' if it fails
@@ -90,30 +85,3 @@ replaceHashAnyLang oldHash newHash = \case
     let oldScriptHash = C.hashScript script
         newScriptHash = C.hashScript new
     pure (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3) new, guard (oldScriptHash /= newScriptHash) $> newScriptHash)
-
--- TODO
--- 1. Download a full "spending transaction"
---    - the transaction
---    - all inputs and outputs
-
-{-| A transaction with fully resolved inputs
--}
-data FullTx =
-  FullTx
-    { ftxTransaction :: C.Tx C.ConwayEra
-    , ftxInputs      :: Map C.TxIn (C.TxOut C.CtxUTxO C.ConwayEra)
-    }
-    deriving stock (Eq, Show, Generic)
-
-instance ToJSON FullTx where
-  toJSON FullTx{ftxTransaction, ftxInputs} =
-    object
-      [ "transaction" .= C.serialiseToTextEnvelope Nothing ftxTransaction
-      , "inputs"      .= ftxInputs
-      ]
-
-instance FromJSON FullTx where
-  parseJSON = withObject "FullTx" $ \obj ->
-    FullTx
-      <$> (obj .: "transaction" >>= either (fail . show) pure . C.deserialiseFromTextEnvelope (C.proxyToAsType Proxy))
-      <*> obj .: "inputs"

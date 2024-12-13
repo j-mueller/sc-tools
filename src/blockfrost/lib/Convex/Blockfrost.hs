@@ -38,8 +38,8 @@ import           Convex.Blockfrost.Orphans         ()
 import qualified Convex.Blockfrost.Types           as Types
 import           Convex.Class                      (MonadBlockchain (..),
                                                     MonadUtxoQuery (..))
+import           Convex.FullTx                     (FullTx (..))
 import           Convex.Utils                      (requiredTxIns)
-import           Convex.UtxoMod                    (FullTx (..))
 import qualified Convex.Utxos                      as Utxos
 import           Data.Bifunctor                    (Bifunctor (..))
 import qualified Data.Set                          as Set

@@ -20,6 +20,9 @@ module Convex.Utils(
 
   -- * Transaction inputs
   requiredTxIns,
+  spendInputs,
+  collateralInputs,
+  referenceInputs,
 
   -- * Serialised transactions
   txFromCbor,
@@ -309,10 +312,25 @@ alonzoEraUtxo f = case C.alonzoBasedEra @era of
   C.AlonzoEraOnwardsBabbage -> f
   C.AlonzoEraOnwardsConway  -> f
 
+{-| Inputs consumed by the transaction
+-}
+spendInputs :: C.TxBodyContent v era -> Set C.TxIn
+spendInputs = Set.fromList . fmap fst . view L.txIns
+
+{-| Inputs used as reference inputs
+-}
+referenceInputs :: C.TxBodyContent v era -> Set C.TxIn
+referenceInputs = Set.fromList . view (L.txInsReference . L.txInsReferenceTxIns)
+
+{-| Inputs used as collateral inputs
+-}
+collateralInputs :: C.TxBodyContent v era -> Set C.TxIn
+collateralInputs = Set.fromList . view (L.txInsCollateral . L.txInsCollateralTxIns)
+
 {-| All 'TxIn's that are required for computing the balance and fees of a transaction
 -}
 requiredTxIns :: C.TxBodyContent v era -> Set C.TxIn
 requiredTxIns body =
-  Set.fromList (fst <$> view L.txIns body)
-  <> Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
-  <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)
+  spendInputs body
+  <> referenceInputs body
+  <> collateralInputs body

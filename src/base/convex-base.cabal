@@ -32,6 +32,7 @@ library
       Convex.Class
       Convex.Constants
       Convex.Eon
+      Convex.FullTx
       Convex.MonadLog
       Convex.NodeQueries
       Convex.NodeQueries.Debug
@@ -84,7 +85,8 @@ library
       bytestring,
       dlist,
       either-result,
-      strict-sop-core
+      strict-sop-core,
+      graphviz
 
 test-suite convex-base-test
   import: lang
