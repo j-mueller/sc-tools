@@ -65,6 +65,7 @@ library
       cardano-api == 10.1.0.0,
       cardano-ledger-core,
       cardano-crypto-wrapper,
+      cardano-binary,
 
       cardano-ledger-byron,
       cardano-ledger-mary,
