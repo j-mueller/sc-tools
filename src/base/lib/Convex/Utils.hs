@@ -17,6 +17,10 @@ module Convex.Utils(
   scriptFromCborV1,
   unsafeScriptFromCborV1,
   scriptAddressV1,
+
+  -- * Transaction inputs
+  requiredTxIns,
+
   -- * Serialised transactions
   txFromCbor,
   unsafeTxFromCbor,
@@ -66,12 +70,14 @@ import           Cardano.Ledger.Crypto                    (StandardCrypto)
 import           Cardano.Slotting.EpochInfo.API           (epochInfoSlotToUTCTime,
                                                            hoistEpochInfo)
 import qualified Cardano.Slotting.Time                    as Time
+import           Control.Lens                             (view)
 import           Control.Monad                            (void, when)
 import           Control.Monad.Except                     (MonadError)
 import           Control.Monad.IO.Class                   (MonadIO (..))
 import           Control.Monad.Result                     (ResultT, throwError)
 import qualified Control.Monad.Result                     as Result
 import           Control.Monad.Trans.Except               (ExceptT, runExceptT)
+import qualified Convex.CardanoApi.Lenses                 as L
 import           Convex.MonadLog                          (MonadLog, logWarnS)
 import           Convex.PlutusLedger.V1                   (transPOSIXTime,
                                                            unTransPOSIXTime)
@@ -302,3 +308,11 @@ alonzoEraUtxo f = case C.alonzoBasedEra @era of
   C.AlonzoEraOnwardsAlonzo  -> f
   C.AlonzoEraOnwardsBabbage -> f
   C.AlonzoEraOnwardsConway  -> f
+
+{-| All 'TxIn's that are required for computing the balance and fees of a transaction
+-}
+requiredTxIns :: C.TxBodyContent v era -> Set C.TxIn
+requiredTxIns body =
+  Set.fromList (fst <$> view L.txIns body)
+  <> Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
+  <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)

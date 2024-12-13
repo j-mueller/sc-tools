@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TupleSections        #-}
 {-# LANGUAGE TypeApplications     #-}
@@ -13,16 +14,21 @@ module Convex.Blockfrost(
   evalBlockfrostT,
   runBlockfrostT,
   -- * Utility functions
-  streamUtxos
+  streamUtxos,
+
+  -- * Obtaining fully resolved transactions
+  resolveFullTx
 ) where
 
 import qualified Blockfrost.Client                 as Client
 import           Blockfrost.Client.Types           (BlockfrostClientT,
-                                                    BlockfrostError, Project)
+                                                    BlockfrostError,
+                                                    MonadBlockfrost, Project)
 import qualified Blockfrost.Client.Types           as Types
 import qualified Cardano.Api                       as C
 import           Control.Monad                     ((>=>))
-import           Control.Monad.Except              (liftEither, runExceptT)
+import           Control.Monad.Except              (MonadError, liftEither,
+                                                    runExceptT)
 import           Control.Monad.IO.Class            (MonadIO (..))
 import           Control.Monad.State.Strict        (StateT)
 import qualified Control.Monad.State.Strict        as State
@@ -32,6 +38,8 @@ import           Convex.Blockfrost.Orphans         ()
 import qualified Convex.Blockfrost.Types           as Types
 import           Convex.Class                      (MonadBlockchain (..),
                                                     MonadUtxoQuery (..))
+import           Convex.Utils                      (requiredTxIns)
+import           Convex.UtxoMod                    (FullTx (..))
 import qualified Convex.Utxos                      as Utxos
 import           Data.Bifunctor                    (Bifunctor (..))
 import qualified Data.Set                          as Set
@@ -97,3 +105,13 @@ runBlockfrostT state proj =
   Types.runBlockfrostClientT proj
   . flip State.runStateT state
   . unBlockfrostT
+
+{-| Download the full transaction and all of its inputs
+-}
+resolveFullTx :: (MonadBlockfrost m, MonadError Types.DecodingError m) => C.TxId -> m FullTx
+resolveFullTx txId = do
+  ftxTransaction <- Types.resolveTx txId >>= liftEither
+  let (C.Tx (C.TxBody txBodyContent) _witnesses) = ftxTransaction
+  let reqTxIns = requiredTxIns txBodyContent
+  utxo <- State.evalStateT (MonadBlockchain.getUtxoByTxIn reqTxIns) MonadBlockchain.emptyBlockfrostCache
+  pure FullTx{ftxTransaction, ftxInputs = C.unUTxO utxo}

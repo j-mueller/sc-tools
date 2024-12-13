@@ -101,13 +101,3 @@ data FullTx =
     }
     deriving stock (Eq, Show, Generic)
     -- deriving anyclass (ToJSON, FromJSON)
-
--- {-| Download the full transaction
--- -}
--- -- TODO: Move to blockfrost package
--- resolveTx :: C.TxId -> m FullTx
--- resolveTx = undefined
-
--- 2. Adjust the reference scripts with replaceHash (this effectively changes the StablecoinParams)
-
--- 3. Adjust the script address of the output to match the new script hash
