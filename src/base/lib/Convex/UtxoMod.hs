@@ -2,6 +2,8 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE TupleSections      #-}
 {-| Changing hashes
 -}
@@ -12,17 +14,19 @@ module Convex.UtxoMod(
   FullTx(..)
 ) where
 
-import           Cardano.Api     (Hash, Script, ScriptHash,
-                                  ScriptInAnyLang (..))
-import qualified Cardano.Api     as C
-import           Cardano.Binary  (DecoderError)
-import           Control.Monad   (guard)
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import           Data.Functor    (($>))
-import           Data.Map        (Map)
-import           Data.Proxy      (Proxy (..))
-import           GHC.Generics    (Generic)
+import           Cardano.Api      (Hash, Script, ScriptHash,
+                                   ScriptInAnyLang (..))
+import qualified Cardano.Api      as C
+import           Cardano.Binary   (DecoderError)
+import           Control.Monad    (guard)
+import           Data.Aeson       (FromJSON (..), ToJSON (..), withObject, (.:))
+import           Data.Aeson.Types (object, (.=))
+import           Data.ByteString  (ByteString)
+import qualified Data.ByteString  as BS
+import           Data.Functor     (($>))
+import           Data.Map         (Map)
+import           Data.Proxy       (Proxy (..))
+import           GHC.Generics     (Generic)
 
 {-| Replace all occurrences of a hash in the serialised script
 with a new hash. Throws an 'error' if it fails
@@ -100,4 +104,16 @@ data FullTx =
     , ftxInputs      :: Map C.TxIn (C.TxOut C.CtxUTxO C.ConwayEra)
     }
     deriving stock (Eq, Show, Generic)
-    -- deriving anyclass (ToJSON, FromJSON)
+
+instance ToJSON FullTx where
+  toJSON FullTx{ftxTransaction, ftxInputs} =
+    object
+      [ "transaction" .= C.serialiseToTextEnvelope Nothing ftxTransaction
+      , "inputs"      .= ftxInputs
+      ]
+
+instance FromJSON FullTx where
+  parseJSON = withObject "FullTx" $ \obj ->
+    FullTx
+      <$> (obj .: "transaction" >>= either (fail . show) pure . C.deserialiseFromTextEnvelope (C.proxyToAsType Proxy))
+      <*> obj .: "inputs"
