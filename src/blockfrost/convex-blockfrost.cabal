@@ -32,6 +32,7 @@ library
       Convex.Blockfrost
       Convex.Blockfrost.MonadBlockchain
       Convex.Blockfrost.Orphans
+      Convex.Blockfrost.ResolveTx
       Convex.Blockfrost.Types
     build-depends:
       base >= 4.14 && < 5,
