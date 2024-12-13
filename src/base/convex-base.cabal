@@ -74,6 +74,7 @@ library
       cardano-ledger-babbage,
       cardano-ledger-alonzo,
       cardano-ledger-conway,
+      cardano-crypto-class,
 
       ouroboros-consensus,
       ouroboros-consensus-cardano,
@@ -86,7 +87,8 @@ library
       dlist,
       either-result,
       strict-sop-core,
-      graphviz
+      graphviz,
+      base16-bytestring
 
 test-suite convex-base-test
   import: lang
