@@ -31,11 +31,11 @@ import           Data.Aeson                          (FromJSON (..),
                                                       (.:))
 import           Data.Aeson.Types                    (object, (.=))
 import qualified Data.ByteString.Base16              as Base16
-import           Data.Foldable                       (traverse_)
+import           Data.Foldable                       (forM_, traverse_)
 import           Data.GraphViz.Attributes            (bgColor, filled, style)
 import qualified Data.GraphViz.Attributes.Colors.X11 as Colors
 import qualified Data.GraphViz.Attributes.Complete   as A
-import           Data.GraphViz.Printing              (PrintDot (..))
+import           Data.GraphViz.Printing              (DotCode, PrintDot (..))
 import qualified Data.GraphViz.Types                 as GVT
 import           Data.GraphViz.Types.Generalised     (DotGraph (..))
 import qualified Data.GraphViz.Types.Monadic         as GV
@@ -86,12 +86,12 @@ instance FromJSON ResolvedTx where
 
 {-| A .dot (graphviz) representation of the transaction
 -}
-dot :: ResolvedTx -> Text
-dot tx@ResolvedTx{rtxTransaction} = TL.toStrict $ GVT.printDotGraph $ dot' (C.textShow $ C.getTxId $ C.getTxBody rtxTransaction) tx
+dot :: [ResolvedTx] -> Text
+dot = TL.toStrict . GVT.printDotGraph . dot' "resolved-transactions"
 
 {-| Write the transaction graph to a .dot (graphviz) file
 -}
-dotFile :: FilePath -> ResolvedTx -> IO ()
+dotFile :: FilePath -> [ResolvedTx] -> IO ()
 dotFile fp = TIO.writeFile fp . dot
 
 data FullTxInput =
@@ -176,26 +176,30 @@ shortenHash56 t = Text.take 4 t <> "..." <> Text.drop 52 t
 
 instance GVT.PrintDot FullTxInput where
   unqtDot = \case
-    RefInput txI -> unqtDot ("ref" <> replaceHash (C.renderTxIn txI))
-    SpendInput txI -> unqtDot ("spend" <> replaceHash (C.renderTxIn txI))
-    CollateralInput txI -> unqtDot ("collateral" <> replaceHash (C.renderTxIn txI))
+    RefInput txI -> mkTxInLabel txI
+    SpendInput txI -> mkTxInLabel txI
+    CollateralInput txI -> mkTxInLabel txI
+
+mkTxInLabel :: C.TxIn -> DotCode
+mkTxInLabel txI = unqtDot ("txin_" <> replaceHash (C.renderTxIn txI))
+
+mkTxLabel :: C.TxId -> DotCode
+mkTxLabel txid = unqtDot ("tx_" <> filter (/= '"') (show txid))
 
 {-| Object that we display in the graph
 -}
 data FullTxObject =
-  FtxInput FullTxInput
-  | FullTxBody
-  | FullTxOutput C.TxIn
+  FullTxBody C.TxId -- ^ Body of the transaction
+  | FullTxOutput C.TxIn -- ^ Transaction output
   deriving stock (Eq, Ord, Show)
 
 instance GVT.PrintDot FullTxObject where
   unqtDot = \case
-    FtxInput it      -> unqtDot it
-    FullTxBody       -> unqtDot @String "txbody"
-    FullTxOutput txI -> unqtDot ("output" <> replaceHash (C.renderTxIn txI))
+    FullTxBody txi   -> mkTxLabel txi
+    FullTxOutput txI -> mkTxInLabel txI
 
-dot' :: Text -> ResolvedTx -> DotGraph FullTxObject
-dot' (TL.fromStrict -> nm) ftx = GV.digraph (GV.Str nm) $ do
+dot' :: Text -> [ResolvedTx] -> DotGraph FullTxObject
+dot' (TL.fromStrict -> nm) transactions = GV.digraph (GV.Str nm) $ do
   GV.graphAttrs [ A.RankDir A.FromLeft ]
   GV.nodeAttrs
     [ A.Shape A.Record
@@ -203,12 +207,13 @@ dot' (TL.fromStrict -> nm) ftx = GV.digraph (GV.Str nm) $ do
     , bgColor Colors.Gray93
     , A.Height 0.1
     ]
-  flip runReaderT ftx $ do
-    addTxBody
-    asks (Utils.spendInputs . txBodyContent) >>= traverse_ (addInput . SpendInput)
-    asks (Utils.referenceInputs . txBodyContent) >>= traverse_ (addInput . RefInput)
-    asks (Utils.collateralInputs . txBodyContent) >>= traverse_ (addInput . CollateralInput)
-    asks (Utils.txnUtxos . rtxTransaction) >>= traverse_ (uncurry addTxOut)
+  forM_ transactions $ \ftx ->
+    flip runReaderT ftx $ do
+      addTxBody
+      asks (Utils.spendInputs . txBodyContent) >>= traverse_ (addInput . SpendInput)
+      asks (Utils.referenceInputs . txBodyContent) >>= traverse_ (addInput . RefInput)
+      asks (Utils.collateralInputs . txBodyContent) >>= traverse_ (addInput . CollateralInput)
+      asks (Utils.txnUtxos . rtxTransaction) >>= traverse_ (uncurry addTxOut)
 
 type GraphBuilder a = ReaderT ResolvedTx (GV.DotM FullTxObject) a
 
@@ -220,13 +225,14 @@ lookupTxIn txI =
 
 addInput :: FullTxInput -> GraphBuilder ()
 addInput txI = do
+  i <- asks txId
   output <- lookupTxIn (getTxIn txI)
   lift $ do
-    let ref = FtxInput txI
+    let ref = FullTxOutput (getTxIn txI)
     GV.node ref
       [ A.Label $ A.RecordLabel (fullTxInputLabel txI output)
       ]
-    GV.edge ref FullTxBody []
+    GV.edge ref (FullTxBody i) []
 
 addTxBody :: GraphBuilder ()
 addTxBody = do
@@ -237,11 +243,12 @@ addTxBody = do
         , A.FieldLabel $ "Fee: " <> TL.fromStrict (adaLabel n)
         , A.FieldLabel $ TL.fromStrict $ C.serialiseToRawBytesHexText i
         ]
-  lift $ GV.node FullTxBody [A.Label $ A.RecordLabel labels]
+  lift $ GV.node (FullTxBody i) [A.Label $ A.RecordLabel labels]
 
 addTxOut :: (C.IsMaryBasedEra era) => C.TxIn -> C.TxOut C.CtxTx era -> GraphBuilder ()
 addTxOut txI txOut = do
+  i <- asks txId
   lift $ do
     let ref = FullTxOutput txI
     GV.node ref [A.Label $ A.RecordLabel (fullTxOutputLabel txI txOut)]
-    GV.edge FullTxBody ref []
+    GV.edge (FullTxBody i) ref []

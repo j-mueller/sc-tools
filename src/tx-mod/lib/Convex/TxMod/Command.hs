@@ -8,13 +8,13 @@ module Convex.TxMod.Command(
 
 import           Cardano.Api         (TxId)
 import           Options.Applicative (CommandFields, Mod, Parser, argument,
-                                      command, fullDesc, help, info, long,
+                                      command, fullDesc, help, info, long, many,
                                       metavar, optional, progDesc, short, str,
                                       strOption, subparser, (<|>))
 
 data TxModCommand =
   Download TxId (Maybe FilePath) -- ^ Download the transaction from blockfrost and print it to stdout, or write it to the file if a file is provided
-  | Graph ResolvedTxInput (Maybe FilePath) -- ^ visualise the transaction
+  | Graph [ResolvedTxInput] (Maybe FilePath) -- ^ visualise the transaction
 
 parseCommand :: Parser TxModCommand
 parseCommand = subparser $ mconcat [parseDownload, parseGraph]
@@ -25,7 +25,7 @@ parseDownload = command "download" $
 
 parseGraph :: Mod CommandFields TxModCommand
 parseGraph = command "graph" $
-  info (Graph <$> parseResolvedTxInput <*> optional parseGraphOutFile) (fullDesc <> progDesc "Generate a dot graph (graphviz) from a fully resolved transaction")
+  info (Graph <$> many parseResolvedTxInput <*> optional parseGraphOutFile) (fullDesc <> progDesc "Generate a dot graph (graphviz) from a fully resolved transaction")
 
 parseTxId :: Parser TxId
 parseTxId = argument str

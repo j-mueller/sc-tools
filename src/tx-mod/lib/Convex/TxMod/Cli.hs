@@ -5,11 +5,12 @@ module Convex.TxMod.Cli(
 
 import           Blammo.Logging.Simple      (Message ((:#)), MonadLogger,
                                              MonadLoggerIO, WithLogger (..),
-                                             logError, logInfo,
+                                             logError, logInfo, logWarn,
                                              runLoggerLoggingT)
 import           Blockfrost.Client.Core     (BlockfrostError)
 import           Cardano.Api                (TxId)
 import           Control.Lens               (view)
+import           Control.Monad              (when)
 import           Control.Monad.Except       (ExceptT, MonadError, runExceptT)
 import           Control.Monad.IO.Class     (MonadIO (..))
 import           Control.Monad.Reader       (MonadReader, ReaderT, asks,
@@ -55,8 +56,10 @@ runCommand com = do
 downloadTx :: (MonadLoggerIO m, MonadReader Env m, MonadError AppError m) => TxId -> Maybe FilePath -> m ()
 downloadTx txId filePath = resolveTx txId >>= writeTx filePath
 
-graph :: (MonadLoggerIO m, MonadReader Env m, MonadError AppError m) => ResolvedTxInput -> Maybe FilePath -> m ()
-graph input outFile = getTx input >>= writeGraph outFile
+graph :: (MonadLoggerIO m, MonadReader Env m, MonadError AppError m) => [ResolvedTxInput] -> Maybe FilePath -> m ()
+graph inputs outFile = do
+  when (null inputs) $ logWarn "No resolved transactions provided, graph will be empty"
+  traverse getTx inputs >>= writeGraph outFile
 
 newtype TxModApp a = TxModApp{ unTxModApp :: ReaderT Env (ExceptT AppError IO) a }
   deriving newtype (Monad, Applicative, Functor, MonadIO, MonadReader Env, MonadError AppError)
@@ -95,7 +98,7 @@ loadTx fp = do
 getTx :: (MonadLoggerIO m, MonadReader Env m, MonadError AppError m) => ResolvedTxInput -> m ResolvedTx
 getTx (ResolvedTxInput k) = either loadTx resolveTx k
 
-writeGraph :: (MonadLoggerIO m) => Maybe FilePath -> ResolvedTx -> m ()
+writeGraph :: (MonadLoggerIO m) => Maybe FilePath -> [ResolvedTx] -> m ()
 writeGraph = \case
   Nothing -> \tx -> do
     logInfo "Writing graph to stdout"
