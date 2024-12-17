@@ -20,8 +20,8 @@ import           Cardano.Ledger.Hashes               (ScriptHash (..))
 import           Cardano.Ledger.Keys                 (KeyHash (..))
 import           Cardano.Ledger.Shelley.API          (Coin (..))
 import           Control.Lens                        (_1, _2, preview, view)
-import           Control.Monad.Reader                (MonadReader, ReaderT,
-                                                      asks, lift, runReaderT)
+import           Control.Monad.Reader                (ReaderT, asks, lift,
+                                                      runReaderT)
 import           Convex.CardanoApi.Lenses            (_ShelleyAddress, _TxOut,
                                                       _TxOutValue)
 import qualified Convex.CardanoApi.Lenses            as L
@@ -30,9 +30,11 @@ import           Data.Aeson                          (FromJSON (..),
                                                       ToJSON (..), withObject,
                                                       (.:))
 import           Data.Aeson.Types                    (object, (.=))
+import           Data.Bifunctor                      (Bifunctor (second))
 import qualified Data.ByteString.Base16              as Base16
 import           Data.Foldable                       (forM_, traverse_)
-import           Data.GraphViz.Attributes            (bgColor, filled, style)
+import           Data.GraphViz.Attributes            (bgColor)
+import qualified Data.GraphViz.Attributes            as A
 import qualified Data.GraphViz.Attributes.Colors.X11 as Colors
 import qualified Data.GraphViz.Attributes.Complete   as A
 import           Data.GraphViz.Printing              (DotCode, PrintDot (..))
@@ -41,7 +43,6 @@ import           Data.GraphViz.Types.Generalised     (DotGraph (..))
 import qualified Data.GraphViz.Types.Monadic         as GV
 import           Data.Map                            (Map)
 import qualified Data.Map                            as Map
-import           Data.Maybe                          (fromMaybe)
 import           Data.Proxy                          (Proxy (..))
 import           Data.Text                           (Text)
 import qualified Data.Text                           as Text
@@ -112,28 +113,7 @@ addressLabel txo = case preview (_TxOut . _1 . _ShelleyAddress . _2) txo of
   Just (Credential.ScriptHashObj (ScriptHash has)) -> A.FieldLabel $ TL.fromStrict $ "script " <> shortenHash56 (hashToTextAsHex has)
   _                                                -> A.FieldLabel "(byron)"
 
-fullTxInputLabel :: (C.IsMaryBasedEra era) => FullTxInput -> C.TxOut C.CtxUTxO era -> [A.RecordField]
-fullTxInputLabel in_ _out = case in_ of
-  RefInput i ->
-    [ A.FieldLabel $ TL.fromStrict $ shortenHash $ C.renderTxIn i
-    , A.FieldLabel "Reference"
-    , addressLabel _out
-    , valueLabel _out
-    ]
-  SpendInput i ->
-    [ A.FieldLabel $ TL.fromStrict $ shortenHash $ C.renderTxIn i
-    , A.FieldLabel "Spend"
-    , addressLabel _out
-    , valueLabel _out
-    ]
-  CollateralInput i ->
-    [ A.FieldLabel $ TL.fromStrict $ shortenHash $ C.renderTxIn i
-    , A.FieldLabel "Collateral"
-    , addressLabel _out
-    , valueLabel _out
-    ]
-
-fullTxOutputLabel :: (C.IsMaryBasedEra era) => C.TxIn -> C.TxOut C.CtxTx era -> [A.RecordField]
+fullTxOutputLabel :: (C.IsMaryBasedEra era) => C.TxIn -> C.TxOut ctx era -> [A.RecordField]
 fullTxOutputLabel i txOut =
   [ A.FieldLabel $ TL.fromStrict $ shortenHash $ C.renderTxIn i
   , addressLabel txOut
@@ -203,52 +183,66 @@ dot' (TL.fromStrict -> nm) transactions = GV.digraph (GV.Str nm) $ do
   GV.graphAttrs [ A.RankDir A.FromLeft ]
   GV.nodeAttrs
     [ A.Shape A.Record
-    , style filled
+    , A.style A.filled
     , bgColor Colors.Gray93
     , A.Height 0.1
     ]
+  -- add all tx outs first
+  traverse_ (uncurry addTxOut) (Map.toList $ foldMap rtxInputs transactions <> foldMap (Map.fromList . fmap (second C.toCtxUTxOTxOut) . Utils.txnUtxos . rtxTransaction) transactions)
+  -- add transactions
+  -- add links
   forM_ transactions $ \ftx ->
     flip runReaderT ftx $ do
-      addTxBody
+      addTxBody (rtxTransaction ftx)
       asks (Utils.spendInputs . txBodyContent) >>= traverse_ (addInput . SpendInput)
       asks (Utils.referenceInputs . txBodyContent) >>= traverse_ (addInput . RefInput)
       asks (Utils.collateralInputs . txBodyContent) >>= traverse_ (addInput . CollateralInput)
-      asks (Utils.txnUtxos . rtxTransaction) >>= traverse_ (uncurry addTxOut)
+      asks (Utils.txnUtxos . rtxTransaction) >>= traverse_ (uncurry addOutput)
 
 type GraphBuilder a = ReaderT ResolvedTx (GV.DotM FullTxObject) a
-
-{-| Resolve the transaction output
--}
-lookupTxIn :: MonadReader ResolvedTx m => C.TxIn -> m (C.TxOut C.CtxUTxO C.ConwayEra)
-lookupTxIn txI =
-  asks (fromMaybe (error "lookupTxIn failed") . Map.lookup txI . rtxInputs)
 
 addInput :: FullTxInput -> GraphBuilder ()
 addInput txI = do
   i <- asks txId
-  output <- lookupTxIn (getTxIn txI)
   lift $ do
     let ref = FullTxOutput (getTxIn txI)
-    GV.node ref
-      [ A.Label $ A.RecordLabel (fullTxInputLabel txI output)
+        txt = case txI of
+                RefInput{}        -> "reference"
+                SpendInput{}      -> "spend"
+                CollateralInput{} -> "collateral"
+    GV.edge ref (FullTxBody i)
+      [ A.textLabel txt
       ]
-    GV.edge ref (FullTxBody i) []
 
-addTxBody :: GraphBuilder ()
-addTxBody = do
+addOutput :: C.TxIn -> C.TxOut context era -> GraphBuilder ()
+addOutput txI _ = do
   i <- asks txId
-  Coin n <- asks (view L.txFee . txBodyContent)
+  lift $ do
+    let ref = FullTxOutput txI
+    GV.edge (FullTxBody i) ref []
+
+
+addTxBody :: C.Tx C.ConwayEra -> GraphBuilder ()
+addTxBody transaction = do
+  let i = C.getTxId $ C.getTxBody transaction
+      (C.Tx (C.TxBody content) _witnesses) = transaction
+      C.TxBodyContent{C.txWithdrawals=C.TxWithdrawals _ withdrawals} = content
+      Coin n = view L.txFee content
   let labels =
         [ A.FieldLabel "Transaction"
         , A.FieldLabel $ "Fee: " <> TL.fromStrict (adaLabel n)
         , A.FieldLabel $ TL.fromStrict $ C.serialiseToRawBytesHexText i
-        ]
+        ] <> fmap withdrawalLabel withdrawals
   lift $ GV.node (FullTxBody i) [A.Label $ A.RecordLabel labels]
 
-addTxOut :: (C.IsMaryBasedEra era) => C.TxIn -> C.TxOut C.CtxTx era -> GraphBuilder ()
+withdrawalLabel :: (C.StakeAddress, Coin, C.BuildTxWith C.ViewTx (C.Witness C.WitCtxStake C.ConwayEra)) -> A.RecordField
+withdrawalLabel (addr, Coin n, _) =
+  A.FieldLabel $ "Withdrawal: " <> TL.fromStrict (C.serialiseToBech32 addr) <> " (" <> TL.fromStrict (adaLabel n) <> ")"
+
+addTxOut :: (C.IsMaryBasedEra era) => C.TxIn -> C.TxOut ctx era -> GV.DotM FullTxObject ()
 addTxOut txI txOut = do
-  i <- asks txId
-  lift $ do
-    let ref = FullTxOutput txI
-    GV.node ref [A.Label $ A.RecordLabel (fullTxOutputLabel txI txOut)]
-    GV.edge (FullTxBody i) ref []
+  let ref = FullTxOutput txI
+  GV.node ref
+    [ A.Label $ A.RecordLabel (fullTxOutputLabel txI txOut)
+    , A.style A.rounded
+    ]
