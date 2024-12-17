@@ -2,6 +2,7 @@
 -}
 module Convex.TxMod.Command(
   TxModCommand(..),
+  ResolvedTxInput(..),
   parseCommand
 ) where
 
@@ -9,11 +10,11 @@ import           Cardano.Api         (TxId)
 import           Options.Applicative (CommandFields, Mod, Parser, argument,
                                       command, fullDesc, help, info, long,
                                       metavar, optional, progDesc, short, str,
-                                      strOption, subparser)
+                                      strOption, subparser, (<|>))
 
 data TxModCommand =
   Download TxId (Maybe FilePath) -- ^ Download the transaction from blockfrost and print it to stdout, or write it to the file if a file is provided
-  | Graph -- ^ visualise the transaction
+  | Graph ResolvedTxInput (Maybe FilePath) -- ^ visualise the transaction
 
 parseCommand :: Parser TxModCommand
 parseCommand = subparser $ mconcat [parseDownload, parseGraph]
@@ -24,7 +25,7 @@ parseDownload = command "download" $
 
 parseGraph :: Mod CommandFields TxModCommand
 parseGraph = command "graph" $
-  info (pure Graph) (fullDesc <> progDesc "Generate a dot graph (graphviz) from a fully resolved transaction")
+  info (Graph <$> parseResolvedTxInput <*> optional parseGraphOutFile) (fullDesc <> progDesc "Generate a dot graph (graphviz) from a fully resolved transaction")
 
 parseTxId :: Parser TxId
 parseTxId = argument str
@@ -32,3 +33,17 @@ parseTxId = argument str
 
 parseTxOutFile :: Parser FilePath
 parseTxOutFile = strOption (long "out.file" <> short 'o' <> help "File to write the fully resolved transaction to")
+
+parseTxInFile :: Parser FilePath
+parseTxInFile = strOption (long "in.file" <> short 'f' <> help "JSON file with the fully resolved transaction")
+
+parseGraphOutFile :: Parser FilePath
+parseGraphOutFile = strOption (long "out.file" <> short 'o' <> help "File to write the dot graph to")
+
+{-| Resolved tx either provided as a file path or as a transaction ID
+-}
+newtype ResolvedTxInput = ResolvedTxInput (Either FilePath TxId)
+
+parseResolvedTxInput :: Parser ResolvedTxInput
+parseResolvedTxInput =
+  ResolvedTxInput <$> (fmap Left parseTxInFile <|> fmap Right parseTxId)
