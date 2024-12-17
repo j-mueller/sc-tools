@@ -31,3 +31,4 @@ haddocks/
 get-protocol-parameters.sh
 protocol-parameters-mainnet.json
 .pre-commit-config.yaml
+download-tx-test.sh

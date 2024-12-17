@@ -32,7 +32,6 @@ library
       Convex.Class
       Convex.Constants
       Convex.Eon
-      Convex.FullTx
       Convex.MonadLog
       Convex.NodeQueries
       Convex.NodeQueries.Debug
@@ -40,6 +39,7 @@ library
       Convex.PlutusLedger.V1
       Convex.PlutusLedger.V3
       Convex.PlutusTx
+      Convex.ResolvedTx
       Convex.Utils
       Convex.Utxos
       Convex.UtxoMod

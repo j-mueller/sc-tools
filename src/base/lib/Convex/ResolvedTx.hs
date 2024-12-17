@@ -6,8 +6,8 @@
 {-# LANGUAGE ViewPatterns       #-}
 {-| Working with fully resolved transactions
 -}
-module Convex.FullTx(
-  FullTx(..),
+module Convex.ResolvedTx(
+  ResolvedTx(..),
   -- * Visualising transactions
   dot,
   dotFile
@@ -52,46 +52,46 @@ import           GHC.Generics                        (Generic)
 import           GHC.IsList                          (IsList (..))
 
 {-| A transaction with fully resolved inputs.
-To obtain a 'FullTx' value see 'Convex.Blockfrost.resolveFullTx'
+To obtain a 'ResolvedTx' value see 'Convex.Blockfrost.resolveTx'
 -}
-data FullTx =
-  FullTx
-    { ftxTransaction :: C.Tx C.ConwayEra -- ^ The transaction
-    , ftxInputs      :: Map C.TxIn (C.TxOut C.CtxUTxO C.ConwayEra) -- ^ The set of spend, reference and collateral inputs of the transaction
+data ResolvedTx =
+  ResolvedTx
+    { rtxTransaction :: C.Tx C.ConwayEra -- ^ The transaction
+    , rtxInputs      :: Map C.TxIn (C.TxOut C.CtxUTxO C.ConwayEra) -- ^ The set of spend, reference and collateral inputs of the transaction
     }
     deriving stock (Eq, Show, Generic)
 
 {-| The transaction's body content
 -}
-txBodyContent :: FullTx -> C.TxBodyContent C.ViewTx C.ConwayEra
-txBodyContent FullTx{ftxTransaction} =
-  let (C.Tx (C.TxBody content) _witnesses) = ftxTransaction
+txBodyContent :: ResolvedTx -> C.TxBodyContent C.ViewTx C.ConwayEra
+txBodyContent ResolvedTx{rtxTransaction} =
+  let (C.Tx (C.TxBody content) _witnesses) = rtxTransaction
   in content
 
-txId :: FullTx -> C.TxId
-txId = C.getTxId . C.getTxBody . ftxTransaction
+txId :: ResolvedTx -> C.TxId
+txId = C.getTxId . C.getTxBody . rtxTransaction
 
-instance ToJSON FullTx where
-  toJSON FullTx{ftxTransaction, ftxInputs} =
+instance ToJSON ResolvedTx where
+  toJSON ResolvedTx{rtxTransaction, rtxInputs} =
     object
-      [ "transaction" .= C.serialiseToTextEnvelope Nothing ftxTransaction
-      , "inputs"      .= ftxInputs
+      [ "transaction" .= C.serialiseToTextEnvelope Nothing rtxTransaction
+      , "inputs"      .= rtxInputs
       ]
 
-instance FromJSON FullTx where
-  parseJSON = withObject "FullTx" $ \obj ->
-    FullTx
+instance FromJSON ResolvedTx where
+  parseJSON = withObject "ResolvedTx" $ \obj ->
+    ResolvedTx
       <$> (obj .: "transaction" >>= either (fail . show) pure . C.deserialiseFromTextEnvelope (C.proxyToAsType Proxy))
       <*> obj .: "inputs"
 
 {-| A .dot (graphviz) representation of the transaction
 -}
-dot :: FullTx -> Text
-dot tx@FullTx{ftxTransaction} = TL.toStrict $ GVT.printDotGraph $ dot' (C.textShow $ C.getTxId $ C.getTxBody ftxTransaction) tx
+dot :: ResolvedTx -> Text
+dot tx@ResolvedTx{rtxTransaction} = TL.toStrict $ GVT.printDotGraph $ dot' (C.textShow $ C.getTxId $ C.getTxBody rtxTransaction) tx
 
 {-| Write the transaction graph to a .dot (graphviz) file
 -}
-dotFile :: FilePath -> FullTx -> IO ()
+dotFile :: FilePath -> ResolvedTx -> IO ()
 dotFile fp = TIO.writeFile fp . dot
 
 data FullTxInput =
@@ -194,7 +194,7 @@ instance GVT.PrintDot FullTxObject where
     FullTxBody       -> unqtDot @String "txbody"
     FullTxOutput txI -> unqtDot ("output" <> replaceHash (C.renderTxIn txI))
 
-dot' :: Text -> FullTx -> DotGraph FullTxObject
+dot' :: Text -> ResolvedTx -> DotGraph FullTxObject
 dot' (TL.fromStrict -> nm) ftx = GV.digraph (GV.Str nm) $ do
   GV.graphAttrs [ A.RankDir A.FromLeft ]
   GV.nodeAttrs
@@ -208,15 +208,15 @@ dot' (TL.fromStrict -> nm) ftx = GV.digraph (GV.Str nm) $ do
     asks (Utils.spendInputs . txBodyContent) >>= traverse_ (addInput . SpendInput)
     asks (Utils.referenceInputs . txBodyContent) >>= traverse_ (addInput . RefInput)
     asks (Utils.collateralInputs . txBodyContent) >>= traverse_ (addInput . CollateralInput)
-    asks (Utils.txnUtxos . ftxTransaction) >>= traverse_ (uncurry addTxOut)
+    asks (Utils.txnUtxos . rtxTransaction) >>= traverse_ (uncurry addTxOut)
 
-type GraphBuilder a = ReaderT FullTx (GV.DotM FullTxObject) a
+type GraphBuilder a = ReaderT ResolvedTx (GV.DotM FullTxObject) a
 
 {-| Resolve the transaction output
 -}
-lookupTxIn :: MonadReader FullTx m => C.TxIn -> m (C.TxOut C.CtxUTxO C.ConwayEra)
+lookupTxIn :: MonadReader ResolvedTx m => C.TxIn -> m (C.TxOut C.CtxUTxO C.ConwayEra)
 lookupTxIn txI =
-  asks (fromMaybe (error "lookupTxIn failed") . Map.lookup txI . ftxInputs)
+  asks (fromMaybe (error "lookupTxIn failed") . Map.lookup txI . rtxInputs)
 
 addInput :: FullTxInput -> GraphBuilder ()
 addInput txI = do

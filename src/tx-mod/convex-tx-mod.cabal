@@ -21,6 +21,7 @@ common lang
                         DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
                         GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
                         DeriveTraversable ImportQualifiedPost NumericUnderscores
+                        DerivingStrategies LambdaCase DerivingVia NamedFieldPuns
     ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
                  -Wincomplete-uni-patterns -Wincomplete-record-updates
                  -Wredundant-constraints -Widentities
@@ -29,9 +30,25 @@ library
   import: lang
   exposed-modules:
     Convex.TxMod.Cli
+    Convex.TxMod.Command
+    Convex.TxMod.Env
+    Convex.TxMod.Logging
   hs-source-dirs: lib
   build-depends:
-    base >= 4.14.0
+    base >= 4.14.0,
+    aeson,
+    cardano-api,
+    optparse-applicative,
+    convex-base,
+    convex-blockfrost,
+    blockfrost-client-core,
+    blockfrost-api,
+    Blammo,
+    mtl,
+    lens,
+    aeson-pretty,
+    bytestring,
+    text
 
 executable convex-tx-mod
   import: lang
