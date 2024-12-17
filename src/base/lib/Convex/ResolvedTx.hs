@@ -8,6 +8,7 @@
 -- | Working with fully resolved transactions
 module Convex.ResolvedTx (
   ResolvedTx (..),
+  resolveTxMockchain,
 
   -- * Visualising transactions
   dot,
@@ -27,6 +28,7 @@ import Control.Monad.Reader (
   lift,
   runReaderT,
  )
+import Convex.Class (MonadMockchain, getTxById, utxoByTxIn)
 import Convex.CardanoApi.Lenses (
   _ShelleyAddress,
   _TxOut,
@@ -62,9 +64,11 @@ import Data.Text.IO qualified as TIO
 import Data.Text.Lazy qualified as TL
 import GHC.Generics (Generic)
 import GHC.IsList (IsList (..))
+import Control.Monad.Trans.Maybe (MaybeT(..))
 
 {- | A transaction with fully resolved inputs.
 To obtain a 'ResolvedTx' value see 'Convex.Blockfrost.resolveTx'
+or 'resolveTxMockchain'
 -}
 data ResolvedTx
   = ResolvedTx
@@ -74,6 +78,16 @@ data ResolvedTx
   -- ^ The set of spend, reference and collateral inputs of the transaction
   }
   deriving stock (Eq, Show, Generic)
+
+{-| Produce a 'ResolvedTx' using the mockchain state
+-}
+resolveTxMockchain :: MonadMockchain C.ConwayEra m => C.TxId -> m (Maybe ResolvedTx)
+resolveTxMockchain txI = runMaybeT $ do
+  rtxTransaction <- MaybeT (getTxById txI)
+  let (C.Tx (C.TxBody bodyContent) _witnesses) = rtxTransaction
+  let reqTxIns = Utils.requiredTxIns bodyContent
+  utxo <- utxoByTxIn reqTxIns
+  pure ResolvedTx{rtxTransaction, rtxInputs = C.unUTxO utxo}
 
 -- | The transaction's body content
 txBodyContent :: ResolvedTx -> C.TxBodyContent C.ViewTx C.ConwayEra
