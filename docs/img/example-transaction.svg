@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1985pt" height="728pt" viewBox="0.00 0.00 1985.18 727.60">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 723.6)">
+<title>resolved-transactions</title>
+<polygon fill="white" stroke="none" points="-4,4 -4,-723.6 1981.18,-723.6 1981.18,4 -4,4"/>
+<!-- txin_08705f19ca5f9aa702b13a54ad059c0b97dd39d05d91d10b2f01e24af01e3b0b_1 -->
+<g id="node1" class="node">
+<title>txin_08705f19ca5f9aa702b13a54ad059c0b97dd39d05d91d10b2f01e24af01e3b0b_1</title>
+<path fill="none" stroke="black" d="M12,-594.3C12,-594.3 645.16,-594.3 645.16,-594.3 651.16,-594.3 657.16,-600.3 657.16,-606.3 657.16,-606.3 657.16,-707.1 657.16,-707.1 657.16,-713.1 651.16,-719.1 645.16,-719.1 645.16,-719.1 12,-719.1 12,-719.1 6,-719.1 0,-713.1 0,-707.1 0,-707.1 0,-606.3 0,-606.3 0,-600.3 6,-594.3 12,-594.3"/>
+<text text-anchor="middle" x="328.58" y="-702.5" font-family="Times,serif" font-size="14.00">0870...3b0b#1</text>
+<polyline fill="none" stroke="black" points="0,-694.3 657.16,-694.3"/>
+<text text-anchor="middle" x="328.58" y="-677.7" font-family="Times,serif" font-size="14.00">script ea07...de6b</text>
+<polyline fill="none" stroke="black" points="0,-669.5 657.16,-669.5"/>
+<text text-anchor="middle" x="328.58" y="-652.9" font-family="Times,serif" font-size="14.00">Ada: 939327.723740</text>
+<text text-anchor="middle" x="328.58" y="-636.1" font-family="Times,serif" font-size="14.00">da8c...1d24.4c51: 171930652363</text>
+<text text-anchor="middle" x="328.58" y="-619.3" font-family="Times,serif" font-size="14.00">f580...6b4c.4d5350: 1</text>
+<text text-anchor="middle" x="328.58" y="-602.5" font-family="Times,serif" font-size="14.00">f580...6b4c.6263e0101384dace4d7a8dadf0e6d45c8d43c8872604118ee82e3f2212934917: 9223371653497800693</text>
+</g>
+<!-- tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="node11" class="node">
+<title>tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<polygon fill="lightgrey" stroke="black" points="745.23,-285.1 745.23,-384.3 1283.02,-384.3 1283.02,-285.1 745.23,-285.1"/>
+<text text-anchor="middle" x="1014.13" y="-367.7" font-family="Times,serif" font-size="14.00">Transaction</text>
+<polyline fill="none" stroke="black" points="745.23,-359.5 1283.02,-359.5"/>
+<text text-anchor="middle" x="1014.13" y="-342.9" font-family="Times,serif" font-size="14.00">Fee: Ada: 0.665670</text>
+<polyline fill="none" stroke="black" points="745.23,-334.7 1283.02,-334.7"/>
+<text text-anchor="middle" x="1014.13" y="-318.1" font-family="Times,serif" font-size="14.00">bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</text>
+<polyline fill="none" stroke="black" points="745.23,-309.9 1283.02,-309.9"/>
+<text text-anchor="middle" x="1014.13" y="-293.3" font-family="Times,serif" font-size="14.00">Withdrawal: stake17y02a946720zw6pw50upt2arvxsvvpvaghjtl054h0f0gjsfyjz59 (Ada: 0.00)</text>
+</g>
+<!-- txin_08705f19ca5f9aa702b13a54ad059c0b97dd39d05d91d10b2f01e24af01e3b0b_1&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge1" class="edge">
+<title>txin_08705f19ca5f9aa702b13a54ad059c0b97dd39d05d91d10b2f01e24af01e3b0b_1-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M634.73,-593.96C642.34,-591.01 649.83,-587.92 657.16,-584.7 768.7,-535.65 881.04,-449.12 948.87,-391.84"/>
+<polygon fill="black" stroke="black" points="950.82,-394.78 956.17,-385.63 946.28,-389.44 950.82,-394.78"/>
+<text text-anchor="middle" x="701.19" y="-579.13" font-family="Times,serif" font-size="14.00">spend</text>
+</g>
+<!-- txin_0dc17712e37a4e741767db2f90d4ffbf69faf88b9bed4c47864f7bd912924bea_0 -->
+<g id="node2" class="node">
+<title>txin_0dc17712e37a4e741767db2f90d4ffbf69faf88b9bed4c47864f7bd912924bea_0</title>
+<path fill="none" stroke="black" d="M263.95,-484.1C263.95,-484.1 393.21,-484.1 393.21,-484.1 399.21,-484.1 405.21,-490.1 405.21,-496.1 405.21,-496.1 405.21,-563.3 405.21,-563.3 405.21,-569.3 399.21,-575.3 393.21,-575.3 393.21,-575.3 263.95,-575.3 263.95,-575.3 257.95,-575.3 251.95,-569.3 251.95,-563.3 251.95,-563.3 251.95,-496.1 251.95,-496.1 251.95,-490.1 257.95,-484.1 263.95,-484.1"/>
+<text text-anchor="middle" x="328.58" y="-558.7" font-family="Times,serif" font-size="14.00">0dc1...4bea#0</text>
+<polyline fill="none" stroke="black" points="251.95,-550.5 405.21,-550.5"/>
+<text text-anchor="middle" x="328.58" y="-533.9" font-family="Times,serif" font-size="14.00">script f580...6b4c</text>
+<polyline fill="none" stroke="black" points="251.95,-525.7 405.21,-525.7"/>
+<text text-anchor="middle" x="328.58" y="-509.1" font-family="Times,serif" font-size="14.00">Ada: 1.961050</text>
+<text text-anchor="middle" x="328.58" y="-492.3" font-family="Times,serif" font-size="14.00">f580...6b4c.4d534753: 1</text>
+</g>
+<!-- txin_0dc17712e37a4e741767db2f90d4ffbf69faf88b9bed4c47864f7bd912924bea_0&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge4" class="edge">
+<title>txin_0dc17712e37a4e741767db2f90d4ffbf69faf88b9bed4c47864f7bd912924bea_0-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M405.69,-521.48C472.72,-513.17 572.55,-498.16 657.16,-474.7 737.65,-452.38 824.99,-418.19 893.01,-389.18"/>
+<polygon fill="black" stroke="black" points="894.13,-392.51 901.94,-385.36 891.37,-386.08 894.13,-392.51"/>
+<text text-anchor="middle" x="701.19" y="-473.22" font-family="Times,serif" font-size="14.00">reference</text>
+</g>
+<!-- txin_2536194d2a976370a932174c10975493ab58fd7c16395d50e62b7c0e1949baea_0 -->
+<g id="node3" class="node">
+<title>txin_2536194d2a976370a932174c10975493ab58fd7c16395d50e62b7c0e1949baea_0</title>
+<path fill="none" stroke="black" d="M276.97,-390.5C276.97,-390.5 380.19,-390.5 380.19,-390.5 386.19,-390.5 392.19,-396.5 392.19,-402.5 392.19,-402.5 392.19,-452.9 392.19,-452.9 392.19,-458.9 386.19,-464.9 380.19,-464.9 380.19,-464.9 276.97,-464.9 276.97,-464.9 270.97,-464.9 264.97,-458.9 264.97,-452.9 264.97,-452.9 264.97,-402.5 264.97,-402.5 264.97,-396.5 270.97,-390.5 276.97,-390.5"/>
+<text text-anchor="middle" x="328.58" y="-448.3" font-family="Times,serif" font-size="14.00">2536...baea#0</text>
+<polyline fill="none" stroke="black" points="264.97,-440.1 392.19,-440.1"/>
+<text text-anchor="middle" x="328.58" y="-423.5" font-family="Times,serif" font-size="14.00">pubkey 0000...0000</text>
+<polyline fill="none" stroke="black" points="264.97,-415.3 392.19,-415.3"/>
+<text text-anchor="middle" x="328.58" y="-398.7" font-family="Times,serif" font-size="14.00">Ada: 18.114930</text>
+</g>
+<!-- txin_2536194d2a976370a932174c10975493ab58fd7c16395d50e62b7c0e1949baea_0&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge5" class="edge">
+<title>txin_2536194d2a976370a932174c10975493ab58fd7c16395d50e62b7c0e1949baea_0-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M392.66,-419.12C470.46,-408.53 607.87,-389.84 733.64,-372.73"/>
+<polygon fill="black" stroke="black" points="734.06,-376.2 743.49,-371.38 733.11,-369.27 734.06,-376.2"/>
+<text text-anchor="middle" x="701.19" y="-382.61" font-family="Times,serif" font-size="14.00">reference</text>
+</g>
+<!-- txin_27901a20af0d603a779df0b805cc75154623c666294f8d6e3c1000253f39d7c8_2 -->
+<g id="node4" class="node">
+<title>txin_27901a20af0d603a779df0b805cc75154623c666294f8d6e3c1000253f39d7c8_2</title>
+<path fill="none" stroke="black" d="M277.36,-297.5C277.36,-297.5 379.79,-297.5 379.79,-297.5 385.79,-297.5 391.79,-303.5 391.79,-309.5 391.79,-309.5 391.79,-359.9 391.79,-359.9 391.79,-365.9 385.79,-371.9 379.79,-371.9 379.79,-371.9 277.36,-371.9 277.36,-371.9 271.36,-371.9 265.36,-365.9 265.36,-359.9 265.36,-359.9 265.36,-309.5 265.36,-309.5 265.36,-303.5 271.36,-297.5 277.36,-297.5"/>
+<text text-anchor="middle" x="328.58" y="-355.3" font-family="Times,serif" font-size="14.00">2790...d7c8#2</text>
+<polyline fill="none" stroke="black" points="265.36,-347.1 391.79,-347.1"/>
+<text text-anchor="middle" x="328.58" y="-330.5" font-family="Times,serif" font-size="14.00">pubkey 5b7e...165b</text>
+<polyline fill="none" stroke="black" points="265.36,-322.3 391.79,-322.3"/>
+<text text-anchor="middle" x="328.58" y="-305.7" font-family="Times,serif" font-size="14.00">Ada: 322.159130</text>
+</g>
+<!-- txin_27901a20af0d603a779df0b805cc75154623c666294f8d6e3c1000253f39d7c8_2&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge2" class="edge">
+<title>txin_27901a20af0d603a779df0b805cc75154623c666294f8d6e3c1000253f39d7c8_2-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M392.05,-334.7C469.71,-334.7 607.44,-334.7 733.5,-334.7"/>
+<polygon fill="black" stroke="black" points="733.36,-338.2 743.36,-334.7 733.36,-331.2 733.36,-338.2"/>
+<text text-anchor="middle" x="701.19" y="-338.9" font-family="Times,serif" font-size="14.00">spend</text>
+</g>
+<!-- txin_27901a20af0d603a779df0b805cc75154623c666294f8d6e3c1000253f39d7c8_2&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge8" class="edge">
+<title>txin_27901a20af0d603a779df0b805cc75154623c666294f8d6e3c1000253f39d7c8_2-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M392.23,-327.99C470.55,-320.39 608.75,-309.6 727.23,-313.9 729.33,-313.98 731.44,-314.06 733.56,-314.14"/>
+<polygon fill="black" stroke="black" points="733.29,-317.63 743.43,-314.54 733.58,-310.64 733.29,-317.63"/>
+<text text-anchor="middle" x="701.19" y="-318.1" font-family="Times,serif" font-size="14.00">collateral</text>
+</g>
+<!-- txin_3359ada19f8b0af32d5f4aea95ea9d1b5642ed0b3041b4d5139a44af6d64d361_0 -->
+<g id="node5" class="node">
+<title>txin_3359ada19f8b0af32d5f4aea95ea9d1b5642ed0b3041b4d5139a44af6d64d361_0</title>
+<path fill="none" stroke="black" d="M246.06,-187.1C246.06,-187.1 411.09,-187.1 411.09,-187.1 417.09,-187.1 423.09,-193.1 423.09,-199.1 423.09,-199.1 423.09,-266.3 423.09,-266.3 423.09,-272.3 417.09,-278.3 411.09,-278.3 411.09,-278.3 246.06,-278.3 246.06,-278.3 240.06,-278.3 234.06,-272.3 234.06,-266.3 234.06,-266.3 234.06,-199.1 234.06,-199.1 234.06,-193.1 240.06,-187.1 246.06,-187.1"/>
+<text text-anchor="middle" x="328.58" y="-261.7" font-family="Times,serif" font-size="14.00">3359...d361#0</text>
+<polyline fill="none" stroke="black" points="234.06,-253.5 423.09,-253.5"/>
+<text text-anchor="middle" x="328.58" y="-236.9" font-family="Times,serif" font-size="14.00">script c3e2...7c4c</text>
+<polyline fill="none" stroke="black" points="234.06,-228.7 423.09,-228.7"/>
+<text text-anchor="middle" x="328.58" y="-212.1" font-family="Times,serif" font-size="14.00">Ada: 3.300000</text>
+<text text-anchor="middle" x="328.58" y="-195.3" font-family="Times,serif" font-size="14.00">da8c...1d24.4c51: 1513000000</text>
+</g>
+<!-- txin_3359ada19f8b0af32d5f4aea95ea9d1b5642ed0b3041b4d5139a44af6d64d361_0&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge3" class="edge">
+<title>txin_3359ada19f8b0af32d5f4aea95ea9d1b5642ed0b3041b4d5139a44af6d64d361_0-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M423.59,-246.67C504.17,-258.66 623.34,-276.39 727.23,-291.9 729.33,-292.21 731.43,-292.53 733.55,-292.84"/>
+<polygon fill="black" stroke="black" points="733.01,-296.3 743.41,-294.32 734.04,-289.38 733.01,-296.3"/>
+<text text-anchor="middle" x="701.19" y="-296.1" font-family="Times,serif" font-size="14.00">spend</text>
+</g>
+<!-- txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_0 -->
+<g id="node6" class="node">
+<title>txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_0</title>
+<path fill="none" stroke="black" d="M1600.49,-416.5C1600.49,-416.5 1696.7,-416.5 1696.7,-416.5 1702.7,-416.5 1708.7,-422.5 1708.7,-428.5 1708.7,-428.5 1708.7,-478.9 1708.7,-478.9 1708.7,-484.9 1702.7,-490.9 1696.7,-490.9 1696.7,-490.9 1600.49,-490.9 1600.49,-490.9 1594.49,-490.9 1588.49,-484.9 1588.49,-478.9 1588.49,-478.9 1588.49,-428.5 1588.49,-428.5 1588.49,-422.5 1594.49,-416.5 1600.49,-416.5"/>
+<text text-anchor="middle" x="1648.6" y="-474.3" font-family="Times,serif" font-size="14.00">bba1...4c0a#0</text>
+<polyline fill="none" stroke="black" points="1588.49,-466.1 1708.7,-466.1"/>
+<text text-anchor="middle" x="1648.6" y="-449.5" font-family="Times,serif" font-size="14.00">pubkey 9aeb...ff8f</text>
+<polyline fill="none" stroke="black" points="1588.49,-441.3 1708.7,-441.3"/>
+<text text-anchor="middle" x="1648.6" y="-424.7" font-family="Times,serif" font-size="14.00">Ada: 8114.192960</text>
+</g>
+<!-- txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_1 -->
+<g id="node7" class="node">
+<title>txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_1</title>
+<path fill="none" stroke="black" d="M1332.02,-272.3C1332.02,-272.3 1965.18,-272.3 1965.18,-272.3 1971.18,-272.3 1977.18,-278.3 1977.18,-284.3 1977.18,-284.3 1977.18,-385.1 1977.18,-385.1 1977.18,-391.1 1971.18,-397.1 1965.18,-397.1 1965.18,-397.1 1332.02,-397.1 1332.02,-397.1 1326.02,-397.1 1320.02,-391.1 1320.02,-385.1 1320.02,-385.1 1320.02,-284.3 1320.02,-284.3 1320.02,-278.3 1326.02,-272.3 1332.02,-272.3"/>
+<text text-anchor="middle" x="1648.6" y="-380.5" font-family="Times,serif" font-size="14.00">bba1...4c0a#1</text>
+<polyline fill="none" stroke="black" points="1320.02,-372.3 1977.18,-372.3"/>
+<text text-anchor="middle" x="1648.6" y="-355.7" font-family="Times,serif" font-size="14.00">script ea07...de6b</text>
+<polyline fill="none" stroke="black" points="1320.02,-347.5 1977.18,-347.5"/>
+<text text-anchor="middle" x="1648.6" y="-330.9" font-family="Times,serif" font-size="14.00">Ada: 931214.830780</text>
+<text text-anchor="middle" x="1648.6" y="-314.1" font-family="Times,serif" font-size="14.00">da8c...1d24.4c51: 173443652363</text>
+<text text-anchor="middle" x="1648.6" y="-297.3" font-family="Times,serif" font-size="14.00">f580...6b4c.4d5350: 1</text>
+<text text-anchor="middle" x="1648.6" y="-280.5" font-family="Times,serif" font-size="14.00">f580...6b4c.6263e0101384dace4d7a8dadf0e6d45c8d43c8872604118ee82e3f2212934917: 9223371653497800693</text>
+</g>
+<!-- txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_2 -->
+<g id="node8" class="node">
+<title>txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_2</title>
+<path fill="none" stroke="black" d="M1597.38,-178.5C1597.38,-178.5 1699.81,-178.5 1699.81,-178.5 1705.81,-178.5 1711.81,-184.5 1711.81,-190.5 1711.81,-190.5 1711.81,-240.9 1711.81,-240.9 1711.81,-246.9 1705.81,-252.9 1699.81,-252.9 1699.81,-252.9 1597.38,-252.9 1597.38,-252.9 1591.38,-252.9 1585.38,-246.9 1585.38,-240.9 1585.38,-240.9 1585.38,-190.5 1585.38,-190.5 1585.38,-184.5 1591.38,-178.5 1597.38,-178.5"/>
+<text text-anchor="middle" x="1648.6" y="-236.3" font-family="Times,serif" font-size="14.00">bba1...4c0a#2</text>
+<polyline fill="none" stroke="black" points="1585.38,-228.1 1711.81,-228.1"/>
+<text text-anchor="middle" x="1648.6" y="-211.5" font-family="Times,serif" font-size="14.00">pubkey 5b7e...165b</text>
+<polyline fill="none" stroke="black" points="1585.38,-203.3 1711.81,-203.3"/>
+<text text-anchor="middle" x="1648.6" y="-186.7" font-family="Times,serif" font-size="14.00">Ada: 323.493450</text>
+</g>
+<!-- txin_cf4ecddde0d81f9ce8fcc881a85eb1f8ccdaf6807f03fea4cd02da896a621776_0 -->
+<g id="node9" class="node">
+<title>txin_cf4ecddde0d81f9ce8fcc881a85eb1f8ccdaf6807f03fea4cd02da896a621776_0</title>
+<path fill="none" stroke="black" d="M276.97,-93.5C276.97,-93.5 380.19,-93.5 380.19,-93.5 386.19,-93.5 392.19,-99.5 392.19,-105.5 392.19,-105.5 392.19,-155.9 392.19,-155.9 392.19,-161.9 386.19,-167.9 380.19,-167.9 380.19,-167.9 276.97,-167.9 276.97,-167.9 270.97,-167.9 264.97,-161.9 264.97,-155.9 264.97,-155.9 264.97,-105.5 264.97,-105.5 264.97,-99.5 270.97,-93.5 276.97,-93.5"/>
+<text text-anchor="middle" x="328.58" y="-151.3" font-family="Times,serif" font-size="14.00">cf4e...1776#0</text>
+<polyline fill="none" stroke="black" points="264.97,-143.1 392.19,-143.1"/>
+<text text-anchor="middle" x="328.58" y="-126.5" font-family="Times,serif" font-size="14.00">pubkey 0000...0000</text>
+<polyline fill="none" stroke="black" points="264.97,-118.3 392.19,-118.3"/>
+<text text-anchor="middle" x="328.58" y="-101.7" font-family="Times,serif" font-size="14.00">Ada: 12.486070</text>
+</g>
+<!-- txin_cf4ecddde0d81f9ce8fcc881a85eb1f8ccdaf6807f03fea4cd02da896a621776_0&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge6" class="edge">
+<title>txin_cf4ecddde0d81f9ce8fcc881a85eb1f8ccdaf6807f03fea4cd02da896a621776_0-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M392.53,-134.62C459.27,-139.95 567.26,-151.95 657.16,-177.7 745.04,-202.87 839.49,-245.31 909.01,-279.72"/>
+<polygon fill="black" stroke="black" points="907.21,-282.74 917.72,-284.06 910.33,-276.47 907.21,-282.74"/>
+<text text-anchor="middle" x="701.19" y="-201.41" font-family="Times,serif" font-size="14.00">reference</text>
+</g>
+<!-- txin_d46bd227bd2cf93dedd22ae9b6d92d30140cf0d68b756f6608e38d680c61ad17_0 -->
+<g id="node10" class="node">
+<title>txin_d46bd227bd2cf93dedd22ae9b6d92d30140cf0d68b756f6608e38d680c61ad17_0</title>
+<path fill="none" stroke="black" d="M276.97,-0.5C276.97,-0.5 380.19,-0.5 380.19,-0.5 386.19,-0.5 392.19,-6.5 392.19,-12.5 392.19,-12.5 392.19,-62.9 392.19,-62.9 392.19,-68.9 386.19,-74.9 380.19,-74.9 380.19,-74.9 276.97,-74.9 276.97,-74.9 270.97,-74.9 264.97,-68.9 264.97,-62.9 264.97,-62.9 264.97,-12.5 264.97,-12.5 264.97,-6.5 270.97,-0.5 276.97,-0.5"/>
+<text text-anchor="middle" x="328.58" y="-58.3" font-family="Times,serif" font-size="14.00">d46b...ad17#0</text>
+<polyline fill="none" stroke="black" points="264.97,-50.1 392.19,-50.1"/>
+<text text-anchor="middle" x="328.58" y="-33.5" font-family="Times,serif" font-size="14.00">pubkey 0000...0000</text>
+<polyline fill="none" stroke="black" points="264.97,-25.3 392.19,-25.3"/>
+<text text-anchor="middle" x="328.58" y="-8.7" font-family="Times,serif" font-size="14.00">Ada: 68.429870</text>
+</g>
+<!-- txin_d46bd227bd2cf93dedd22ae9b6d92d30140cf0d68b756f6608e38d680c61ad17_0&#45;&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -->
+<g id="edge7" class="edge">
+<title>txin_d46bd227bd2cf93dedd22ae9b6d92d30140cf0d68b756f6608e38d680c61ad17_0-&gt;tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a</title>
+<path fill="none" stroke="black" d="M392.47,-37.83C460.11,-39.94 569.71,-49.1 657.16,-83.7 771.79,-129.06 884.78,-218.44 951.73,-277.38"/>
+<polygon fill="black" stroke="black" points="949.13,-279.75 958.94,-283.76 953.77,-274.51 949.13,-279.75"/>
+<text text-anchor="middle" x="701.19" y="-117.73" font-family="Times,serif" font-size="14.00">reference</text>
+</g>
+<!-- tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a&#45;&gt;txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_0 -->
+<g id="edge9" class="edge">
+<title>tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a-&gt;txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_0</title>
+<path fill="none" stroke="black" d="M1215.9,-384.8C1250.51,-392.66 1286.22,-400.3 1320.02,-406.7 1408.07,-423.38 1510.43,-437.18 1576.98,-445.42"/>
+<polygon fill="black" stroke="black" points="1576.3,-448.86 1586.65,-446.61 1577.16,-441.92 1576.3,-448.86"/>
+</g>
+<!-- tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a&#45;&gt;txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_1 -->
+<g id="edge10" class="edge">
+<title>tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a-&gt;txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_1</title>
+<path fill="none" stroke="black" d="M1283.35,-334.7C1291.63,-334.7 1299.95,-334.7 1308.29,-334.7"/>
+<polygon fill="black" stroke="black" points="1308.16,-338.2 1318.16,-334.7 1308.16,-331.2 1308.16,-338.2"/>
+</g>
+<!-- tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a&#45;&gt;txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_2 -->
+<g id="edge11" class="edge">
+<title>tx_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a-&gt;txin_bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a_2</title>
+<path fill="none" stroke="black" d="M1215.9,-284.6C1250.51,-276.74 1286.22,-269.1 1320.02,-262.7 1406.73,-246.27 1507.33,-232.64 1573.93,-224.36"/>
+<polygon fill="black" stroke="black" points="1574.14,-227.86 1583.63,-223.16 1573.28,-220.91 1574.14,-227.86"/>
+</g>
+</g>
+</svg>
