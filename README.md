@@ -8,6 +8,7 @@ A collection of libraries that are helpful for building Cardano apps with Haskel
 * `convex-coin-selection`: Coin selection and transaction balancing
 * `convex-mockchain`: Minimal mockchain for tests
 * `convex-optics`: Some optics for plutus-ledger-api and cardano-api
+* `convex-tx-mod`: Command-line tool for working with transactions
 
 The API documentation (Haddocks) is published [here](https://j-mueller.github.io/sc-tools/)
 
@@ -21,6 +22,22 @@ The `main` branch uses the following versions of its major dependencies:
 |`cardano-api`|[10.1.0.0](https://chap.intersectmbo.org/package/cardano-api-10.1.0.0/)|
 |`ghc`|9.6.6|
 |`cabal`|3.10.3.0|
+
+## Evaluating Transactions
+
+The command-line tool `convex-tx-mod` can be used to download and analyse fully resolved transactions from blockfrost. Example:
+
+```shell
+export BLOCKFROST_TOKEN=<blockfrost_token>
+convex-tx-mod download bba17fd7b99fd88e5cfffb3223cf3988367f5fa7371f6549474310b0453e4c0a -o tx.json
+convex-tx-mod graph -f tx.json -o graph.dot
+```
+
+Note that the `BLOCKFROST_TOKEN` variable must be set to a token for the network that the transaction is from (ie mainnet, preprod).
+
+This downloads the serialised transaction and all its inputs to `tx.json` and then generates a dot graph in `graph.dot`.
+
+![](docs/img/example-transaction.svg)
 
 ## Building transactions
 

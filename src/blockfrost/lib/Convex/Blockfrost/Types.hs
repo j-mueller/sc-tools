@@ -25,7 +25,9 @@ module Convex.Blockfrost.Types(
   addressUtxo,
   addressUtxoTxIn,
   ScriptResolutionFailure(..),
+  DecodingError(..),
   resolveScript,
+  resolveTx,
   -- * Protocol parameters
   protocolParametersConway,
   -- * CBOR
@@ -102,6 +104,7 @@ import           Control.Monad.Except                           (MonadError (..)
                                                                  runExceptT,
                                                                  throwError)
 import           Control.Monad.Trans.Class                      (lift)
+import           Convex.Blockfrost.Orphans                      ()
 import qualified Convex.CardanoApi.Lenses                       as L
 import           Convex.Utils                                   (inBabbage)
 import qualified Data.ByteString.Base16                         as Base16
@@ -278,6 +281,11 @@ decodeScriptCbor tp hsh text =
   either (throwError . ScriptDecodingError tp hsh . Base16DecodeError) pure (Base16.decode $ Text.Encoding.encodeUtf8 text)
   >>= either (throwError . ScriptDecodingError tp hsh . CBORError) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Script lang))
 
+{-| Get the transaction from blockfrost
+-}
+resolveTx :: forall era m. (MonadBlockfrost m, C.IsShelleyBasedEra era) => C.TxId -> m (Either DecodingError (C.Tx era))
+resolveTx txId = runExceptT (Client.getTxCBOR (fromTxHash txId) >>= decodeTransactionCBOR)
+
 {-| Load this output's reference script from blockfrost and return the full output
 -}
 resolveScript :: forall era m. (C.IsBabbageBasedEra era, MonadBlockfrost m) => TxOutUnresolvedScript era -> m (Either ScriptResolutionFailure (C.TxOut C.CtxUTxO era))
@@ -351,10 +359,10 @@ toCBORString = CBORString . BSL.fromStrict . C.Ledger.serialize' Version.shelley
 
 {-| Decode a full transaction from a CBOR hex string
 -}
-decodeTransactionCBOR :: MonadError DecodingError m => TransactionCBOR -> m (C.Tx C.ConwayEra)
+decodeTransactionCBOR :: forall era m. (MonadError DecodingError m, C.IsShelleyBasedEra era) => TransactionCBOR -> m (C.Tx era)
 decodeTransactionCBOR TransactionCBOR{_transactionCBORCbor} =
   either (throwError . Base16DecodeError) pure (Base16.decode $ Text.Encoding.encodeUtf8 _transactionCBORCbor)
-  >>= either (throwError . CBORError) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Tx C.ConwayEra))
+  >>= either (throwError . CBORError) pure . C.deserialiseFromCBOR (C.proxyToAsType $ Proxy @(C.Tx era))
 
 {-| The 'SystemStart' value
 -}

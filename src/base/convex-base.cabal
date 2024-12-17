@@ -39,8 +39,10 @@ library
       Convex.PlutusLedger.V1
       Convex.PlutusLedger.V3
       Convex.PlutusTx
+      Convex.ResolvedTx
       Convex.Utils
       Convex.Utxos
+      Convex.UtxoMod
     hs-source-dirs: lib
     build-depends:
       base >= 4.14 && < 4.20,
@@ -64,6 +66,7 @@ library
       cardano-api == 10.1.0.0,
       cardano-ledger-core,
       cardano-crypto-wrapper,
+      cardano-binary,
 
       cardano-ledger-byron,
       cardano-ledger-mary,
@@ -71,6 +74,7 @@ library
       cardano-ledger-babbage,
       cardano-ledger-alonzo,
       cardano-ledger-conway,
+      cardano-crypto-class,
 
       ouroboros-consensus,
       ouroboros-consensus-cardano,
@@ -82,7 +86,9 @@ library
       bytestring,
       dlist,
       either-result,
-      strict-sop-core
+      strict-sop-core,
+      graphviz,
+      base16-bytestring
 
 test-suite convex-base-test
   import: lang

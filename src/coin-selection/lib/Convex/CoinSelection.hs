@@ -39,7 +39,6 @@ module Convex.CoinSelection(
   signBalancedTxBody,
   -- * Balance changes
   balanceChanges,
-  requiredTxIns,
   spentTxIns,
   -- * Etc.
   prepCSInputs,
@@ -80,7 +79,7 @@ import qualified Convex.BuildTx                as BuildTx
 import qualified Convex.CardanoApi.Lenses      as L
 import           Convex.Class                  (MonadBlockchain (..))
 import           Convex.Utils                  (inAlonzo, inBabbage, inMary,
-                                                mapError)
+                                                mapError, requiredTxIns)
 import           Convex.UTxOCompatibility      (UTxOCompatibility,
                                                 compatibleWith, txCompatibility)
 import           Convex.Utxos                  (BalanceChanges (..),
@@ -834,12 +833,6 @@ spentTxIns :: C.TxBodyContent v era -> Set C.TxIn
 spentTxIns (view L.txIns -> inputs) =
   -- TODO: Include collateral etc. fields
   Set.fromList (fst <$> inputs)
-
-requiredTxIns :: C.TxBodyContent v era -> Set C.TxIn
-requiredTxIns body =
-  Set.fromList (fst <$> view L.txIns body)
-  <> Set.fromList (view (L.txInsReference . L.txInsReferenceTxIns) body)
-  <> Set.fromList (view (L.txInsCollateral . L.txInsCollateralTxIns) body)
 
 lookupTxIns :: MonadBlockchain era m => Set C.TxIn -> m (C.UTxO era)
 lookupTxIns = utxoByTxIn

@@ -50,7 +50,6 @@ import           Control.Lens                                 (Lens', at,
                                                                makeLensesFor,
                                                                use, (.=), (<>=),
                                                                (?=))
-import           Control.Monad.Except                         (runExceptT)
 import           Control.Monad.IO.Class                       (MonadIO (..))
 import           Control.Monad.State                          (MonadState)
 import           Convex.Blockfrost.Orphans                    ()
@@ -185,7 +184,7 @@ sendTxBlockfrost =
 -}
 resolveTxIn :: (MonadBlockfrost m, MonadState BlockfrostCache m) => TxIn -> m (TxOut CtxUTxO ConwayEra)
 resolveTxIn txI@(TxIn txId (C.TxIx txIx)) = getOrRetrieve (txInputs . at txI) $ do
-  utxos <- runExceptT (Client.getTxCBOR (Types.fromTxHash txId) >>= Types.decodeTransactionCBOR)
+  utxos <- Types.resolveTx txId
           -- FIXME: Error handling
           >>= either (error . show) (pure . fmap (second  C.toCtxUTxOTxOut) . txnUtxos)
   txInputs <>= Map.fromList utxos
