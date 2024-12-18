@@ -1,80 +1,109 @@
-
-{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 
-import qualified Cardano.Api                    as C
-import qualified Cardano.Api.Ledger             as Ledger
-import qualified Cardano.Api.Shelley            as C
-import qualified Cardano.Ledger.Api             as Ledger
-import qualified Cardano.Ledger.Conway.Rules    as Rules
-import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
-import           Control.Lens                   (_3, _4, view, (&), (.~), (^.))
-import           Control.Monad                  (replicateM, void, when)
-import           Control.Monad.Except           (MonadError, runExceptT)
-import           Control.Monad.IO.Class         (MonadIO (..))
-import           Control.Monad.State.Strict     (execStateT, modify)
-import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
-                                                 assetValue, execBuildTx,
-                                                 execBuildTxT, mintPlutus,
-                                                 payToAddress,
-                                                 payToAddressTxOut,
-                                                 payToScriptDatumHash,
-                                                 prependTxOut,
-                                                 setMinAdaDepositAll,
-                                                 spendPlutus, spendPlutusRef)
-import qualified Convex.BuildTx                 as BuildTx
-import qualified Convex.CardanoApi.Lenses       as L
-import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadDatumQuery (queryDatumFromHash),
-                                                 MonadMockchain, getTxById,
-                                                 getUtxo, setReward, setUtxo,
-                                                 singleUTxO)
-import           Convex.CoinSelection           (BalanceTxError,
-                                                 ChangeOutputPosition (TrailingChange),
-                                                 keyWitnesses,
-                                                 publicKeyCredential)
-import           Convex.MockChain               (ValidationError (..),
-                                                 failedTransactions,
-                                                 fromLedgerUTxO,
-                                                 runMockchain0IOWith)
-import           Convex.MockChain.CoinSelection (balanceAndSubmit,
-                                                 payToOperator', paymentTo,
-                                                 tryBalanceAndSubmit)
-import qualified Convex.MockChain.Defaults      as Defaults
-import qualified Convex.MockChain.Gen           as Gen
-import           Convex.MockChain.Staking       (registerPool)
-import           Convex.MockChain.Utils         (mockchainSucceeds,
-                                                 runMockchainProp,
-                                                 runTestableErr)
-import           Convex.NodeParams              (ledgerProtocolParameters,
-                                                 protocolParameters)
-import           Convex.Query                   (balancePaymentCredentials)
-import           Convex.Utils                   (failOnError, inBabbage)
-import qualified Convex.Utxos                   as Utxos
-import           Convex.Wallet                  (Wallet)
-import qualified Convex.Wallet                  as Wallet
-import qualified Convex.Wallet.MockWallet       as Wallet
-import           Convex.Wallet.Operator         (oPaymentKey,
-                                                 operatorPaymentCredential,
-                                                 operatorReturnOutput,
-                                                 signTxOperator,
-                                                 verificationKey)
-import           Data.Foldable                  (traverse_)
-import           Data.List.NonEmpty             (NonEmpty (..))
-import qualified Data.Map                       as Map
-import qualified Data.Set                       as Set
-import qualified PlutusLedgerApi.V2             as PV2
-import qualified Scripts
-import qualified Test.QuickCheck.Gen            as Gen
-import           Test.Tasty                     (TestTree, defaultMain,
-                                                 testGroup)
-import           Test.Tasty.HUnit               (Assertion, testCase)
-import qualified Test.Tasty.QuickCheck          as QC
-import           Test.Tasty.QuickCheck          (Property, classify,
-                                                 testProperty)
+import Cardano.Api qualified as C
+import Cardano.Api.Ledger qualified as Ledger
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Api qualified as Ledger
+import Cardano.Ledger.Conway.Rules qualified as Rules
+import Cardano.Ledger.Shelley.API (ApplyTxError (..))
+import Control.Lens (view, (&), (.~), (^.), _3, _4)
+import Control.Monad (replicateM, void, when)
+import Control.Monad.Except (MonadError, runExceptT)
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.State.Strict (execStateT, modify)
+import Convex.BuildTx (
+  BuildTxT,
+  addRequiredSignature,
+  assetValue,
+  execBuildTx,
+  execBuildTxT,
+  mintPlutus,
+  payToAddress,
+  payToAddressTxOut,
+  payToScriptDatumHash,
+  prependTxOut,
+  setMinAdaDepositAll,
+  spendPlutus,
+  spendPlutusRef,
+ )
+import Convex.BuildTx qualified as BuildTx
+import Convex.CardanoApi.Lenses qualified as L
+import Convex.Class (
+  MonadBlockchain (..),
+  MonadDatumQuery (queryDatumFromHash),
+  MonadMockchain,
+  getTxById,
+  getUtxo,
+  setReward,
+  setUtxo,
+  singleUTxO,
+ )
+import Convex.CoinSelection (
+  BalanceTxError,
+  ChangeOutputPosition (TrailingChange),
+  keyWitnesses,
+  publicKeyCredential,
+ )
+import Convex.MockChain (
+  ValidationError (..),
+  failedTransactions,
+  fromLedgerUTxO,
+  runMockchain0IOWith,
+ )
+import Convex.MockChain.CoinSelection (
+  balanceAndSubmit,
+  payToOperator',
+  paymentTo,
+  tryBalanceAndSubmit,
+ )
+import Convex.MockChain.Defaults qualified as Defaults
+import Convex.MockChain.Gen qualified as Gen
+import Convex.MockChain.Staking (registerPool)
+import Convex.MockChain.Utils (
+  mockchainSucceeds,
+  runMockchainProp,
+  runTestableErr,
+ )
+import Convex.NodeParams (
+  ledgerProtocolParameters,
+  protocolParameters,
+ )
+import Convex.Query (balancePaymentCredentials)
+import Convex.Utils (failOnError, inBabbage)
+import Convex.Utxos qualified as Utxos
+import Convex.Wallet (Wallet)
+import Convex.Wallet qualified as Wallet
+import Convex.Wallet.MockWallet qualified as Wallet
+import Convex.Wallet.Operator (
+  oPaymentKey,
+  operatorPaymentCredential,
+  operatorReturnOutput,
+  signTxOperator,
+  verificationKey,
+ )
+import Data.Foldable (traverse_)
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map qualified as Map
+import Data.Set qualified as Set
+import PlutusLedgerApi.V2 qualified as PV2
+import Scripts qualified
+import Test.QuickCheck.Gen qualified as Gen
+import Test.Tasty (
+  TestTree,
+  defaultMain,
+  testGroup,
+ )
+import Test.Tasty.HUnit (Assertion, testCase)
+import Test.Tasty.QuickCheck (
+  Property,
+  classify,
+  testProperty,
+ )
+import Test.Tasty.QuickCheck qualified as QC
 
 main :: IO ()
 main = defaultMain tests
@@ -289,7 +318,7 @@ checkTxById = do
     Nothing -> fail "Failed to find transaction"
     Just{} -> pure ()
 
-{-| Build a transaction, then balance and sign it with the wallet, then
+{- | Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain.
 -}
 execBuildTxWallet :: (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> BuildTxT C.ConwayEra m a -> m (Either (ValidationError C.ConwayEra) C.TxId)

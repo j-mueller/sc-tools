@@ -72,103 +72,160 @@ module Convex.MockChain (
   evalMockchain0T,
 ) where
 
-import           Cardano.Api.Shelley                   (AddressInEra,
-                                                        Hash (StakePoolKeyHash),
-                                                        ShelleyLedgerEra,
-                                                        SlotNo, Tx,
-                                                        TxBody (ShelleyTxBody))
-import qualified Cardano.Api.Shelley                   as C
-import qualified Cardano.Ledger.Alonzo.Core            as L
-import           Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError,
-                                                        collectPlutusScriptsWithContext,
-                                                        evalPlutusScripts)
-import           Cardano.Ledger.Alonzo.TxWits          (unTxDats)
-import           Cardano.Ledger.Babbage.Tx             (IsValid (..))
-import           Cardano.Ledger.BaseTypes              (Globals (systemStart),
-                                                        epochInfo, getVersion,
-                                                        pvMajor)
-import           Cardano.Ledger.Conway                 (Conway)
-import qualified Cardano.Ledger.Core                   as Core
-import           Cardano.Ledger.Crypto                 (StandardCrypto)
-import           Cardano.Ledger.Plutus.Evaluate        (PlutusWithContext (..),
-                                                        ScriptResult (..))
-import           Cardano.Ledger.Plutus.Language        (LegacyPlutusArgs (..),
-                                                        PlutusArgs (PlutusV1Args, PlutusV2Args, PlutusV3Args),
-                                                        PlutusScriptContext,
-                                                        unPlutusBinary)
-import qualified Cardano.Ledger.Plutus.Language        as Plutus.Language
-import           Cardano.Ledger.Shelley.API            (AccountState (..),
-                                                        Coin (..),
-                                                        LedgerEnv (..),
-                                                        UTxO (..), UtxoEnv (..),
-                                                        Validated,
-                                                        initialFundsPseudoTxIn)
-import qualified Cardano.Ledger.Shelley.API
-import           Cardano.Ledger.Shelley.LedgerState    (LedgerState (..),
-                                                        UTxOState (..),
-                                                        certDStateL,
-                                                        delegations,
-                                                        lsCertStateL, rewards,
-                                                        smartUTxOState)
-import           Cardano.Ledger.UMap                   (RDPair (..),
-                                                        domRestrictedMap,
-                                                        fromCompact)
-import qualified Cardano.Ledger.Val                    as Val
-import           Control.Lens                          (_1, _3, at, over, set,
-                                                        to, view, (%=), (&),
-                                                        (.=), (.~), (^.))
-import           Control.Monad                         (forM)
-import           Control.Monad.Except                  (MonadError (throwError))
-import           Control.Monad.IO.Class                (MonadIO)
-import           Control.Monad.Primitive               (PrimMonad)
-import           Control.Monad.Reader                  (MonadReader, ReaderT,
-                                                        ask, asks, local,
-                                                        runReaderT)
-import           Control.Monad.State.Strict            (MonadState, StateT, get,
-                                                        gets, put, runStateT,
-                                                        state)
-import           Control.Monad.Trans.Class             (MonadTrans (..))
-import qualified Convex.CardanoApi.Lenses              as L
-import           Convex.Class                          (ExUnitsError (..),
-                                                        MockChainState (..),
-                                                        MonadBlockchain (..),
-                                                        MonadDatumQuery (..),
-                                                        MonadMockchain (..),
-                                                        MonadUtxoQuery (..),
-                                                        ValidationError (..),
-                                                        _ApplyTxFailure,
-                                                        _Phase1Error,
-                                                        _Phase2Error,
-                                                        _PredicateFailures,
-                                                        _VExUnits, datums, env,
-                                                        failedTransactions,
-                                                        modifyUtxo, poolState,
-                                                        transactions, txById)
-import           Convex.MockChain.Defaults             ()
-import qualified Convex.MockChain.Defaults             as Defaults
-import           Convex.MonadLog                       (MonadLog (..))
-import           Convex.NodeParams                     (NodeParams (..))
-import           Convex.Utils                          (alonzoEraUtxo,
-                                                        slotToUtcTime)
-import           Convex.Utxos                          (UtxoSet (..),
-                                                        fromApiUtxo,
-                                                        onlyCredential,
-                                                        onlyCredentials)
-import           Convex.Wallet                         (Wallet, addressInEra,
-                                                        paymentCredential)
-import           Data.Bifunctor                        (Bifunctor (..))
-import           Data.Default                          (Default (def))
-import           Data.Foldable                         (for_, traverse_)
-import           Data.Functor.Identity                 (Identity (..))
-import qualified Data.Map                              as Map
-import qualified Data.Set                              as Set
-import           Ouroboros.Consensus.Shelley.Eras      (EraCrypto)
-import qualified PlutusCore                            as PLC
-import           PlutusLedgerApi.Common                (PlutusLedgerLanguage (..),
-                                                        mkTermToEvaluate)
-import qualified PlutusLedgerApi.Common                as Plutus
-import qualified PlutusLedgerApi.V3                    as PV3
-import qualified UntypedPlutusCore                     as UPLC
+import Cardano.Api.Shelley (
+  AddressInEra,
+  Hash (StakePoolKeyHash),
+  ShelleyLedgerEra,
+  SlotNo,
+  Tx,
+  TxBody (ShelleyTxBody),
+ )
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Alonzo.Core qualified as L
+import Cardano.Ledger.Alonzo.Plutus.Evaluate (
+  CollectError,
+  collectPlutusScriptsWithContext,
+  evalPlutusScripts,
+ )
+import Cardano.Ledger.Alonzo.TxWits (unTxDats)
+import Cardano.Ledger.Babbage.Tx (IsValid (..))
+import Cardano.Ledger.BaseTypes (
+  Globals (systemStart),
+  epochInfo,
+  getVersion,
+  pvMajor,
+ )
+import Cardano.Ledger.Conway (Conway)
+import Cardano.Ledger.Core qualified as Core
+import Cardano.Ledger.Crypto (StandardCrypto)
+import Cardano.Ledger.Plutus.Evaluate (
+  PlutusWithContext (..),
+  ScriptResult (..),
+ )
+import Cardano.Ledger.Plutus.Language (
+  LegacyPlutusArgs (..),
+  PlutusArgs (PlutusV1Args, PlutusV2Args, PlutusV3Args),
+  PlutusScriptContext,
+  unPlutusBinary,
+ )
+import Cardano.Ledger.Plutus.Language qualified as Plutus.Language
+import Cardano.Ledger.Shelley.API (
+  AccountState (..),
+  Coin (..),
+  LedgerEnv (..),
+  UTxO (..),
+  UtxoEnv (..),
+  Validated,
+  initialFundsPseudoTxIn,
+ )
+import Cardano.Ledger.Shelley.API qualified
+import Cardano.Ledger.Shelley.LedgerState (
+  LedgerState (..),
+  UTxOState (..),
+  certDStateL,
+  delegations,
+  lsCertStateL,
+  rewards,
+  smartUTxOState,
+ )
+import Cardano.Ledger.UMap (
+  RDPair (..),
+  domRestrictedMap,
+  fromCompact,
+ )
+import Cardano.Ledger.Val qualified as Val
+import Control.Lens (
+  at,
+  over,
+  set,
+  to,
+  view,
+  (%=),
+  (&),
+  (.=),
+  (.~),
+  (^.),
+  _1,
+  _3,
+ )
+import Control.Monad (forM)
+import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Primitive (PrimMonad)
+import Control.Monad.Reader (
+  MonadReader,
+  ReaderT,
+  ask,
+  asks,
+  local,
+  runReaderT,
+ )
+import Control.Monad.State.Strict (
+  MonadState,
+  StateT,
+  get,
+  gets,
+  put,
+  runStateT,
+  state,
+ )
+import Control.Monad.Trans.Class (MonadTrans (..))
+import Convex.CardanoApi.Lenses qualified as L
+import Convex.Class (
+  ExUnitsError (..),
+  MockChainState (..),
+  MonadBlockchain (..),
+  MonadDatumQuery (..),
+  MonadMockchain (..),
+  MonadUtxoQuery (..),
+  ValidationError (..),
+  datums,
+  env,
+  failedTransactions,
+  modifyUtxo,
+  poolState,
+  transactions,
+  txById,
+  _ApplyTxFailure,
+  _Phase1Error,
+  _Phase2Error,
+  _PredicateFailures,
+  _VExUnits,
+ )
+import Convex.MockChain.Defaults ()
+import Convex.MockChain.Defaults qualified as Defaults
+import Convex.MonadLog (MonadLog (..))
+import Convex.NodeParams (NodeParams (..))
+import Convex.Utils (
+  alonzoEraUtxo,
+  slotToUtcTime,
+ )
+import Convex.Utxos (
+  UtxoSet (..),
+  fromApiUtxo,
+  onlyCredential,
+  onlyCredentials,
+ )
+import Convex.Wallet (
+  Wallet,
+  addressInEra,
+  paymentCredential,
+ )
+import Data.Bifunctor (Bifunctor (..))
+import Data.Default (Default (def))
+import Data.Foldable (for_, traverse_)
+import Data.Functor.Identity (Identity (..))
+import Data.Map qualified as Map
+import Data.Set qualified as Set
+import Ouroboros.Consensus.Shelley.Eras (EraCrypto)
+import PlutusCore qualified as PLC
+import PlutusLedgerApi.Common (
+  PlutusLedgerLanguage (..),
+  mkTermToEvaluate,
+ )
+import PlutusLedgerApi.Common qualified as Plutus
+import PlutusLedgerApi.V3 qualified as PV3
+import UntypedPlutusCore qualified as UPLC
 
 {- | Apply the plutus script to all its arguments and return a plutus
 program
