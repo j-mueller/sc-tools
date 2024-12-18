@@ -1,11 +1,11 @@
 cabal-version: 3.4
 name:          convex-tx-mod
 version:       0.3.0.0
-synopsis:      Command-line tool for downloading and exporting transactions
-license: Apache-2.0
-license-files:
-  LICENSE
+synopsis:
+  Command-line tool for downloading and exporting transactions
 
+license:       Apache-2.0
+license-files: LICENSE
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
 homepage:      https://github.com/j-mueller/sc-tools
@@ -16,46 +16,62 @@ description:
 build-type:    Simple
 
 common lang
-    default-language: Haskell2010
-    default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
-                        DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
-                        GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
-                        DeriveTraversable ImportQualifiedPost NumericUnderscores
-                        DerivingStrategies LambdaCase DerivingVia NamedFieldPuns
-    ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
-                 -Wincomplete-uni-patterns -Wincomplete-record-updates
-                 -Wredundant-constraints -Widentities
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    ExplicitForAll
+    FlexibleContexts
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wunused-packages
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
 
 library
-  import: lang
+  import:          lang
   exposed-modules:
     Convex.TxMod.Cli
     Convex.TxMod.Command
     Convex.TxMod.Env
     Convex.TxMod.Logging
-  hs-source-dirs: lib
+
+  hs-source-dirs:  lib
   build-depends:
-    base >= 4.14.0,
-    aeson,
-    cardano-api,
-    optparse-applicative,
-    convex-base,
-    convex-blockfrost,
-    blockfrost-client-core,
-    blockfrost-api,
-    Blammo,
-    mtl,
-    lens,
-    aeson-pretty,
-    bytestring,
-    text
+    , aeson
+    , aeson-pretty
+    , base                    >=4.14.0
+    , Blammo
+    , blockfrost-api
+    , blockfrost-client-core
+    , bytestring
+    , cardano-api
+    , convex-base
+    , convex-blockfrost
+    , lens
+    , mtl
+    , optparse-applicative
+    , text
 
 executable convex-tx-mod
-  import: lang
-  main-is: Main.hs
+  import:         lang
+  main-is:        Main.hs
   build-depends:
-    base,
-    convex-tx-mod
+    , base
+    , convex-tx-mod
+
   hs-source-dirs: exe
-  ghc-options:
-    -threaded -rtsopts -O2
+  ghc-options:    -threaded -rtsopts -O2

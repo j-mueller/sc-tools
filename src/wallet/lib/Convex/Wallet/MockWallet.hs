@@ -1,8 +1,8 @@
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-| Some predefined mock wallets for testing
--}
-module Convex.Wallet.MockWallet(
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | Some predefined mock wallets for testing
+module Convex.Wallet.MockWallet (
   -- * Mock wallets for testing
   mockWallets,
   initialUTxOs,
@@ -15,21 +15,20 @@ module Convex.Wallet.MockWallet(
   w7,
   w8,
   w9,
-  w10
+  w10,
 ) where
 
-import           Cardano.Ledger.Shelley.API (Coin (..))
-import           Convex.Wallet              (Wallet, parse)
-import           Data.Text                  (Text)
-import qualified Data.Text                  as Text
+import Cardano.Ledger.Shelley.API (Coin (..))
+import Convex.Wallet (Wallet, parse)
+import Data.Text (Text)
+import Data.Text qualified as Text
 
 mkWallet :: Text -> Wallet
 mkWallet txt = case parse txt of
   Left err -> error $ "failed to parse '" <> Text.unpack txt <> "': " <> show err
-  Right w  -> w
+  Right w -> w
 
-{-| Some predefined wallets for testing
--}
+-- | Some predefined wallets for testing
 mockWallets :: [Wallet]
 mockWallets = [w1, w2, w3, w4, w5, w6, w7, w8, w9, w10]
 
@@ -63,9 +62,8 @@ w9 = mkWallet "addr_sk1xc4ad4jph6fp0kx5edkj8wdd4kw5qxgyu0yf7y0gkqgexa53spqsvlgty
 w10 :: Wallet
 w10 = mkWallet "addr_sk129sf8z7c4qvzm3lgw0m0scu6nm456lxjdjtwpywcleqwp23mfv3swq8t6h"
 
-{-| 100.000 Ada for each wallet
--}
+-- | 100.000 Ada for each wallet
 initialUTxOs :: [(Wallet, Coin)]
 initialUTxOs =
   let c = Coin 100_000_000_000
-  in fmap (\w -> (w, c)) mockWallets
+   in fmap (\w -> (w, c)) mockWallets

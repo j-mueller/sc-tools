@@ -1,16 +1,18 @@
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TypeApplications   #-}
-module Main(main) where
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 
-import           Test.Tasty          (TestTree, defaultMain, testGroup)
-import qualified UnAda.Test.UnitTest as UnitTest
+module Main (main) where
+
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import UnAda.Test.UnitTest qualified as UnitTest
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "unAda tests"
-  [ UnitTest.tests
-
-  ]
+tests =
+  testGroup
+    "unAda tests"
+    [ UnitTest.tests
+    ]

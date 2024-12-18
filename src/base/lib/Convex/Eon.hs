@@ -1,13 +1,13 @@
 module Convex.Eon (
-  IsShelleyToBabbageEra(shelleyToBabbageEra)
+  IsShelleyToBabbageEra (shelleyToBabbageEra),
 ) where
 
-import qualified Cardano.Api as C
+import Cardano.Api qualified as C
 
 -- TODO This was deleted from cardano-api because they said it was unused. See
 -- https://github.com/IntersectMBO/cardano-api/pull/256. However, because of the
 -- Certificate type starting at ConwayEra, that typeclass is a nice to have.
-class C.IsShelleyBasedEra era => IsShelleyToBabbageEra era where
+class (C.IsShelleyBasedEra era) => IsShelleyToBabbageEra era where
   shelleyToBabbageEra :: C.ShelleyToBabbageEra era
 
 instance IsShelleyToBabbageEra C.ShelleyEra where

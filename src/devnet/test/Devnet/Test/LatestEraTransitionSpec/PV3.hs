@@ -1,32 +1,31 @@
-{-# LANGUAGE BangPatterns       #-}
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE TypeApplications   #-}
-
-{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:preserve-logging #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
 
-module Devnet.Test.LatestEraTransitionSpec.PV3
-  ( readBitTestMintingPolicyScriptPV3
-  , writeBitTestMintingPolicyScriptPV3
-  ) where
+module Devnet.Test.LatestEraTransitionSpec.PV3 (
+  readBitTestMintingPolicyScriptPV3,
+  writeBitTestMintingPolicyScriptPV3,
+) where
 
-import qualified Cardano.Api                as C
-import           Convex.PlutusTx            (compiledCodeToScript)
-import qualified PlutusCore.Version         as Version
-import           PlutusTx                   (CompiledCode)
-import qualified PlutusTx
-import qualified PlutusTx.Builtins.Internal as BI
-import qualified PlutusTx.Prelude           as PlutusTx
+import Cardano.Api qualified as C
+import Convex.PlutusTx (compiledCodeToScript)
+import PlutusCore.Version qualified as Version
+import PlutusTx (CompiledCode)
+import PlutusTx qualified
+import PlutusTx.Builtins.Internal qualified as BI
+import PlutusTx.Prelude qualified as PlutusTx
 
-{-# INLINABLE readBitTestMintingPolicy #-}
+{-# INLINEABLE readBitTestMintingPolicy #-}
 readBitTestMintingPolicy :: PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinUnit
 readBitTestMintingPolicy d _ =
   if PlutusTx.readBit (BI.unsafeDataAsB d) 2 then BI.unitval else PlutusTx.error ()
@@ -36,10 +35,10 @@ readBitTestMintingPolicyScriptPV3 = compiledCodeToScript . readBitTestMintingPol
  where
   readBitTestMintingPolicyCompiled :: PlutusTx.BuiltinData -> CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinUnit)
   readBitTestMintingPolicyCompiled str =
-    $$(PlutusTx.compile [|| \str' c -> readBitTestMintingPolicy str' c ||])
-    `PlutusTx.unsafeApplyCode` PlutusTx.liftCode Version.plcVersion110 str
+    $$(PlutusTx.compile [||\str' c -> readBitTestMintingPolicy str' c||])
+      `PlutusTx.unsafeApplyCode` PlutusTx.liftCode Version.plcVersion110 str
 
-{-# INLINABLE writeBitTestMintingPolicy #-}
+{-# INLINEABLE writeBitTestMintingPolicy #-}
 writeBitTestMintingPolicy :: PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinUnit
 writeBitTestMintingPolicy d _ =
   let !_ = PlutusTx.writeBits (BI.unsafeDataAsB d) [0] False in BI.unitval
@@ -49,5 +48,5 @@ writeBitTestMintingPolicyScriptPV3 = compiledCodeToScript . writeBitTestMintingP
  where
   writeBitTestMintingPolicyCompiled :: PlutusTx.BuiltinData -> CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinUnit)
   writeBitTestMintingPolicyCompiled str =
-    $$(PlutusTx.compile [|| \str' c -> writeBitTestMintingPolicy str' c ||])
-    `PlutusTx.unsafeApplyCode` PlutusTx.liftCode Version.plcVersion110 str
+    $$(PlutusTx.compile [||\str' c -> writeBitTestMintingPolicy str' c||])
+      `PlutusTx.unsafeApplyCode` PlutusTx.liftCode Version.plcVersion110 str

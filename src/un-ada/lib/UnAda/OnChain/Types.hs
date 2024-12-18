@@ -1,38 +1,38 @@
-{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE NoImplicitPrelude  #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE PatternSynonyms    #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE ViewPatterns       #-}
-module UnAda.OnChain.Types(
-  UnAdaState(..),
-  BuiltinData(
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+
+module UnAda.OnChain.Types (
+  UnAdaState (..),
+  BuiltinData (
     UnAdaStateBuiltin,
-    -- * Script context
+    -- \* Script context
     ScriptContext,
     txInfo,
     purpose,
-    -- * Matching on tx info
+    -- \* Matching on tx info
     TxInfoV2,
     inputs,
     referenceInputs,
     outputs,
     fee,
     rest8,
-    -- * Validity intervals
+    -- \* Validity intervals
     FinitePOSIXTimeRange,
     fiFrom,
     fiTo,
     FiniteExtended,
     ItvlBound,
-
-    -- * UnAda context
+    -- \* UnAda context
     UnAdaContext,
     uacValueMinted,
     uacValidRange
-    ),
-  TxInfoRest8(
+  ),
+  TxInfoRest8 (
     TxInfoPartTwo,
     mint,
     dcert,
@@ -40,59 +40,68 @@ module UnAda.OnChain.Types(
     validRange,
     rest4
   ),
+
   -- * Script Purpose
   scriptPurposeMinting,
-  UnAdaRedeemer
+  UnAdaRedeemer,
 ) where
 
-import           GHC.Generics       (Generic)
-import           PlutusLedgerApi.V1 (MintingPolicyHash, POSIXTime)
-import qualified PlutusTx
-import           PlutusTx.Builtins  (unsafeDataAsB, unsafeDataAsConstr,
-                                     unsafeDataAsI)
-import           PlutusTx.Prelude
+import GHC.Generics (Generic)
+import PlutusLedgerApi.V1 (MintingPolicyHash, POSIXTime)
+import PlutusTx qualified
+import PlutusTx.Builtins (
+  unsafeDataAsB,
+  unsafeDataAsConstr,
+  unsafeDataAsI,
+ )
+import PlutusTx.Prelude
 
-{-| The time after which the output can be spent, and the
+{- | The time after which the output can be spent, and the
 minting policy
 -}
-data UnAdaState =
-  UnAdaState
-    { spendAfter :: POSIXTime
-    , mps        :: MintingPolicyHash
-    }
-    deriving stock Generic
+data UnAdaState
+  = UnAdaState
+  { spendAfter :: POSIXTime
+  , mps :: MintingPolicyHash
+  }
+  deriving stock (Generic)
 
 PlutusTx.makeIsDataIndexed ''UnAdaState [('UnAdaState, 0)]
 
 pattern UnAdaStateBuiltin :: Integer -> BuiltinByteString -> BuiltinData
 pattern UnAdaStateBuiltin spendAfterB mpsB <- (unsafeDataAsConstr -> (_, [unsafeDataAsI -> spendAfterB, unsafeDataAsB -> mpsB]))
 
-{-# INLINABLE txInfo #-}
+{-# INLINEABLE txInfo #-}
 pattern ScriptContext :: BuiltinData -> BuiltinData -> BuiltinData
 pattern ScriptContext{txInfo, purpose} <-
-  (unsafeDataAsConstr ->
-    (_, [txInfo, purpose]
-    ))
+  ( unsafeDataAsConstr ->
+      ( _
+        , [txInfo, purpose]
+        )
+    )
 
 newtype TxInfoRest8 = TxInfoRest8 [BuiltinData]
 
-{-# INLINABLE mint #-}
-{-# INLINABLE validRange #-}
+{-# INLINEABLE mint #-}
+{-# INLINEABLE validRange #-}
 pattern TxInfoPartTwo :: BuiltinData -> BuiltinData -> BuiltinData -> BuiltinData -> [BuiltinData] -> TxInfoRest8
-pattern TxInfoPartTwo{mint, dcert, wdrl, validRange, rest4} <- TxInfoRest8 (mint:dcert:wdrl:validRange:rest4)
+pattern TxInfoPartTwo{mint, dcert, wdrl, validRange, rest4} <- TxInfoRest8 (mint : dcert : wdrl : validRange : rest4)
 
-{-# INLINABLE rest8 #-}
+{-# INLINEABLE rest8 #-}
+
 -- inputs, referenceInputs, outputs, fee, mint, dcert, wdrl, validRange, signatories, redeemers, dat, txi
 pattern TxInfoV2 :: BuiltinData -> BuiltinData -> BuiltinData -> BuiltinData -> TxInfoRest8 -> BuiltinData
 pattern TxInfoV2{inputs, referenceInputs, outputs, fee, rest8} <-
-  (unsafeDataAsConstr ->
-    (_, inputs:referenceInputs:outputs:fee:(TxInfoRest8 -> rest8)
-    ))
+  ( unsafeDataAsConstr ->
+      ( _
+        , inputs : referenceInputs : outputs : fee : (TxInfoRest8 -> rest8)
+        )
+    )
 
 pattern FiniteExtended :: Integer -> BuiltinData
 pattern FiniteExtended a <- (unsafeDataAsConstr -> (_, [unsafeDataAsI -> a]))
 
-{-# INLINABLE scriptPurposeMinting #-}
+{-# INLINEABLE scriptPurposeMinting #-}
 scriptPurposeMinting :: BuiltinData -> (BuiltinData -> r) -> r
 scriptPurposeMinting (unsafeDataAsConstr -> (n, [arg])) mint =
   if n == 0
@@ -118,10 +127,10 @@ pattern ItvlBound ext closure <- (unsafeDataAsConstr -> (_, [ext, closure]))
 
 -- data UnAdaContext = UnAdaContext_{ uacValidRange_ :: BuiltinData, uacValueMinted_ :: BuiltinData }
 
-{-# INLINABLE uacValueMinted #-}
-{-# INLINABLE uacValidRange #-}
+{-# INLINEABLE uacValueMinted #-}
+{-# INLINEABLE uacValidRange #-}
 pattern UnAdaContext :: BuiltinData -> BuiltinData -> BuiltinData
-pattern UnAdaContext{uacValueMinted, uacValidRange} <- ScriptContext{txInfo=TxInfoV2{rest8=TxInfoPartTwo{mint=uacValueMinted,validRange=uacValidRange}}}
+pattern UnAdaContext{uacValueMinted, uacValidRange} <- ScriptContext{txInfo = TxInfoV2{rest8 = TxInfoPartTwo{mint = uacValueMinted, validRange = uacValidRange}}}
 
 -- {-# INLINABLE unsafeUnAdaContext #-}
 -- unsafeUnAdaContext :: BuiltinData -> UnAdaContext
@@ -132,13 +141,12 @@ pattern UnAdaContext{uacValueMinted, uacValidRange} <- ScriptContext{txInfo=TxIn
 --       !uacValidRange = head r2
 --   in UnAdaContext{uacValueMinted, uacValidRange}
 
-{-| Match on 'POSIXTimeRange' where both ends are finite
--}
+-- | Match on 'POSIXTimeRange' where both ends are finite
 pattern FinitePOSIXTimeRange :: BuiltinData -> BuiltinData -> BuiltinData
 pattern FinitePOSIXTimeRange{fiFrom, fiTo} <-
-  (unsafeDataAsConstr ->
-    (_, [fiFrom, fiTo]))
+  ( unsafeDataAsConstr ->
+      (_, [fiFrom, fiTo])
+    )
 
-{-| Always use the same redeemer
--}
+-- | Always use the same redeemer
 type UnAdaRedeemer = ()

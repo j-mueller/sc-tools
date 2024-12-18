@@ -2,10 +2,8 @@ cabal-version: 3.0
 name:          convex-node-client
 version:       0.3.0.0
 synopsis:      Conveniences for cardano-node clients
-license: Apache-2.0
-license-files:
-  LICENSE
-
+license:       Apache-2.0
+license-files: LICENSE
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
 homepage:      https://github.com/j-mueller/sc-tools
@@ -16,44 +14,54 @@ description:
 build-type:    Simple
 
 common lang
-    default-language: Haskell2010
-    default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
-                        DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
-                        GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
-                        DeriveTraversable ImportQualifiedPost
-    ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
-                 -Wincomplete-uni-patterns -Wincomplete-record-updates
-                 -Wredundant-constraints -Widentities
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    FlexibleContexts
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    MultiParamTypeClasses
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wunused-packages
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
 
 library
-    import: lang
-    exposed-modules:
-      Convex.NodeClient.ChainTip
-      Convex.NodeClient.Fold
-      Convex.NodeClient.Progress
-      Convex.NodeClient.Resuming
-      Convex.NodeClient.Types
-      Convex.NodeClient.WaitForTxnClient
-    hs-source-dirs: lib
-    build-depends:
-      base >= 4.14.0,
-      transformers,
-      text,
-      time,
-      containers,
-      aeson,
-      stm,
-      mtl,
-      primitive
+  import:          lang
+  exposed-modules:
+    Convex.NodeClient.ChainTip
+    Convex.NodeClient.Fold
+    Convex.NodeClient.Progress
+    Convex.NodeClient.Resuming
+    Convex.NodeClient.Types
+    Convex.NodeClient.WaitForTxnClient
 
-    build-depends:
-      convex-base
+  hs-source-dirs:  lib
+  build-depends:
+    , aeson
+    , base          >=4.14.0
+    , containers
+    , mtl
+    , primitive
+    , stm
+    , text
+    , time
+    , transformers
 
-    -- cardano dependencies
-    build-depends:
-      cardano-api,
-      cardano-slotting,
-      ouroboros-consensus,
-      ouroboros-network-protocols,
-      typed-protocols
+  build-depends:   convex-base
 
+  -- cardano dependencies
+  build-depends:
+    , cardano-api
+    , cardano-slotting
+    , ouroboros-consensus
+    , ouroboros-network-protocols
+    , typed-protocols
