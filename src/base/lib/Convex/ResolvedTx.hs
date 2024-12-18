@@ -28,13 +28,14 @@ import Control.Monad.Reader (
   lift,
   runReaderT,
  )
-import Convex.Class (MonadMockchain, getTxById, utxoByTxIn)
+import Control.Monad.Trans.Maybe (MaybeT (..))
 import Convex.CardanoApi.Lenses (
   _ShelleyAddress,
   _TxOut,
   _TxOutValue,
  )
 import Convex.CardanoApi.Lenses qualified as L
+import Convex.Class (MonadMockchain, getTxById, utxoByTxIn)
 import Convex.Utils qualified as Utils
 import Data.Aeson (
   FromJSON (..),
@@ -64,7 +65,6 @@ import Data.Text.IO qualified as TIO
 import Data.Text.Lazy qualified as TL
 import GHC.Generics (Generic)
 import GHC.IsList (IsList (..))
-import Control.Monad.Trans.Maybe (MaybeT(..))
 
 {- | A transaction with fully resolved inputs.
 To obtain a 'ResolvedTx' value see 'Convex.Blockfrost.resolveTx'
@@ -79,9 +79,8 @@ data ResolvedTx
   }
   deriving stock (Eq, Show, Generic)
 
-{-| Produce a 'ResolvedTx' using the mockchain state
--}
-resolveTxMockchain :: MonadMockchain C.ConwayEra m => C.TxId -> m (Maybe ResolvedTx)
+-- | Produce a 'ResolvedTx' using the mockchain state
+resolveTxMockchain :: (MonadMockchain C.ConwayEra m) => C.TxId -> m (Maybe ResolvedTx)
 resolveTxMockchain txI = runMaybeT $ do
   rtxTransaction <- MaybeT (getTxById txI)
   let (C.Tx (C.TxBody bodyContent) _witnesses) = rtxTransaction

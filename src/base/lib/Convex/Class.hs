@@ -72,82 +72,115 @@ module Convex.Class (
   runMonadBlockchainCardanoNodeT,
 ) where
 
-import qualified Cardano.Api                                       as C
-import           Cardano.Api.Shelley                               (EraHistory (..),
-                                                                    Hash,
-                                                                    HashableScriptData,
-                                                                    LedgerProtocolParameters (..),
-                                                                    LocalNodeConnectInfo,
-                                                                    NetworkId,
-                                                                    PaymentCredential,
-                                                                    PoolId,
-                                                                    ScriptData,
-                                                                    SlotNo, Tx,
-                                                                    TxId)
-import qualified Cardano.Api.Shelley                               as C
-import           Cardano.Ledger.Alonzo.Plutus.Evaluate             (CollectError)
-import qualified Cardano.Ledger.Core                               as Core
-import           Cardano.Ledger.Crypto                             (StandardCrypto)
-import           Cardano.Ledger.Plutus.Evaluate                    (PlutusWithContext (..))
-import           Cardano.Ledger.Shelley.API                        (ApplyTxError,
-                                                                    Coin (..),
-                                                                    MempoolEnv,
-                                                                    MempoolState,
-                                                                    UTxO (..),
-                                                                    Validated,
-                                                                    extractTx)
-import           Cardano.Ledger.Shelley.LedgerState                (certDStateL,
-                                                                    dsUnifiedL,
-                                                                    lsCertStateL,
-                                                                    rewards)
-import           Cardano.Ledger.UMap                               (RDPair (..),
-                                                                    adjust,
-                                                                    compactCoinOrError)
-import           Cardano.Slotting.Time                             (SlotLength,
-                                                                    SystemStart)
-import           Control.Exception                                 (Exception,
-                                                                    throwIO)
-import           Control.Lens                                      (_1, at, set,
-                                                                    to, view,
-                                                                    (^.))
-import           Control.Lens.TH                                   (makeLensesFor,
-                                                                    makePrisms)
-import           Control.Monad.Except                              (MonadError,
-                                                                    runExceptT)
-import           Control.Monad.IO.Class                            (MonadIO (..))
-import           Control.Monad.Primitive                           (PrimMonad)
-import           Control.Monad.Reader                              (MonadTrans,
-                                                                    ReaderT (..),
-                                                                    ask, asks,
-                                                                    lift)
-import qualified Control.Monad.State                               as LazyState
-import qualified Control.Monad.State.Strict                        as StrictState
-import           Control.Monad.Trans.Except                        (ExceptT (..))
-import           Control.Monad.Trans.Except.Result                 (ResultT)
-import qualified Convex.CardanoApi.Lenses                          as L
-import           Convex.MonadLog                                   (MonadLog (..),
-                                                                    MonadLogIgnoreT (..),
-                                                                    MonadLogKatipT (..))
-import           Convex.NodeParams                                 (NodeParams,
-                                                                    pParams)
-import           Convex.Utils                                      (posixTimeToSlotUnsafe,
-                                                                    slotToUtcTime)
-import           Convex.Utxos                                      (UtxoSet)
-import           Data.Bifunctor                                    (Bifunctor (..))
-import           Data.Functor                                      ((<&>))
-import           Data.Map                                          (Map)
-import qualified Data.Map                                          as Map
-import           Data.Set                                          (Set)
-import qualified Data.Set                                          as Set
-import           Data.Time.Clock                                   (UTCTime)
-import           Katip.Monadic                                     (KatipContextT (..))
-import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
-                                                                    slotToSlotLength)
-import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type   as T
-import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
-import qualified PlutusLedgerApi.V1                                as PV1
-import           Test.QuickCheck.Monadic                           (PropertyM)
-import Control.Monad.Trans.Maybe (MaybeT(..))
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley (
+  EraHistory (..),
+  Hash,
+  HashableScriptData,
+  LedgerProtocolParameters (..),
+  LocalNodeConnectInfo,
+  NetworkId,
+  PaymentCredential,
+  PoolId,
+  ScriptData,
+  SlotNo,
+  Tx,
+  TxId,
+ )
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
+import Cardano.Ledger.Core qualified as Core
+import Cardano.Ledger.Crypto (StandardCrypto)
+import Cardano.Ledger.Plutus.Evaluate (PlutusWithContext (..))
+import Cardano.Ledger.Shelley.API (
+  ApplyTxError,
+  Coin (..),
+  MempoolEnv,
+  MempoolState,
+  UTxO (..),
+  Validated,
+  extractTx,
+ )
+import Cardano.Ledger.Shelley.LedgerState (
+  certDStateL,
+  dsUnifiedL,
+  lsCertStateL,
+  rewards,
+ )
+import Cardano.Ledger.UMap (
+  RDPair (..),
+  adjust,
+  compactCoinOrError,
+ )
+import Cardano.Slotting.Time (
+  SlotLength,
+  SystemStart,
+ )
+import Control.Exception (
+  Exception,
+  throwIO,
+ )
+import Control.Lens (
+  at,
+  set,
+  to,
+  view,
+  (^.),
+  _1,
+ )
+import Control.Lens.TH (
+  makeLensesFor,
+  makePrisms,
+ )
+import Control.Monad.Except (
+  MonadError,
+  runExceptT,
+ )
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Primitive (PrimMonad)
+import Control.Monad.Reader (
+  MonadTrans,
+  ReaderT (..),
+  ask,
+  asks,
+  lift,
+ )
+import Control.Monad.State qualified as LazyState
+import Control.Monad.State.Strict qualified as StrictState
+import Control.Monad.Trans.Except (ExceptT (..))
+import Control.Monad.Trans.Except.Result (ResultT)
+import Control.Monad.Trans.Maybe (MaybeT (..))
+import Convex.CardanoApi.Lenses qualified as L
+import Convex.MonadLog (
+  MonadLog (..),
+  MonadLogIgnoreT (..),
+  MonadLogKatipT (..),
+ )
+import Convex.NodeParams (
+  NodeParams,
+  pParams,
+ )
+import Convex.Utils (
+  posixTimeToSlotUnsafe,
+  slotToUtcTime,
+ )
+import Convex.Utxos (UtxoSet)
+import Data.Bifunctor (Bifunctor (..))
+import Data.Functor ((<&>))
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Time.Clock (UTCTime)
+import Katip.Monadic (KatipContextT (..))
+import Ouroboros.Consensus.HardFork.History (
+  interpretQuery,
+  slotToSlotLength,
+ )
+import Ouroboros.Network.Protocol.LocalStateQuery.Type qualified as T
+import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
+import PlutusLedgerApi.V1 qualified as PV1
+import Test.QuickCheck.Monadic (PropertyM)
 
 -- Error types
 data ExUnitsError era
@@ -264,17 +297,19 @@ singleUTxO txi =
     C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
     _ -> pure Nothing
 
-{-| State of the mockchain
--}
-data MockChainState era =
-  MockChainState
-    { mcsEnv                :: MempoolEnv (C.ShelleyLedgerEra era)
-    , mcsPoolState          :: MempoolState (C.ShelleyLedgerEra era)
-    , mcsTransactions       :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
-    , mcsFailedTransactions :: [(Tx era, ValidationError era)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
-    , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
-    , mcsTxById             :: Map C.TxId (C.Tx era) -- ^ Index of transactions by ID
-    }
+-- | State of the mockchain
+data MockChainState era
+  = MockChainState
+  { mcsEnv :: MempoolEnv (C.ShelleyLedgerEra era)
+  , mcsPoolState :: MempoolState (C.ShelleyLedgerEra era)
+  , mcsTransactions :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext StandardCrypto])]
+  -- ^ Transactions that were submitted to the mockchain and validated
+  , mcsFailedTransactions :: [(Tx era, ValidationError era)]
+  -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+  , mcsDatums :: Map (Hash ScriptData) HashableScriptData
+  , mcsTxById :: Map C.TxId (C.Tx era)
+  -- ^ Index of transactions by ID
+  }
 
 makeLensesFor
   [ ("mcsEnv", "env")
@@ -283,7 +318,8 @@ makeLensesFor
   , ("mcsFailedTransactions", "failedTransactions")
   , ("mcsDatums", "datums")
   , ("mcsTxById", "txById")
-  ] ''MockChainState
+  ]
+  ''MockChainState
 
 -- | Modify the mockchain internals
 class (MonadBlockchain era m) => MonadMockchain era m where
@@ -358,9 +394,8 @@ setUtxo u = modifyUtxo (const (u, ()))
 getTxs :: (MonadMockchain era m, C.IsShelleyBasedEra era) => m [C.Tx era]
 getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . C.ShelleyTx C.shelleyBasedEra . extractTx))
 
-{-| Look up the transaction by its ID
--}
-getTxById :: MonadMockchain era m => C.TxId -> m (Maybe (C.Tx era))
+-- | Look up the transaction by its ID
+getTxById :: (MonadMockchain era m) => C.TxId -> m (Maybe (C.Tx era))
 getTxById txI = getMockChainState <&> view (txById . at txI)
 
 -- | Set the slot number to the slot that contains the given POSIX time.
