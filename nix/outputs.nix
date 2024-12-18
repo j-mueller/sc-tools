@@ -7,6 +7,6 @@ in
     project.flake
   )
   {
-    devShells.profiled = project.variants.profiled.devShells.default;
+    devShells.default = project.variants.profiled.devShells.default;
   }
 ]

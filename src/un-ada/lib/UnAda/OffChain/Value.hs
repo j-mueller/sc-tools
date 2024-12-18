@@ -1,13 +1,16 @@
-{-| Working with values that contain UnAda
--}
+-- | Working with values that contain UnAda
 module UnAda.OffChain.Value (
   selectUnLovelace,
-  unLovelaceValue
+  unLovelaceValue,
 ) where
 
-import           Cardano.Api            (Quantity, Value, selectAsset,
-                                         valueFromList)
-import           UnAda.OffChain.Scripts (unAdaAssetId)
+import Cardano.Api (
+  Quantity,
+  Value,
+  selectAsset,
+  valueFromList,
+ )
+import UnAda.OffChain.Scripts (unAdaAssetId)
 
 selectUnLovelace :: Value -> Quantity
 selectUnLovelace vl = selectAsset vl unAdaAssetId

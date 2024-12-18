@@ -2,10 +2,8 @@ cabal-version: 3.0
 name:          convex-devnet
 version:       0.3.0.0
 synopsis:      Devnet for integration tests
-license: Apache-2.0
-license-files:
-  LICENSE
-
+license:       Apache-2.0
+license-files: LICENSE
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
 homepage:      https://github.com/j-mueller/sc-tools
@@ -28,105 +26,115 @@ data-files:
   config/devnet/opcert.cert
   config/devnet/vrf.skey
 
-
 common lang
-    default-language: Haskell2010
-    default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
-                        DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
-                        GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
-                        DeriveTraversable ImportQualifiedPost NumericUnderscores
-    ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
-                 -Wincomplete-uni-patterns -Wincomplete-record-updates
-                 -Wredundant-constraints -Widentities
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    FlexibleContexts
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    MultiParamTypeClasses
+    NumericUnderscores
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wunused-packages
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
 
 library
-    import: lang
-    exposed-modules:
-      Convex.Devnet.CardanoNode
-      Convex.Devnet.CardanoNode.Types
-      Convex.Devnet.Logging
-      Convex.Devnet.Utils
-      Convex.Devnet.Wallet
-      Convex.Devnet.WalletServer
-    hs-source-dirs: lib
-    build-depends:
-      base >= 4.14.0
-      , aeson
-      , text
-      , time
-      , bytestring
-      , directory
-      , filepath
-      , process
-      , HUnit
-      , temporary
-      , async
-      , unix
-      , convex-wallet
-      , convex-base
-      , convex-optics
-      , convex-coin-selection
-      , lens
-      , mtl
-      , stm
-      , si-timers
-      , prettyprinter
-      , http-client
-      , servant-client
-      , servant-client-core
+  import:          lang
+  exposed-modules:
+    Convex.Devnet.CardanoNode
+    Convex.Devnet.CardanoNode.Types
+    Convex.Devnet.Logging
+    Convex.Devnet.Utils
+    Convex.Devnet.Wallet
+    Convex.Devnet.WalletServer
 
-      -- cardano-node deps.
-      , cardano-api
-      , cardano-ledger-core
-      , cardano-ledger-shelley
-      , cardano-slotting
-      , cardano-ledger-conway
-      , io-classes
-      , ouroboros-consensus-cardano
+  hs-source-dirs:  lib
+  build-depends:
+    , aeson
+    , async
+    , base                         >=4.14.0
+    , bytestring
+    , cardano-api
+    , cardano-ledger-conway
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-slotting
+    , contra-tracer
+    , convex-base
+    , convex-coin-selection
+    , convex-optics
+    , convex-wallet
+    , directory
+    , filepath
+    , http-client
+    , HUnit
+    , io-classes
+    , iohk-monitoring
+    , lens
+    , mtl
+    , ouroboros-consensus-cardano
+    , prettyprinter
+    , process
+    , servant-client
+    , servant-client-core
+    , si-timers
+    , stm
+    , temporary
+    , text
+    , time
+    , unix
 
-      -- logging
-      , contra-tracer
-      , iohk-monitoring
-
-    other-modules:
-      Paths_convex_devnet
-    autogen-modules:
-      Paths_convex_devnet
+  -- cardano-node deps.
+  -- logging
+  other-modules:   Paths_convex_devnet
+  autogen-modules: Paths_convex_devnet
 
 test-suite convex-devnet-test
-  import: lang
-  type:   exitcode-stdio-1.0
-  main-is: Spec.hs
-  ghc-options: -threaded -rtsopts
+  import:         lang
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  ghc-options:    -threaded -rtsopts
   other-modules:
     Devnet.Test.LatestEraTransitionSpec
     Devnet.Test.LatestEraTransitionSpec.PV2
     Devnet.Test.LatestEraTransitionSpec.PV3
-  hs-source-dirs:
-    test
+
+  hs-source-dirs: test
   build-depends:
-    , convex-devnet
     , convex-base
+    , convex-coin-selection
+    , convex-devnet
+    , convex-mockchain
     , convex-node-client
     , convex-wallet
-    , convex-coin-selection
-    , convex-mockchain
+
   build-depends:
-    , plutus-tx
-    , plutus-tx-plugin
-    , ouroboros-consensus-cardano
-    , plutus-core
-    , ouroboros-consensus-protocol
     , cardano-api
     , cardano-ledger-api
-    , cardano-ledger-core -any
+    , cardano-ledger-core
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-protocol
+    , plutus-core
+    , plutus-tx
+    , plutus-tx-plugin
+
   build-depends:
-    base >= 4.14.0
-    , tasty
-    , tasty-hunit
+    , aeson
+    , base           >=4.14.0
+    , containers
     , contra-tracer
+    , filepath
     , lens
     , mtl
-    , aeson
-    , containers
-    , filepath
+    , tasty
+    , tasty-hunit

@@ -1,118 +1,155 @@
-{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE ViewPatterns       #-}
-module Main(main) where
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
-import qualified Cardano.Api                    as C
-import qualified Cardano.Api.Ledger             as Ledger
-import qualified Cardano.Api.Shelley            as C
-import qualified Cardano.Ledger.Api             as Ledger
-import qualified Cardano.Ledger.Conway.Rules    as Rules
-import           Cardano.Ledger.Shelley.API     (ApplyTxError (..))
-import           Control.Lens                   (_3, _4, view, (&), (.~), (^.))
-import           Control.Monad                  (replicateM, void, when)
-import           Control.Monad.Except           (MonadError, runExceptT)
-import           Control.Monad.IO.Class         (MonadIO (..))
-import           Control.Monad.State.Strict     (execStateT, modify)
-import           Convex.BuildTx                 (BuildTxT, addRequiredSignature,
-                                                 assetValue, execBuildTx,
-                                                 execBuildTxT, mintPlutus,
-                                                 payToAddress,
-                                                 payToAddressTxOut,
-                                                 payToScriptDatumHash,
-                                                 prependTxOut,
-                                                 setMinAdaDepositAll,
-                                                 spendPlutus, spendPlutusRef)
-import qualified Convex.BuildTx                 as BuildTx
-import qualified Convex.CardanoApi.Lenses       as L
-import           Convex.Class                   (MonadBlockchain (..),
-                                                 MonadDatumQuery (queryDatumFromHash),
-                                                 MonadMockchain, getUtxo,
-                                                 setReward, setUtxo, singleUTxO)
-import           Convex.CoinSelection           (BalanceTxError,
-                                                 ChangeOutputPosition (TrailingChange),
-                                                 keyWitnesses,
-                                                 publicKeyCredential)
-import           Convex.MockChain               (ValidationError (..),
-                                                 failedTransactions,
-                                                 fromLedgerUTxO,
-                                                 runMockchain0IOWith)
-import           Convex.MockChain.CoinSelection (balanceAndSubmit,
-                                                 payToOperator', paymentTo,
-                                                 tryBalanceAndSubmit)
-import qualified Convex.MockChain.Defaults      as Defaults
-import qualified Convex.MockChain.Gen           as Gen
-import           Convex.MockChain.Staking       (registerPool)
-import           Convex.MockChain.Utils         (mockchainSucceeds,
-                                                 runMockchainProp,
-                                                 runTestableErr)
-import           Convex.NodeParams              (ledgerProtocolParameters,
-                                                 protocolParameters)
-import           Convex.Query                   (balancePaymentCredentials)
-import           Convex.Utils                   (failOnError, inBabbage)
-import qualified Convex.Utxos                   as Utxos
-import           Convex.Wallet                  (Wallet)
-import qualified Convex.Wallet                  as Wallet
-import qualified Convex.Wallet.MockWallet       as Wallet
-import           Convex.Wallet.Operator         (oPaymentKey,
-                                                 operatorPaymentCredential,
-                                                 operatorReturnOutput,
-                                                 signTxOperator,
-                                                 verificationKey)
-import           Data.Foldable                  (traverse_)
-import           Data.List.NonEmpty             (NonEmpty (..))
-import qualified Data.Map                       as Map
-import qualified Data.Set                       as Set
-import qualified PlutusLedgerApi.V2             as PV2
-import qualified Scripts
-import qualified Test.QuickCheck.Gen            as Gen
-import           Test.Tasty                     (TestTree, defaultMain,
-                                                 testGroup)
-import           Test.Tasty.HUnit               (Assertion, testCase)
-import qualified Test.Tasty.QuickCheck          as QC
-import           Test.Tasty.QuickCheck          (Property, classify,
-                                                 testProperty)
+module Main (main) where
+
+import Cardano.Api qualified as C
+import Cardano.Api.Ledger qualified as Ledger
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Api qualified as Ledger
+import Cardano.Ledger.Conway.Rules qualified as Rules
+import Cardano.Ledger.Shelley.API (ApplyTxError (..))
+import Control.Lens (view, (&), (.~), (^.), _3, _4)
+import Control.Monad (replicateM, void, when)
+import Control.Monad.Except (MonadError, runExceptT)
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.State.Strict (execStateT, modify)
+import Convex.BuildTx (
+  BuildTxT,
+  addRequiredSignature,
+  assetValue,
+  execBuildTx,
+  execBuildTxT,
+  mintPlutus,
+  payToAddress,
+  payToAddressTxOut,
+  payToScriptDatumHash,
+  prependTxOut,
+  setMinAdaDepositAll,
+  spendPlutus,
+  spendPlutusRef,
+ )
+import Convex.BuildTx qualified as BuildTx
+import Convex.CardanoApi.Lenses qualified as L
+import Convex.Class (
+  MonadBlockchain (..),
+  MonadDatumQuery (queryDatumFromHash),
+  MonadMockchain,
+  getUtxo,
+  setReward,
+  setUtxo,
+  singleUTxO,
+ )
+import Convex.CoinSelection (
+  BalanceTxError,
+  ChangeOutputPosition (TrailingChange),
+  keyWitnesses,
+  publicKeyCredential,
+ )
+import Convex.MockChain (
+  ValidationError (..),
+  failedTransactions,
+  fromLedgerUTxO,
+  runMockchain0IOWith,
+ )
+import Convex.MockChain.CoinSelection (
+  balanceAndSubmit,
+  payToOperator',
+  paymentTo,
+  tryBalanceAndSubmit,
+ )
+import Convex.MockChain.Defaults qualified as Defaults
+import Convex.MockChain.Gen qualified as Gen
+import Convex.MockChain.Staking (registerPool)
+import Convex.MockChain.Utils (
+  mockchainSucceeds,
+  runMockchainProp,
+  runTestableErr,
+ )
+import Convex.NodeParams (
+  ledgerProtocolParameters,
+  protocolParameters,
+ )
+import Convex.Query (balancePaymentCredentials)
+import Convex.Utils (failOnError, inBabbage)
+import Convex.Utxos qualified as Utxos
+import Convex.Wallet (Wallet)
+import Convex.Wallet qualified as Wallet
+import Convex.Wallet.MockWallet qualified as Wallet
+import Convex.Wallet.Operator (
+  oPaymentKey,
+  operatorPaymentCredential,
+  operatorReturnOutput,
+  signTxOperator,
+  verificationKey,
+ )
+import Data.Foldable (traverse_)
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map qualified as Map
+import Data.Set qualified as Set
+import PlutusLedgerApi.V2 qualified as PV2
+import Scripts qualified
+import Test.QuickCheck.Gen qualified as Gen
+import Test.Tasty (
+  TestTree,
+  defaultMain,
+  testGroup,
+ )
+import Test.Tasty.HUnit (Assertion, testCase)
+import Test.Tasty.QuickCheck (
+  Property,
+  classify,
+  testProperty,
+ )
+import Test.Tasty.QuickCheck qualified as QC
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "unit tests"
-  [ testGroup "payments"
-    [ testCase "spending a public key output" spendPublicKeyOutput
-    , testCase "making several payments" makeSeveralPayments
-    , testProperty "balance transactions with many addresses" balanceMultiAddress
-    , testCase "build a transaction without Ada-only inputs" buildTxMixedInputs
+tests =
+  testGroup
+    "unit tests"
+    [ testGroup
+        "payments"
+        [ testCase "spending a public key output" spendPublicKeyOutput
+        , testCase "making several payments" makeSeveralPayments
+        , testProperty "balance transactions with many addresses" balanceMultiAddress
+        , testCase "build a transaction without Ada-only inputs" buildTxMixedInputs
+        ]
+    , testGroup
+        "scripts"
+        [ testCase "paying to a plutus script" (mockchainSucceeds $ failOnError payToPlutusScript)
+        , testCase "spending a plutus script output" (mockchainSucceeds $ failOnError (payToPlutusScript >>= spendPlutusScript))
+        , testCase "spending a plutus script (V2) output" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusV2Script))
+        , testCase "creating a reference script output" (mockchainSucceeds $ failOnError $ putReferenceScript Wallet.w1)
+        , testCase "using a reference script" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusScriptReference))
+        , testCase "minting a token" (mockchainSucceeds $ failOnError mintingPlutus)
+        , testCase "making payments with tokens" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens))
+        , testCase "making payments with tokens (2)" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens2))
+        , testCase "spending a singleton output" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendSingletonOutput))
+        , testCase "spend an output locked by the matching index script" (mockchainSucceeds $ failOnError matchingIndex)
+        , testCase "mint a token with the matching index minting policy" (mockchainSucceeds $ failOnError matchingIndexMP)
+        ]
+    , testGroup
+        "mockchain"
+        [ testCase "queryDatumFromHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
+        , testCase "large transactions" largeTransactionTest
+        ]
+    , testGroup
+        "staking"
+        [ testCase "register a script staking credential with ShelleyCert" (mockchainSucceeds $ failOnError registerScriptStakingCredentialAsShelleyCert)
+        , testCase "register a script staking credential with ConwayCert" (mockchainSucceeds $ failOnError registerScriptStakingCredentialAsConwayCert)
+        , testCase "withdrawal zero trick with ShelleyCert" (mockchainSucceeds $ failOnError withdrawZeroTrickWithShelleyCert)
+        , testCase "withdrawal zero trick with ConwayCert" (mockchainSucceeds $ failOnError withdrawZeroTrickWithConwayCert)
+        , testCase "register a stake pool" (mockchainSucceeds $ failOnError $ registerPool Wallet.w1)
+        , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
+        , testCase "stake key withdrawal" (mockchainSucceeds $ failOnError stakeKeyWithdrawalTest)
+        ]
     ]
-  , testGroup "scripts"
-    [ testCase "paying to a plutus script" (mockchainSucceeds $ failOnError payToPlutusScript)
-    , testCase "spending a plutus script output" (mockchainSucceeds $ failOnError (payToPlutusScript >>= spendPlutusScript))
-    , testCase "spending a plutus script (V2) output" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusV2Script))
-    , testCase "creating a reference script output" (mockchainSucceeds $ failOnError $ putReferenceScript Wallet.w1)
-    , testCase "using a reference script" (mockchainSucceeds $ failOnError (payToPlutusV2Script >>= spendPlutusScriptReference))
-    , testCase "minting a token" (mockchainSucceeds $ failOnError mintingPlutus)
-    , testCase "making payments with tokens" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens))
-    , testCase "making payments with tokens (2)" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendTokens2))
-    , testCase "spending a singleton output" (mockchainSucceeds $ failOnError (mintingPlutus >>= spendSingletonOutput))
-    , testCase "spend an output locked by the matching index script" (mockchainSucceeds $ failOnError matchingIndex)
-    , testCase "mint a token with the matching index minting policy" (mockchainSucceeds $ failOnError matchingIndexMP)
-    ]
-  , testGroup "mockchain"
-    [ testCase "queryDatumFromHash" (mockchainSucceeds $ failOnError checkResolveDatumHash)
-    , testCase "large transactions" largeTransactionTest
-    ]
-  , testGroup "staking"
-    [ testCase "register a script staking credential with ShelleyCert" (mockchainSucceeds $ failOnError registerScriptStakingCredentialAsShelleyCert)
-    , testCase "register a script staking credential with ConwayCert" (mockchainSucceeds $ failOnError registerScriptStakingCredentialAsConwayCert)
-    , testCase "withdrawal zero trick with ShelleyCert" (mockchainSucceeds $ failOnError withdrawZeroTrickWithShelleyCert)
-    , testCase "withdrawal zero trick with ConwayCert" (mockchainSucceeds $ failOnError withdrawZeroTrickWithConwayCert)
-    , testCase "register a stake pool" (mockchainSucceeds $ failOnError $ registerPool Wallet.w1)
-    , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
-    , testCase "stake key withdrawal" (mockchainSucceeds $ failOnError stakeKeyWithdrawalTest)
-    ]
-  ]
 
 spendPublicKeyOutput :: Assertion
 spendPublicKeyOutput = mockchainSucceeds $ failOnError (Wallet.w2 `paymentTo` Wallet.w1)
@@ -130,7 +167,7 @@ txInscript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn
 mintingScript :: C.PlutusScript C.PlutusScriptV1
 mintingScript = C.examplePlutusScriptAlwaysSucceeds C.WitCtxMint
 
-plutusScript :: C.IsPlutusScriptLanguage lang => C.PlutusScript lang -> C.Script lang
+plutusScript :: (C.IsPlutusScriptLanguage lang) => C.PlutusScript lang -> C.Script lang
 plutusScript = C.PlutusScript C.plutusScriptVersion
 
 payToPlutusScript :: forall era m. (MonadFail m, MonadError (BalanceTxError era) m, MonadMockchain era m, C.IsBabbageBasedEra era) => m C.TxIn
@@ -158,20 +195,21 @@ spendPlutusV2Script ref = inBabbage @era $ do
 putReferenceScript :: forall m. (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> m C.TxIn
 putReferenceScript wallet = do
   let addr = Wallet.addressInEra Defaults.networkId wallet
-      tx = execBuildTx $
-            BuildTx.createRefScriptDatumHash addr (plutusScript Scripts.v2SpendingScript) () (C.lovelaceToValue 10_000_000)
+      tx =
+        execBuildTx $
+          BuildTx.createRefScriptDatumHash addr (plutusScript Scripts.v2SpendingScript) () (C.lovelaceToValue 10_000_000)
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
   txId <- C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wallet tx TrailingChange []
   let outRef = C.TxIn txId (C.TxIx 0)
   C.UTxO utxo <- utxoByTxIn (Set.singleton outRef)
   case Map.lookup outRef utxo of
-    Nothing  -> fail "Utxo not found"
+    Nothing -> fail "Utxo not found"
     Just out -> case view (L._TxOut . _4) out of
       C.ReferenceScript{} -> pure ()
-      _                   -> fail "No reference script found"
+      _ -> fail "No reference script found"
   pure outRef
 
-spendPlutusScriptReference :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) =>  C.TxIn -> m C.TxId
+spendPlutusScriptReference :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
   let tx = execBuildTx (spendPlutusRef txIn refTxIn C.PlutusScriptV2 () ())
@@ -192,20 +230,21 @@ spendTokens _ = do
 
 spendTokens2 :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
 spendTokens2 txi = do
-  let q  = 98
+  let q = 98
       wTo = Wallet.w2
       wFrom = Wallet.w1
       vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
       tx = execBuildTx $ do
-            payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
-            BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
-            mintPlutus mintingScript () "assetName" (-2)
-            setMinAdaDepositAll Defaults.bundledProtocolParameters
+        payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+        BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
+        mintPlutus mintingScript () "assetName" (-2)
+        setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
 
--- | Put all of the Wallet 2's funds into a single UTxO with mixed assets
---   Then make a transaction that splits this output into two
+{- | Put all of the Wallet 2's funds into a single UTxO with mixed assets
+  Then make a transaction that splits this output into two
+-}
 spendSingletonOutput :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m ()
 spendSingletonOutput txi = do
   void (nativeAssetPaymentTo 49 Wallet.w1 Wallet.w2 >> Wallet.w1 `paymentTo` Wallet.w2)
@@ -223,8 +262,9 @@ spendSingletonOutput txi = do
 nativeAssetPaymentTo :: (MonadMockchain C.ConwayEra m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
   let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" q
-      tx = execBuildTx $
-            payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
+      tx =
+        execBuildTx $
+          payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
             >> setMinAdaDepositAll Defaults.bundledProtocolParameters
   -- create a public key output for the sender to make
   -- sure that the sender has enough Ada in ada-only inputs
@@ -234,18 +274,19 @@ nativeAssetPaymentTo q wFrom wTo = do
 checkResolveDatumHash :: (MonadMockchain C.ConwayEra m, MonadDatumQuery m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => m ()
 checkResolveDatumHash = do
   let addr = Wallet.addressInEra Defaults.networkId Wallet.w1
-      assertDatumPresent vl = queryDatumFromHash (C.hashScriptDataBytes vl) >>= \case
-        Nothing -> fail "Expected datum"
-        Just x
-          | x == vl -> pure ()
-          | otherwise -> fail $ "Expected " <> show (C.getScriptData vl) <> ", found " <> show x
-
+      assertDatumPresent vl =
+        queryDatumFromHash (C.hashScriptDataBytes vl) >>= \case
+          Nothing -> fail "Expected datum"
+          Just x
+            | x == vl -> pure ()
+            | otherwise -> fail $ "Expected " <> show (C.getScriptData vl) <> ", found " <> show x
 
   -- 1. resolve an inline datum
-  let datum1 = C.unsafeHashableScriptData  (C.ScriptDataConstructor 5 [])
+  let datum1 = C.unsafeHashableScriptData (C.ScriptDataConstructor 5 [])
       dat = C.TxOutDatumInline C.babbageBasedEra datum1
-      txOut = payToAddressTxOut addr mempty
-                & L._TxOut . _3 .~ dat
+      txOut =
+        payToAddressTxOut addr mempty
+          & L._TxOut . _3 .~ dat
 
   _ <- tryExecBuildTxWallet Wallet.w1 (prependTxOut txOut)
 
@@ -270,7 +311,7 @@ checkResolveDatumHash = do
   _ <- tryExecBuildTxWallet Wallet.w1 (spendPlutus (C.TxIn txId (C.TxIx 0)) txInscript d3 ())
   assertDatumPresent datum3
 
-{-| Build a transaction, then balance and sign it with the wallet, then
+{- | Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain.
 -}
 execBuildTxWallet :: (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> BuildTxT C.ConwayEra m a -> m (Either (ValidationError C.ConwayEra) C.TxId)
@@ -278,48 +319,50 @@ execBuildTxWallet wallet action = do
   tx <- execBuildTxT (action >> setMinAdaDepositAll Defaults.bundledProtocolParameters)
   fmap (C.getTxId . C.getTxBody) <$> balanceAndSubmit mempty wallet tx TrailingChange []
 
-{-| Build a transaction, then balance and sign it with the wallet, then
+{- | Build a transaction, then balance and sign it with the wallet, then
   submit it to the mockchain. Fail if 'balanceAndSubmit' is not successful.
 -}
 tryExecBuildTxWallet :: (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => Wallet -> BuildTxT C.ConwayEra m a -> m C.TxId
 tryExecBuildTxWallet wallet action = execBuildTxWallet wallet action >>= either (fail . show) pure
 
--- | Balance a transaction using a list of operators
---   Check that the fees are calculated correctly to spend outputs from different addresses
---   and to consider the required signatures
+{- | Balance a transaction using a list of operators
+  Check that the fees are calculated correctly to spend outputs from different addresses
+  and to consider the required signatures
+-}
 balanceMultiAddress :: Property
 balanceMultiAddress = do
   let gen = (,) <$> Gen.operator <*> fmap (take 20) (Gen.listOf Gen.operator)
   QC.forAll gen $ \(op, operators) ->
     QC.forAll (Gen.chooseInteger (7_500_000, 100_000_00 * fromIntegral (1 + length operators))) $ \(C.Quantity -> nAmount) ->
-      QC.forAll (Gen.sublistOf (op:operators)) $ \requiredSignatures ->
-        classify (null operators) "1 operator"
-          $ classify (not (null operators) && length operators <= 9) "2-9 operators"
-          $ classify (length operators > 9) "10+ operators"
-          $ classify (null requiredSignatures) "0 required signatures"
-          $ classify (not (null requiredSignatures) && length requiredSignatures <= 9) "1-9 required signatures"
-          $ classify (length requiredSignatures > 9) "10+ required signatures"
-          $ runMockchainProp $ runTestableErr @(BalanceTxError C.ConwayEra) $ do
-              -- send Ada to each operator
-              traverse_ (payToOperator' mempty (C.lovelaceToValue $ 7_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op:operators)
+      QC.forAll (Gen.sublistOf (op : operators)) $ \requiredSignatures ->
+        classify (null operators) "1 operator" $
+          classify (not (null operators) && length operators <= 9) "2-9 operators" $
+            classify (length operators > 9) "10+ operators" $
+              classify (null requiredSignatures) "0 required signatures" $
+                classify (not (null requiredSignatures) && length requiredSignatures <= 9) "1-9 required signatures" $
+                  classify (length requiredSignatures > 9) "10+ required signatures" $
+                    runMockchainProp $
+                      runTestableErr @(BalanceTxError C.ConwayEra) $ do
+                        -- send Ada to each operator
+                        traverse_ (payToOperator' mempty (C.lovelaceToValue $ 7_500_000 + C.quantityToLovelace nAmount) Wallet.w2) (op : operators)
 
-              -- send the entire amount back to Wallet.w2
-              walletAddr <- Wallet.addressInEra <$> queryNetworkId <*> pure Wallet.w2
-              protParams <- queryProtocolParameters
-              let tx = execBuildTx $ do
-                        payToAddress walletAddr $ C.lovelaceToValue $ C.quantityToLovelace nAmount
-                        traverse_ addRequiredSignature (fmap (C.verificationKeyHash . verificationKey . oPaymentKey) requiredSignatures)
-                        setMinAdaDepositAll protParams
+                        -- send the entire amount back to Wallet.w2
+                        walletAddr <- Wallet.addressInEra <$> queryNetworkId <*> pure Wallet.w2
+                        protParams <- queryProtocolParameters
+                        let tx = execBuildTx $ do
+                              payToAddress walletAddr $ C.lovelaceToValue $ C.quantityToLovelace nAmount
+                              traverse_ addRequiredSignature (fmap (C.verificationKeyHash . verificationKey . oPaymentKey) requiredSignatures)
+                              setMinAdaDepositAll protParams
 
-              -- balance the tx using all of the operators' addressses
-              balancedTx <- runExceptT (balancePaymentCredentials mempty (operatorPaymentCredential op) (operatorPaymentCredential <$> operators) Nothing tx TrailingChange) >>= either (fail . show) pure
-              txInputs <- let C.Tx (C.TxBody txBody) _ = balancedTx in keyWitnesses txBody
-              let (Set.fromList -> extraWits) = let C.Tx (C.TxBody txBody) _ = balancedTx in view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) txBody
-              -- add the required operators' signatures
-              finalTx <- flip execStateT balancedTx $ flip traverse_ (op:operators) $ \o -> do
-                Just pkh <- publicKeyCredential <$> operatorReturnOutput o
-                when (pkh `Set.member` txInputs || (C.verificationKeyHash . verificationKey $ oPaymentKey o) `Set.member` extraWits) (modify (signTxOperator o))
-              void (sendTx finalTx)
+                        -- balance the tx using all of the operators' addressses
+                        balancedTx <- runExceptT (balancePaymentCredentials mempty (operatorPaymentCredential op) (operatorPaymentCredential <$> operators) Nothing tx TrailingChange) >>= either (fail . show) pure
+                        txInputs <- let C.Tx (C.TxBody txBody) _ = balancedTx in keyWitnesses txBody
+                        let (Set.fromList -> extraWits) = let C.Tx (C.TxBody txBody) _ = balancedTx in view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) txBody
+                        -- add the required operators' signatures
+                        finalTx <- flip execStateT balancedTx $ flip traverse_ (op : operators) $ \o -> do
+                          Just pkh <- publicKeyCredential <$> operatorReturnOutput o
+                          when (pkh `Set.member` txInputs || (C.verificationKeyHash . verificationKey $ oPaymentKey o) `Set.member` extraWits) (modify (signTxOperator o))
+                        void (sendTx finalTx)
 
 buildTxMixedInputs :: Assertion
 buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
@@ -329,20 +372,23 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "assetName" 40 <> C.lovelaceToValue 10_000_000
       newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
-  setUtxo
-    $ C.toLedgerUTxO C.ShelleyBasedEraConway
-    $ Utxos.toApiUtxo
-    $ utxoSet
-      <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newUTxO, ())
-      <> Utxos.singleton (C.TxIn txi $ C.TxIx 1001) (newUTxO, ())
+  setUtxo $
+    C.toLedgerUTxO C.ShelleyBasedEraConway $
+      Utxos.toApiUtxo $
+        utxoSet
+          <> Utxos.singleton (C.TxIn txi $ C.TxIx 1000) (newUTxO, ())
+          <> Utxos.singleton (C.TxIn txi $ C.TxIx 1001) (newUTxO, ())
 
   -- pay 'utxoVal' to wallet 1.
   -- this requires both outputs to be included in the final transaction
   -- so that there is enough Ada for the transaction fees.
-  void
-    $ balanceAndSubmit mempty testWallet
-      (BuildTx.execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal)) TrailingChange []
-
+  void $
+    balanceAndSubmit
+      mempty
+      testWallet
+      (BuildTx.execBuildTx (payToAddress (Wallet.addressInEra Defaults.networkId Wallet.w1) utxoVal))
+      TrailingChange
+      []
 
 largeTransactionTest :: Assertion
 largeTransactionTest = do
@@ -352,7 +398,7 @@ largeTransactionTest = do
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
     (_, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20_313 16384)):|[])) -> pure ()
+      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20_313 16384)) :| [])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
     (_, length . view failedTransactions -> numFailed) -> fail $ "Expected one failed transaction, found " <> show numFailed
 
@@ -365,7 +411,7 @@ largeTransactionTest = do
 matchingIndex :: forall era m. (MonadMockchain era m, MonadError (BalanceTxError era) m, MonadFail m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV3 era) => m ()
 matchingIndex = inBabbage @era $ do
   let txBody = execBuildTx (BuildTx.payToScriptDatumHash Defaults.networkId (plutusScript Scripts.matchingIndexValidatorScript) () C.NoStakeAddress (C.lovelaceToValue 10_000_000))
-      tx     = C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
+      tx = C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
   -- create three separate tx outputs that are locked by the matching index script
   inputs <- replicateM 3 tx
@@ -376,24 +422,26 @@ matchingIndex = inBabbage @era $ do
 scriptStakingCredential :: C.StakeCredential
 scriptStakingCredential = C.StakeCredentialByScript $ C.hashScript (C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript)
 
-registerScriptStakingCredentialAsShelleyCert :: forall era m.
-  ( MonadMockchain era m
-  , MonadError (BalanceTxError era) m
-  , MonadFail m
-  , C.IsConwayBasedEra era
-  )
+registerScriptStakingCredentialAsShelleyCert
+  :: forall era m
+   . ( MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     )
   => m C.TxIn
 registerScriptStakingCredentialAsShelleyCert = do
   txBody <- BuildTx.execBuildTxT $ BuildTx.addShelleyStakeCredentialRegistrationCertificateInConway scriptStakingCredential
   C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
-registerScriptStakingCredentialAsConwayCert :: forall era m.
-  ( MonadMockchain era m
-  , MonadError (BalanceTxError era) m
-  , MonadFail m
-  , C.IsConwayBasedEra era
-  , C.HasScriptLanguageInEra C.PlutusScriptV2 era
-  )
+registerScriptStakingCredentialAsConwayCert
+  :: forall era m
+   . ( MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+     )
   => m C.TxIn
 registerScriptStakingCredentialAsConwayCert = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
   pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
@@ -403,14 +451,15 @@ registerScriptStakingCredentialAsConwayCert = C.conwayEraOnwardsConstraints @era
     BuildTx.addConwayStakeCredentialRegistrationCertificate scriptStakingCredential (pp ^. Ledger.ppKeyDepositL)
   C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
-withdrawZeroTrickWithShelleyCert :: forall era m.
-  ( MonadIO m
-  , MonadMockchain era m
-  , MonadError (BalanceTxError era) m
-  , MonadFail m
-  , C.IsConwayBasedEra era
-  , C.HasScriptLanguageInEra C.PlutusScriptV2 era
-  )
+withdrawZeroTrickWithShelleyCert
+  :: forall era m
+   . ( MonadIO m
+     , MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+     )
   => m ()
 withdrawZeroTrickWithShelleyCert = inBabbage @era $ do
   void registerScriptStakingCredentialAsShelleyCert
@@ -426,14 +475,15 @@ withdrawZeroTrickWithShelleyCert = inBabbage @era $ do
     BuildTx.addShelleyStakeCredentialUnregistrationCertificateInConway scriptStakingCredential
   void $ tryBalanceAndSubmit mempty Wallet.w1 unregisterTx TrailingChange []
 
-withdrawZeroTrickWithConwayCert :: forall era m.
-  ( MonadIO m
-  , MonadMockchain era m
-  , MonadError (BalanceTxError era) m
-  , MonadFail m
-  , C.IsConwayBasedEra era
-  , C.HasScriptLanguageInEra C.PlutusScriptV2 era
-  )
+withdrawZeroTrickWithConwayCert
+  :: forall era m
+   . ( MonadIO m
+     , MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+     )
   => m ()
 withdrawZeroTrickWithConwayCert = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
   void registerScriptStakingCredentialAsConwayCert
@@ -473,12 +523,12 @@ queryStakeAddressesTest = do
   let
     stakeCert =
       C.makeStakeAddressRegistrationCertificate
-      . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
-      $ stakeCred
+        . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
+        $ stakeCred
 
     delegationCert =
-      C.makeStakeAddressDelegationCertificate
-      $ C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegStake $ C.unStakePoolKeyHash poolId)
+      C.makeStakeAddressDelegationCertificate $
+        C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegStake $ C.unStakePoolKeyHash poolId)
 
     stakeCertTx = BuildTx.execBuildTx $ do
       BuildTx.addCertificate stakeCert

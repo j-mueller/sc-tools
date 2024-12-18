@@ -1,11 +1,11 @@
 cabal-version: 3.4
 name:          convex-base
 version:       0.3.0.0
-synopsis:      Base classes and types for working with cardano-api transactions
-license: Apache-2.0
-license-files:
-  LICENSE
+synopsis:
+  Base classes and types for working with cardano-api transactions
 
+license:       Apache-2.0
+license-files: LICENSE
 maintainer:    j-mueller@users.noreply.github.com
 author:        Jann Müller
 homepage:      https://github.com/j-mueller/sc-tools
@@ -16,101 +16,110 @@ description:
 build-type:    Simple
 
 common lang
-    default-language: Haskell2010
-    default-extensions: ExplicitForAll ScopedTypeVariables MultiParamTypeClasses
-                        DeriveGeneric StandaloneDeriving DeriveLift FlexibleContexts
-                        GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
-                        DeriveTraversable ImportQualifiedPost NumericUnderscores
-    ghc-options: -Wall -Wnoncanonical-monad-instances -Wunused-packages
-                 -Wincomplete-uni-patterns -Wincomplete-record-updates
-                 -Wredundant-constraints -Widentities
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    FlexibleContexts
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    MultiParamTypeClasses
+    NumericUnderscores
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wunused-packages
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
 
 library
-    import: lang
-    exposed-modules:
-      Convex.BuildTx
-      Convex.Class
-      Convex.Constants
-      Convex.Eon
-      Convex.MonadLog
-      Convex.NodeQueries
-      Convex.NodeQueries.Debug
-      Convex.NodeParams
-      Convex.PlutusLedger.V1
-      Convex.PlutusLedger.V3
-      Convex.PlutusTx
-      Convex.ResolvedTx
-      Convex.Utils
-      Convex.Utxos
-      Convex.UtxoMod
-    hs-source-dirs: lib
-    build-depends:
-      base >= 4.14 && < 4.20,
-      lens,
-      containers,
-      aeson,
-      mtl,
-      katip,
-      prettyprinter,
-      transformers,
-      text,
-      exceptions,
-      time,
-      either-result,
-      primitive,
-      QuickCheck
+  import:          lang
+  exposed-modules:
+    Convex.BuildTx
+    Convex.Class
+    Convex.Constants
+    Convex.Eon
+    Convex.MonadLog
+    Convex.NodeParams
+    Convex.NodeQueries
+    Convex.NodeQueries.Debug
+    Convex.PlutusLedger.V1
+    Convex.PlutusLedger.V3
+    Convex.PlutusTx
+    Convex.ResolvedTx
+    Convex.Utils
+    Convex.UtxoMod
+    Convex.Utxos
 
-    build-depends:
-      convex-optics,
+  hs-source-dirs:  lib
+  build-depends:
+    , aeson
+    , base           >=4.14 && <4.20
+    , containers
+    , either-result
+    , exceptions
+    , katip
+    , lens
+    , mtl
+    , prettyprinter
+    , primitive
+    , QuickCheck
+    , text
+    , time
+    , transformers
 
-      cardano-api == 10.1.0.0,
-      cardano-ledger-core,
-      cardano-crypto-wrapper,
-      cardano-binary,
-
-      cardano-ledger-byron,
-      cardano-ledger-mary,
-      cardano-ledger-shelley,
-      cardano-ledger-babbage,
-      cardano-ledger-alonzo,
-      cardano-ledger-conway,
-      cardano-crypto-class,
-
-      ouroboros-consensus,
-      ouroboros-consensus-cardano,
-      ouroboros-network-protocols,
-      cardano-slotting,
-      plutus-tx,
-      plutus-ledger-api,
-      serialise,
-      bytestring,
-      dlist,
-      either-result,
-      strict-sop-core,
-      graphviz,
-      base16-bytestring
+  build-depends:
+    , base16-bytestring
+    , bytestring
+    , cardano-api                  ==10.1.0.0
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-crypto-wrapper
+    , cardano-ledger-alonzo
+    , cardano-ledger-babbage
+    , cardano-ledger-byron
+    , cardano-ledger-conway
+    , cardano-ledger-core
+    , cardano-ledger-mary
+    , cardano-ledger-shelley
+    , cardano-slotting
+    , convex-optics
+    , dlist
+    , either-result
+    , graphviz
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network-protocols
+    , plutus-ledger-api
+    , plutus-tx
+    , serialise
+    , strict-sop-core
 
 test-suite convex-base-test
-  import: lang
-  type: exitcode-stdio-1.0
+  import:             lang
+  type:               exitcode-stdio-1.0
   hs-source-dirs:     test
-  main-is:
-    Spec.hs
-  other-modules:
-    Convex.PlutusLedgerSpec
-  build-tool-depends:
-    tasty-discover:tasty-discover
+  main-is:            Spec.hs
+  other-modules:      Convex.PlutusLedgerSpec
+  build-tool-depends: tasty-discover:tasty-discover
+
   -- Local dependencies
-  build-depends:
-    , convex-base
+  build-depends:      convex-base
+
   -- CHaP dependencies
   build-depends:
     , cardano-api
     , cardano-api:gen
+
   -- Hackage dependencies
   build-depends:
-    , base >= 4.14.0
+    , base                 >=4.14.0
+    , hedgehog-quickcheck
+    , QuickCheck
     , tasty
     , tasty-quickcheck
-    , QuickCheck
-    , hedgehog-quickcheck

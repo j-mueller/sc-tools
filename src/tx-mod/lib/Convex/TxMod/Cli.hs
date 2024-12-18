@@ -1,39 +1,60 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Convex.TxMod.Cli(
-  runMain
+
+module Convex.TxMod.Cli (
+  runMain,
 ) where
 
-import           Blammo.Logging.Simple      (Message ((:#)), MonadLogger,
-                                             MonadLoggerIO, WithLogger (..),
-                                             logError, logInfo, logWarn,
-                                             runLoggerLoggingT)
-import           Blockfrost.Client.Core     (BlockfrostError)
-import           Cardano.Api                (TxId)
-import           Control.Lens               (view)
-import           Control.Monad              (when)
-import           Control.Monad.Except       (ExceptT, MonadError, runExceptT)
-import           Control.Monad.IO.Class     (MonadIO (..))
-import           Control.Monad.Reader       (MonadReader, ReaderT, asks,
-                                             runReaderT)
-import qualified Convex.Blockfrost
-import           Convex.Blockfrost.Orphans  ()
-import           Convex.Blockfrost.Types    (DecodingError)
-import           Convex.ResolvedTx          (ResolvedTx)
-import qualified Convex.ResolvedTx
-import           Convex.TxMod.Command       (ResolvedTxInput (..),
-                                             TxModCommand (..), parseCommand)
-import           Convex.TxMod.Env           (Env)
-import qualified Convex.TxMod.Env           as Env
-import qualified Convex.TxMod.Logging       as L
-import           Convex.Utils               (liftEither, mapError)
-import qualified Data.Aeson
-import           Data.Aeson.Encode.Pretty   (encodePretty)
-import qualified Data.ByteString.Lazy.Char8 as LBS
-import           Data.String                (IsString (fromString))
-import qualified Data.Text.IO               as Text.IO
-import           Options.Applicative        (customExecParser, disambiguate,
-                                             helper, idm, info, prefs,
-                                             showHelpOnEmpty, showHelpOnError)
+import Blammo.Logging.Simple (
+  Message ((:#)),
+  MonadLogger,
+  MonadLoggerIO,
+  WithLogger (..),
+  logError,
+  logInfo,
+  logWarn,
+  runLoggerLoggingT,
+ )
+import Blockfrost.Client.Core (BlockfrostError)
+import Cardano.Api (TxId)
+import Control.Lens (view)
+import Control.Monad (when)
+import Control.Monad.Except (ExceptT, MonadError, runExceptT)
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Reader (
+  MonadReader,
+  ReaderT,
+  asks,
+  runReaderT,
+ )
+import Convex.Blockfrost qualified
+import Convex.Blockfrost.Orphans ()
+import Convex.Blockfrost.Types (DecodingError)
+import Convex.ResolvedTx (ResolvedTx)
+import Convex.ResolvedTx qualified
+import Convex.TxMod.Command (
+  ResolvedTxInput (..),
+  TxModCommand (..),
+  parseCommand,
+ )
+import Convex.TxMod.Env (Env)
+import Convex.TxMod.Env qualified as Env
+import Convex.TxMod.Logging qualified as L
+import Convex.Utils (liftEither, mapError)
+import Data.Aeson qualified
+import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.ByteString.Lazy.Char8 qualified as LBS
+import Data.String (IsString (fromString))
+import Data.Text.IO qualified as Text.IO
+import Options.Applicative (
+  customExecParser,
+  disambiguate,
+  helper,
+  idm,
+  info,
+  prefs,
+  showHelpOnEmpty,
+  showHelpOnError,
+ )
 
 runMain :: IO ()
 runMain = do
@@ -47,7 +68,7 @@ runCommand com = do
   env <- Env.loadEnv
   result <- runTxModApp env $ case com of
     Download txId output -> downloadTx txId output
-    Graph input output   -> graph input output
+    Graph input output -> graph input output
   case result of
     Left err -> runLoggerLoggingT env $ do
       logError (fromString $ show err)
@@ -61,16 +82,17 @@ graph inputs outFile = do
   when (null inputs) $ logWarn "No resolved transactions provided, graph will be empty"
   traverse getTx inputs >>= writeGraph outFile
 
-newtype TxModApp a = TxModApp{ unTxModApp :: ReaderT Env (ExceptT AppError IO) a }
+newtype TxModApp a = TxModApp {unTxModApp :: ReaderT Env (ExceptT AppError IO) a}
   deriving newtype (Monad, Applicative, Functor, MonadIO, MonadReader Env, MonadError AppError)
-  deriving (MonadLogger, MonadLoggerIO)
+  deriving
+    (MonadLogger, MonadLoggerIO)
     via (WithLogger Env (ExceptT AppError IO))
 
-data AppError =
-  DecodingErr DecodingError
+data AppError
+  = DecodingErr DecodingError
   | BlockfrostErr BlockfrostError
   | FileDecodeErr String
-  deriving stock Show
+  deriving stock (Show)
 
 runTxModApp :: Env -> TxModApp a -> IO (Either AppError a)
 runTxModApp env TxModApp{unTxModApp} = runExceptT (runReaderT unTxModApp env)
@@ -102,7 +124,7 @@ writeGraph :: (MonadLoggerIO m) => Maybe FilePath -> [ResolvedTx] -> m ()
 writeGraph = \case
   Nothing -> \tx -> do
     logInfo "Writing graph to stdout"
-    liftIO . Text.IO.putStrLn  $ Convex.ResolvedTx.dot tx
+    liftIO . Text.IO.putStrLn $ Convex.ResolvedTx.dot tx
   Just fp -> \tx -> do
     logInfo $ "Writing graph to file" :# [L.dotGraphFile fp]
     liftIO . Convex.ResolvedTx.dotFile fp $ tx

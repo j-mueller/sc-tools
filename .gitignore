@@ -34,3 +34,4 @@ protocol-parameters-mainnet.json
 download-tx-test.sh
 tx.json
 graph.dot
+.vim

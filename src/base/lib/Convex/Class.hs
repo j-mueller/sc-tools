@@ -1,30 +1,29 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DefaultSignatures      #-}
-{-# LANGUAGE DeriveAnyClass         #-}
-{-# LANGUAGE DerivingStrategies     #-}
-{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE TemplateHaskell        #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns           #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE DerivingVia            #-}
-{-| Typeclasses for blockchain operations
--}
-module Convex.Class(
 
+-- | Typeclasses for blockchain operations
+module Convex.Class (
   -- * Monad blockchain
-  MonadBlockchain(..),
+  MonadBlockchain (..),
   trySendTx,
   singleUTxO,
 
   -- * Monad mockchain
-  MonadMockchain(..),
+  MonadMockchain (..),
 
   -- * Mockchain state & lenses
   MockChainState (..),
@@ -37,9 +36,9 @@ module Convex.Class(
   _Phase2Error,
 
   -- * Other types
-  ExUnitsError(..),
-  ValidationError(..),
-  BlockchainException(..),
+  ExUnitsError (..),
+  ValidationError (..),
+  BlockchainException (..),
   _VExUnits,
   _PredicateFailures,
   _ApplyTxFailure,
@@ -60,132 +59,185 @@ module Convex.Class(
   getTxs,
 
   -- * MonadUtxoQuery
-  MonadUtxoQuery(..),
+  MonadUtxoQuery (..),
   utxosByPaymentCredential,
 
   -- * MonadDatumQuery
-  MonadDatumQuery(..),
+  MonadDatumQuery (..),
 
   -- * Implementation
-  MonadBlockchainCardanoNodeT(..),
-  runMonadBlockchainCardanoNodeT
+  MonadBlockchainCardanoNodeT (..),
+  runMonadBlockchainCardanoNodeT,
 ) where
 
-import qualified Cardano.Api                                       as C
-import           Cardano.Api.Shelley                               (EraHistory (..),
-                                                                    Hash,
-                                                                    HashableScriptData,
-                                                                    LedgerProtocolParameters (..),
-                                                                    LocalNodeConnectInfo,
-                                                                    NetworkId,
-                                                                    PaymentCredential,
-                                                                    PoolId,
-                                                                    ScriptData,
-                                                                    SlotNo, Tx,
-                                                                    TxId)
-import qualified Cardano.Api.Shelley                               as C
-import           Cardano.Ledger.Alonzo.Plutus.Evaluate             (CollectError)
-import qualified Cardano.Ledger.Core                               as Core
-import           Cardano.Ledger.Crypto                             (StandardCrypto)
-import           Cardano.Ledger.Plutus.Evaluate                    (PlutusWithContext (..))
-import           Cardano.Ledger.Shelley.API                        (ApplyTxError,
-                                                                    Coin (..),
-                                                                    MempoolEnv,
-                                                                    MempoolState,
-                                                                    UTxO (..),
-                                                                    Validated,
-                                                                    extractTx)
-import           Cardano.Ledger.Shelley.LedgerState                (certDStateL,
-                                                                    dsUnifiedL,
-                                                                    lsCertStateL,
-                                                                    rewards)
-import           Cardano.Ledger.UMap                               (RDPair (..),
-                                                                    adjust,
-                                                                    compactCoinOrError)
-import           Cardano.Slotting.Time                             (SlotLength,
-                                                                    SystemStart)
-import           Control.Exception                                 (Exception,
-                                                                    throwIO)
-import           Control.Lens                                      (_1, set, to,
-                                                                    view, (^.))
-import           Control.Lens.TH                                   (makeLensesFor,
-                                                                    makePrisms)
-import           Control.Monad.Except                              (MonadError,
-                                                                    runExceptT)
-import           Control.Monad.IO.Class                            (MonadIO (..))
-import           Control.Monad.Primitive                           (PrimMonad)
-import           Control.Monad.Reader                              (MonadTrans,
-                                                                    ReaderT (..),
-                                                                    ask, asks,
-                                                                    lift)
-import qualified Control.Monad.State                               as LazyState
-import qualified Control.Monad.State.Strict                        as StrictState
-import           Control.Monad.Trans.Except                        (ExceptT (..))
-import           Control.Monad.Trans.Except.Result                 (ResultT)
-import qualified Convex.CardanoApi.Lenses                          as L
-import           Convex.MonadLog                                   (MonadLog (..),
-                                                                    MonadLogIgnoreT (..),
-                                                                    MonadLogKatipT (..))
-import           Convex.NodeParams                                 (NodeParams,
-                                                                    pParams)
-import           Convex.Utils                                      (posixTimeToSlotUnsafe,
-                                                                    slotToUtcTime)
-import           Convex.Utxos                                      (UtxoSet)
-import           Data.Bifunctor                                    (Bifunctor (..))
-import           Data.Functor                                      ((<&>))
-import           Data.Map                                          (Map)
-import qualified Data.Map                                          as Map
-import           Data.Set                                          (Set)
-import qualified Data.Set                                          as Set
-import           Data.Time.Clock                                   (UTCTime)
-import           Katip.Monadic                                     (KatipContextT (..))
-import           Ouroboros.Consensus.HardFork.History              (interpretQuery,
-                                                                    slotToSlotLength)
-import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type   as T
-import           Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
-import qualified PlutusLedgerApi.V1                                as PV1
-import           Test.QuickCheck.Monadic                           (PropertyM)
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley (
+  EraHistory (..),
+  Hash,
+  HashableScriptData,
+  LedgerProtocolParameters (..),
+  LocalNodeConnectInfo,
+  NetworkId,
+  PaymentCredential,
+  PoolId,
+  ScriptData,
+  SlotNo,
+  Tx,
+  TxId,
+ )
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
+import Cardano.Ledger.Core qualified as Core
+import Cardano.Ledger.Crypto (StandardCrypto)
+import Cardano.Ledger.Plutus.Evaluate (PlutusWithContext (..))
+import Cardano.Ledger.Shelley.API (
+  ApplyTxError,
+  Coin (..),
+  MempoolEnv,
+  MempoolState,
+  UTxO (..),
+  Validated,
+  extractTx,
+ )
+import Cardano.Ledger.Shelley.LedgerState (
+  certDStateL,
+  dsUnifiedL,
+  lsCertStateL,
+  rewards,
+ )
+import Cardano.Ledger.UMap (
+  RDPair (..),
+  adjust,
+  compactCoinOrError,
+ )
+import Cardano.Slotting.Time (
+  SlotLength,
+  SystemStart,
+ )
+import Control.Exception (
+  Exception,
+  throwIO,
+ )
+import Control.Lens (
+  set,
+  to,
+  view,
+  (^.),
+  _1,
+ )
+import Control.Lens.TH (
+  makeLensesFor,
+  makePrisms,
+ )
+import Control.Monad.Except (
+  MonadError,
+  runExceptT,
+ )
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Primitive (PrimMonad)
+import Control.Monad.Reader (
+  MonadTrans,
+  ReaderT (..),
+  ask,
+  asks,
+  lift,
+ )
+import Control.Monad.State qualified as LazyState
+import Control.Monad.State.Strict qualified as StrictState
+import Control.Monad.Trans.Except (ExceptT (..))
+import Control.Monad.Trans.Except.Result (ResultT)
+import Convex.CardanoApi.Lenses qualified as L
+import Convex.MonadLog (
+  MonadLog (..),
+  MonadLogIgnoreT (..),
+  MonadLogKatipT (..),
+ )
+import Convex.NodeParams (
+  NodeParams,
+  pParams,
+ )
+import Convex.Utils (
+  posixTimeToSlotUnsafe,
+  slotToUtcTime,
+ )
+import Convex.Utxos (UtxoSet)
+import Data.Bifunctor (Bifunctor (..))
+import Data.Functor ((<&>))
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Time.Clock (UTCTime)
+import Katip.Monadic (KatipContextT (..))
+import Ouroboros.Consensus.HardFork.History (
+  interpretQuery,
+  slotToSlotLength,
+ )
+import Ouroboros.Network.Protocol.LocalStateQuery.Type qualified as T
+import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (..))
+import PlutusLedgerApi.V1 qualified as PV1
+import Test.QuickCheck.Monadic (PropertyM)
 
 -- Error types
-data ExUnitsError era =
-  Phase1Error (C.TransactionValidityError era)
+data ExUnitsError era
+  = Phase1Error (C.TransactionValidityError era)
   | Phase2Error C.ScriptExecutionError
-  deriving stock Show
-  deriving anyclass Exception
+  deriving stock (Show)
+  deriving anyclass (Exception)
 
 makePrisms ''ExUnitsError
 
 -- see https://github.com/j-mueller/sc-tools/issues/214
-data ValidationError era =
-  ValidationErrorInMode !C.TxValidationErrorInCardanoMode
+data ValidationError era
+  = ValidationErrorInMode !C.TxValidationErrorInCardanoMode
   | VExUnits !(ExUnitsError era)
   | PredicateFailures ![CollectError (C.ShelleyLedgerEra era)]
   | ApplyTxFailure !(ApplyTxError (C.ShelleyLedgerEra era))
-  deriving anyclass Exception
+  deriving anyclass (Exception)
 
-instance C.IsAlonzoBasedEra era => Show (ValidationError era) where
-  show err = C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ "ValidationError: " <> case err of
-    ValidationErrorInMode err' -> "ValidationErrorInMode: " <> show err'
-    VExUnits err'              -> "VExUnits: " <> show err'
-    PredicateFailures errs'    -> "PredicateFailures: " <> show errs'
-    ApplyTxFailure err'        -> "ApplyTxFailure: " <> show err'
+instance (C.IsAlonzoBasedEra era) => Show (ValidationError era) where
+  show err =
+    C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $
+      "ValidationError: " <> case err of
+        ValidationErrorInMode err' -> "ValidationErrorInMode: " <> show err'
+        VExUnits err' -> "VExUnits: " <> show err'
+        PredicateFailures errs' -> "PredicateFailures: " <> show errs'
+        ApplyTxFailure err' -> "ApplyTxFailure: " <> show err'
 
 makePrisms ''ValidationError
 
-{-| Send transactions and resolve tx inputs.
--}
-class Monad m => MonadBlockchain era m | m -> era where
-  sendTx                  :: Tx era -> m (Either (ValidationError era) TxId) -- ^ Submit a transaction to the network
-  utxoByTxIn              :: Set C.TxIn -> m (C.UTxO era) -- ^ Resolve tx inputs
-  queryProtocolParameters :: m (LedgerProtocolParameters era) -- ^ Get the protocol parameters
-  queryStakeAddresses     :: Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
-  queryStakePools         :: m (Set PoolId) -- ^ Get the stake pools
-  querySystemStart        :: m SystemStart
-  queryEraHistory         :: m C.EraHistory
-  querySlotNo             :: m (C.SlotNo, SlotLength, UTCTime)
-                          -- ^ returns the current slot number, slot length and begin utc time for slot.
-                          -- Slot 0 is returned when at genesis.
-  queryNetworkId          :: m C.NetworkId -- ^ Get the network id
+-- | Send transactions and resolve tx inputs.
+class (Monad m) => MonadBlockchain era m | m -> era where
+  sendTx
+    :: Tx era
+    -> m (Either (ValidationError era) TxId)
+    -- ^ Submit a transaction to the network
+
+  utxoByTxIn
+    :: Set C.TxIn
+    -> m (C.UTxO era)
+    -- ^ Resolve tx inputs
+
+  queryProtocolParameters :: m (LedgerProtocolParameters era)
+    -- ^ Get the protocol parameters
+
+  queryStakeAddresses
+    :: Set C.StakeCredential
+    -> NetworkId
+    -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
+    -- ^ Get stake rewards
+
+  queryStakePools :: m (Set PoolId)
+    -- ^ Get the stake pools
+
+  querySystemStart :: m SystemStart
+  queryEraHistory :: m C.EraHistory
+  querySlotNo :: m (C.SlotNo, SlotLength, UTCTime)
+    -- ^ returns the current slot number, slot length and begin utc time for slot.
+    -- Slot 0 is returned when at genesis.
+
+  queryNetworkId :: m C.NetworkId
+    -- ^ Get the network id
 
   default sendTx :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => Tx era -> m (Either (ValidationError era) TxId)
   sendTx = lift . sendTx
@@ -196,7 +248,12 @@ class Monad m => MonadBlockchain era m | m -> era where
   default queryProtocolParameters :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (LedgerProtocolParameters era)
   queryProtocolParameters = lift queryProtocolParameters
 
-  default queryStakeAddresses :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => Set C.StakeCredential -> NetworkId -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId) -- ^ Get stake rewards
+  default queryStakeAddresses
+    :: (MonadTrans t, m ~ t n, MonadBlockchain era n)
+    => Set C.StakeCredential
+    -> NetworkId
+    -> m (Map C.StakeAddress C.Quantity, Map C.StakeAddress PoolId)
+    -- ^ Get stake rewards
   queryStakeAddresses = (lift .) . queryStakeAddresses
 
   default queryStakePools :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m (Set PoolId)
@@ -214,37 +271,38 @@ class Monad m => MonadBlockchain era m | m -> era where
   default queryNetworkId :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m NetworkId
   queryNetworkId = lift queryNetworkId
 
-
 trySendTx :: (MonadBlockchain era m, C.IsAlonzoBasedEra era) => Tx era -> m TxId
 trySendTx = fmap (either (error . show) id) . sendTx
 
-deriving newtype instance MonadBlockchain era m => MonadBlockchain era (KatipContextT m)
-deriving newtype instance MonadBlockchain era m => MonadBlockchain era (MonadLogKatipT m)
-deriving newtype instance MonadBlockchain era m => MonadBlockchain era (MonadLogIgnoreT m)
+deriving newtype instance (MonadBlockchain era m) => MonadBlockchain era (KatipContextT m)
+deriving newtype instance (MonadBlockchain era m) => MonadBlockchain era (MonadLogKatipT m)
+deriving newtype instance (MonadBlockchain era m) => MonadBlockchain era (MonadLogIgnoreT m)
 
-instance MonadBlockchain era m => MonadBlockchain era (ResultT m)
-instance MonadBlockchain era m => MonadBlockchain era (ExceptT e m)
-instance MonadBlockchain era m => MonadBlockchain era (ReaderT e m)
-instance MonadBlockchain era m => MonadBlockchain era (StrictState.StateT e m)
-instance MonadBlockchain era m => MonadBlockchain era (LazyState.StateT e m)
-instance MonadBlockchain era m => MonadBlockchain era (PropertyM m)
+instance (MonadBlockchain era m) => MonadBlockchain era (ResultT m)
+instance (MonadBlockchain era m) => MonadBlockchain era (ExceptT e m)
+instance (MonadBlockchain era m) => MonadBlockchain era (ReaderT e m)
+instance (MonadBlockchain era m) => MonadBlockchain era (StrictState.StateT e m)
+instance (MonadBlockchain era m) => MonadBlockchain era (LazyState.StateT e m)
+instance (MonadBlockchain era m) => MonadBlockchain era (PropertyM m)
 
 -- | Look up  a single UTxO
-singleUTxO :: MonadBlockchain era m => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO era))
-singleUTxO txi =  utxoByTxIn (Set.singleton txi) >>= \case
-  C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
-  _ -> pure Nothing
+singleUTxO :: (MonadBlockchain era m) => C.TxIn -> m (Maybe (C.TxOut C.CtxUTxO era))
+singleUTxO txi =
+  utxoByTxIn (Set.singleton txi) >>= \case
+    C.UTxO (Map.toList -> [(_, o)]) -> pure (Just o)
+    _ -> pure Nothing
 
-{-| State of the mockchain
--}
-data MockChainState era =
-  MockChainState
-    { mcsEnv                :: MempoolEnv (C.ShelleyLedgerEra era)
-    , mcsPoolState          :: MempoolState (C.ShelleyLedgerEra era)
-    , mcsTransactions       :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext StandardCrypto])] -- ^ Transactions that were submitted to the mockchain and validated
-    , mcsFailedTransactions :: [(Tx era, ValidationError era)] -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
-    , mcsDatums             :: Map (Hash ScriptData) HashableScriptData
-    }
+-- | State of the mockchain
+data MockChainState era
+  = MockChainState
+  { mcsEnv :: MempoolEnv (C.ShelleyLedgerEra era)
+  , mcsPoolState :: MempoolState (C.ShelleyLedgerEra era)
+  , mcsTransactions :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext StandardCrypto])]
+  -- ^ Transactions that were submitted to the mockchain and validated
+  , mcsFailedTransactions :: [(Tx era, ValidationError era)]
+  -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
+  , mcsDatums :: Map (Hash ScriptData) HashableScriptData
+  }
 
 makeLensesFor
   [ ("mcsEnv", "env")
@@ -252,11 +310,11 @@ makeLensesFor
   , ("mcsTransactions", "transactions")
   , ("mcsFailedTransactions", "failedTransactions")
   , ("mcsDatums", "datums")
-  ] ''MockChainState
+  ]
+  ''MockChainState
 
-{-| Modify the mockchain internals
--}
-class MonadBlockchain era m => MonadMockchain era m where
+-- | Modify the mockchain internals
+class (MonadBlockchain era m) => MonadMockchain era m where
   modifyMockChainState :: (MockChainState era -> (a, MockChainState era)) -> m a
   askNodeParams :: m (NodeParams era)
 
@@ -266,19 +324,19 @@ class MonadBlockchain era m => MonadMockchain era m where
   default askNodeParams :: (MonadTrans t, m ~ t n, MonadMockchain era n) => m (NodeParams era)
   askNodeParams = lift askNodeParams
 
-deriving newtype instance MonadMockchain era m => MonadMockchain era (MonadLogIgnoreT m)
+deriving newtype instance (MonadMockchain era m) => MonadMockchain era (MonadLogIgnoreT m)
 
-instance MonadMockchain era m => MonadMockchain era (ResultT m)
-instance MonadMockchain era m => MonadMockchain era (ReaderT e m)
-instance MonadMockchain era m => MonadMockchain era (ExceptT e m)
-instance MonadMockchain era m => MonadMockchain era (StrictState.StateT e m)
-instance MonadMockchain era m => MonadMockchain era (LazyState.StateT e m)
-instance MonadMockchain era m => MonadMockchain era (PropertyM m)
+instance (MonadMockchain era m) => MonadMockchain era (ResultT m)
+instance (MonadMockchain era m) => MonadMockchain era (ReaderT e m)
+instance (MonadMockchain era m) => MonadMockchain era (ExceptT e m)
+instance (MonadMockchain era m) => MonadMockchain era (StrictState.StateT e m)
+instance (MonadMockchain era m) => MonadMockchain era (LazyState.StateT e m)
+instance (MonadMockchain era m) => MonadMockchain era (PropertyM m)
 
-getMockChainState :: MonadMockchain era m => m (MockChainState era)
+getMockChainState :: (MonadMockchain era m) => m (MockChainState era)
 getMockChainState = modifyMockChainState (\s -> (s, s))
 
-putMockChainState :: MonadMockchain era m => MockChainState era -> m ()
+putMockChainState :: (MonadMockchain era m) => MockChainState era -> m ()
 putMockChainState s = modifyMockChainState (const ((), s))
 
 setReward :: forall era m. (Core.EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto, MonadMockchain era m) => C.StakeCredential -> Coin -> m ()
@@ -288,66 +346,64 @@ setReward cred coin = do
     dState = mcs ^. poolState . lsCertStateL . certDStateL
     umap =
       adjust
-        (\rd -> rd {rdReward=compactCoinOrError coin})
+        (\rd -> rd{rdReward = compactCoinOrError coin})
         (C.toShelleyStakeCredential cred)
         (rewards dState)
   putMockChainState (set (poolState . lsCertStateL . certDStateL . dsUnifiedL) umap mcs)
 
-modifySlot :: MonadMockchain era m => (SlotNo -> (SlotNo, a)) -> m a
+modifySlot :: (MonadMockchain era m) => (SlotNo -> (SlotNo, a)) -> m a
 modifySlot f = modifyMockChainState $ \s ->
   let (s', a) = f (s ^. env . L.slot)
-  in (a, set (env . L.slot) s' s)
+   in (a, set (env . L.slot) s' s)
 
-{-| Get the current slot number
--}
-getSlot :: MonadMockchain era m => m SlotNo
+-- | Get the current slot number
+getSlot :: (MonadMockchain era m) => m SlotNo
 getSlot = modifySlot (\s -> (s, s))
 
-{-| Get the current slot number
--}
-setSlot :: MonadMockchain era m => SlotNo -> m ()
+-- | Get the current slot number
+setSlot :: (MonadMockchain era m) => SlotNo -> m ()
 setSlot s = modifySlot (const (s, ()))
 
-modifyUtxo :: forall era m a.
-  (C.IsShelleyBasedEra era, MonadMockchain era m)
+modifyUtxo
+  :: forall era m a
+   . (C.IsShelleyBasedEra era, MonadMockchain era m)
   => (UTxO (C.ShelleyLedgerEra era) -> (UTxO (C.ShelleyLedgerEra era), a)) -> m a
-modifyUtxo f = C.shelleyBasedEraConstraints @era C.shelleyBasedEra $
-  askNodeParams >>= \np -> modifyMockChainState $ \s ->
-  let (u', a) = f (s ^. poolState . L.utxoState . L._UTxOState (pParams np) . _1)
-  in (a, set (poolState . L.utxoState . L._UTxOState (pParams np) . _1) u' s)
+modifyUtxo f =
+  C.shelleyBasedEraConstraints @era C.shelleyBasedEra $
+    askNodeParams >>= \np -> modifyMockChainState $ \s ->
+      let (u', a) = f (s ^. poolState . L.utxoState . L._UTxOState (pParams np) . _1)
+       in (a, set (poolState . L.utxoState . L._UTxOState (pParams np) . _1) u' s)
 
-{-| Get the UTxO set |-}
+-- | Get the UTxO set |
 getUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era) => m (UTxO (C.ShelleyLedgerEra era))
 getUtxo = modifyUtxo (\s -> (s, s))
 
-{-| Set the UTxO set |-}
+-- | Set the UTxO set |
 setUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era) => UTxO (C.ShelleyLedgerEra era) -> m ()
 setUtxo u = modifyUtxo (const (u, ()))
 
-{-| Return all Tx's from the ledger state -}
+-- | Return all Tx's from the ledger state
 getTxs :: (MonadMockchain era m, C.IsShelleyBasedEra era) => m [C.Tx era]
 getTxs = getMockChainState <&> view (transactions . traverse . _1 . to ((: []) . C.ShelleyTx C.shelleyBasedEra . extractTx))
 
-{-| Return all Tx's from the ledger state -}
+-- | Return all Tx's from the ledger state
 
-{-| Set the slot number to the slot that contains the given POSIX time.
--}
+-- | Set the slot number to the slot that contains the given POSIX time.
 setPOSIXTime :: (MonadFail m, MonadMockchain era m) => PV1.POSIXTime -> m ()
 setPOSIXTime tm =
   (posixTimeToSlotUnsafe <$> queryEraHistory <*> querySystemStart <*> pure tm) >>= either fail (setSlot . view _1)
 
-{-| Change the clock so that the current slot time is within the given validity range.
+{- | Change the clock so that the current slot time is within the given validity range.
 This MAY move the clock backwards!
 -}
-setTimeToValidRange :: MonadMockchain era m => (C.TxValidityLowerBound era, C.TxValidityUpperBound era) -> m ()
+setTimeToValidRange :: (MonadMockchain era m) => (C.TxValidityLowerBound era, C.TxValidityUpperBound era) -> m ()
 setTimeToValidRange = \case
-  (C.TxValidityLowerBound _ lowerSlot, _)        -> setSlot lowerSlot
+  (C.TxValidityLowerBound _ lowerSlot, _) -> setSlot lowerSlot
   (_, C.TxValidityUpperBound _ (Just upperSlot)) -> setSlot (pred upperSlot)
-  _                                              -> pure ()
+  _ -> pure ()
 
-{-| Increase the slot number by 1.
--}
-nextSlot :: MonadMockchain era m => m ()
+-- | Increase the slot number by 1.
+nextSlot :: (MonadMockchain era m) => m ()
 nextSlot = modifySlot (\s -> (succ s, ()))
 
 {- Note [MonadUtxoQuery design]
@@ -362,30 +418,30 @@ control over the capabilities they require.
 
 -}
 
--- | A capability typeclass that provides methods for querying a chain indexer.
---   See note [MonadUtxoQuery design].
-class Monad m => MonadUtxoQuery m where
+{- | A capability typeclass that provides methods for querying a chain indexer.
+  See note [MonadUtxoQuery design].
+-}
+class (Monad m) => MonadUtxoQuery m where
   -- | Given a set of payment credentials, retrieve all UTxOs associated with
   -- those payment credentials according to the current indexed blockchain
   -- state. Each UTXO also possibly has the resolved datum (meaning that if we
   -- only have the datum hash, the implementation should try and resolve it to
   -- the actual datum).
   utxosByPaymentCredentials :: Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
-
   default utxosByPaymentCredentials :: (MonadTrans t, m ~ t n, MonadUtxoQuery n) => Set PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
   utxosByPaymentCredentials = lift . utxosByPaymentCredentials
 
-instance MonadUtxoQuery m => MonadUtxoQuery (ResultT m) where
-instance MonadUtxoQuery m => MonadUtxoQuery (ExceptT e m)
-instance MonadUtxoQuery m => MonadUtxoQuery (ReaderT e m)
-instance MonadUtxoQuery m => MonadUtxoQuery (StrictState.StateT s m)
-instance MonadUtxoQuery m => MonadUtxoQuery (LazyState.StateT s m)
-instance MonadUtxoQuery m => MonadUtxoQuery (MonadBlockchainCardanoNodeT era m)
-instance MonadUtxoQuery m => MonadUtxoQuery (MonadLogIgnoreT m)
-instance MonadUtxoQuery m => MonadUtxoQuery (PropertyM m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (ResultT m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (ExceptT e m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (ReaderT e m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (StrictState.StateT s m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (LazyState.StateT s m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (MonadBlockchainCardanoNodeT era m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (MonadLogIgnoreT m)
+instance (MonadUtxoQuery m) => MonadUtxoQuery (PropertyM m)
 
 -- | Given a single payment credential, find the UTxOs with that credential
-utxosByPaymentCredential :: MonadUtxoQuery m => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
+utxosByPaymentCredential :: (MonadUtxoQuery m) => PaymentCredential -> m (UtxoSet C.CtxUTxO (Maybe C.HashableScriptData))
 utxosByPaymentCredential = utxosByPaymentCredentials . Set.singleton
 
 {- Note [MonadDatumQuery design]
@@ -394,47 +450,45 @@ Initially only part of MonadMockchain, but now as a separate typeclass.
 Useful for resolving datum hashes from Mockchain or a chain-indexer.
 -}
 
-class Monad m => MonadDatumQuery m where
+class (Monad m) => MonadDatumQuery m where
   queryDatumFromHash :: C.Hash C.ScriptData -> m (Maybe C.HashableScriptData)
 
-instance MonadDatumQuery m => MonadDatumQuery (ResultT m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (ResultT m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (ExceptT e m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (ExceptT e m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (ReaderT e m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (ReaderT e m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (StrictState.StateT s m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (StrictState.StateT s m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (LazyState.StateT s m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (LazyState.StateT s m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (MonadBlockchainCardanoNodeT era m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (MonadBlockchainCardanoNodeT era m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (MonadLogIgnoreT m) where
+instance (MonadDatumQuery m) => MonadDatumQuery (MonadLogIgnoreT m) where
   queryDatumFromHash = lift . queryDatumFromHash
 
-instance MonadDatumQuery m => MonadDatumQuery (PropertyM m) where
-  queryDatumFromHash= lift . queryDatumFromHash
+instance (MonadDatumQuery m) => MonadDatumQuery (PropertyM m) where
+  queryDatumFromHash = lift . queryDatumFromHash
 
-
-{-| 'MonadBlockchain' implementation that connects to a cardano node
--}
+-- | 'MonadBlockchain' implementation that connects to a cardano node
 newtype BlockchainException = BlockchainException String
-  deriving stock Show
-  deriving anyclass Exception
+  deriving stock (Show)
+  deriving anyclass (Exception)
 
-newtype MonadBlockchainCardanoNodeT era m a = MonadBlockchainCardanoNodeT { unMonadBlockchainCardanoNodeT :: ReaderT LocalNodeConnectInfo m a }
+newtype MonadBlockchainCardanoNodeT era m a = MonadBlockchainCardanoNodeT {unMonadBlockchainCardanoNodeT :: ReaderT LocalNodeConnectInfo m a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadError e, MonadFail, PrimMonad)
 
 runMonadBlockchainCardanoNodeT :: LocalNodeConnectInfo -> MonadBlockchainCardanoNodeT era m a -> m a
 runMonadBlockchainCardanoNodeT info (MonadBlockchainCardanoNodeT action) = runReaderT action info
 
-runQuery :: MonadIO m => C.QueryInMode a -> MonadBlockchainCardanoNodeT era m a
+runQuery :: (MonadIO m) => C.QueryInMode a -> MonadBlockchainCardanoNodeT era m a
 runQuery qry = MonadBlockchainCardanoNodeT $ do
   info <- ask
   result <- liftIO (runExceptT $ C.queryNodeLocalState info T.VolatileTip qry)
@@ -446,11 +500,12 @@ runQuery qry = MonadBlockchainCardanoNodeT $ do
       pure result'
 
 runQuery' :: (MonadIO m, Show e1) => C.QueryInMode (Either e1 a) -> MonadBlockchainCardanoNodeT era m a
-runQuery' qry = runQuery qry >>= \case
-  Left err -> MonadBlockchainCardanoNodeT $ do
-    let msg = "runQuery': Era mismatch: " <> show err
-    liftIO $ throwIO $ BlockchainException msg
-  Right result' -> pure result'
+runQuery' qry =
+  runQuery qry >>= \case
+    Left err -> MonadBlockchainCardanoNodeT $ do
+      let msg = "runQuery': Era mismatch: " <> show err
+      liftIO $ throwIO $ BlockchainException msg
+    Right result' -> pure result'
 
 instance (MonadIO m, C.IsShelleyBasedEra era) => MonadBlockchain era (MonadBlockchainCardanoNodeT era m) where
   sendTx tx = MonadBlockchainCardanoNodeT $ do
@@ -481,9 +536,10 @@ instance (MonadIO m, C.IsShelleyBasedEra era) => MonadBlockchain era (MonadBlock
 
   querySlotNo = do
     (eraHistory@(C.EraHistory interpreter), systemStart) <- (,) <$> queryEraHistory <*> querySystemStart
-    slotNo <- runQuery C.QueryChainPoint >>= \case
-                C.ChainPointAtGenesis  -> pure $ fromIntegral (0 :: Integer)
-                C.ChainPoint slot _hsh -> pure slot
+    slotNo <-
+      runQuery C.QueryChainPoint >>= \case
+        C.ChainPointAtGenesis -> pure $ fromIntegral (0 :: Integer)
+        C.ChainPoint slot _hsh -> pure slot
     MonadBlockchainCardanoNodeT $ do
       let logErr err = do
             let msg = "querySlotNo: Failed with " <> err
