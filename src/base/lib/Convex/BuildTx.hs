@@ -143,6 +143,7 @@ import Control.Lens (
  )
 import Control.Lens qualified as L
 import Control.Monad.Except (MonadError (..))
+import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.State qualified as LazyState
 import Control.Monad.State.Class (MonadState (..))
@@ -274,6 +275,7 @@ class (Monad m) => MonadBuildTx era m | m -> era where
   addTxBuilder = lift . addTxBuilder
 
 instance (MonadBuildTx era m) => MonadBuildTx era (ExceptT e m)
+instance (MonadBuildTx era m) => MonadBuildTx era (ReaderT e m)
 instance (MonadBuildTx era m) => MonadBuildTx era (StrictState.StateT e m)
 instance (MonadBuildTx era m) => MonadBuildTx era (LazyState.StateT e m)
 instance (Monoid w, MonadBuildTx era m) => MonadBuildTx era (WriterT w m)
