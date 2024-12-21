@@ -39,7 +39,7 @@ import Control.Monad.Except (
   runExceptT,
  )
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (ReaderT (..))
+import Control.Monad.Reader (MonadReader (..), ReaderT (..))
 import Control.Monad.State.Strict (StateT)
 import Control.Monad.State.Strict qualified as State
 import Control.Monad.Trans.Class (MonadTrans (lift))
@@ -79,6 +79,10 @@ down = coerce
 
 instance MonadTrans BlockfrostT where
   lift = BlockfrostT . lift . lift
+
+instance (MonadReader e m) => MonadReader e (BlockfrostT m) where
+  ask = lift ask
+  local f (up -> a) = down $ \cache config -> local f (a cache config)
 
 instance (MonadError e m) => MonadError e (BlockfrostT m) where
   throwError = lift . throwError
