@@ -349,9 +349,8 @@ convertOutput addr_ amount dataHash inlineDatum refScriptHash =
           C.TxOutValueShelleyBased
             C.shelleyBasedEra
             (C.toLedgerValue @era C.maryBasedEra $ foldMap (L.fromList . return . toAssetId) amount)
-        dat =
-          fmap (C.TxOutDatumHash C.alonzoBasedEra . toDatumHash) dataHash
-            <|> fmap (C.TxOutDatumInline C.babbageBasedEra) (inlineDatum >>= either (const Nothing) Just . toDatum)
+        dat = fmap (C.TxOutDatumInline C.babbageBasedEra) (inlineDatum >>= either (const Nothing) Just . toDatum)
+            <|> fmap (C.TxOutDatumHash C.alonzoBasedEra . toDatumHash) dataHash
 
         txuOutput = C.TxOut addr val (fromMaybe C.TxOutDatumNone dat) C.ReferenceScriptNone
      in case refScriptHash of
