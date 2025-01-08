@@ -96,7 +96,7 @@ import Cardano.Api.SerialiseBech32 (SerialiseAsBech32 (..))
 import Cardano.Api.SerialiseUsing (UsingRawBytesHex (..))
 import Cardano.Api.Shelley (Lovelace)
 import Cardano.Api.Shelley qualified as C
-import Cardano.Binary (DecoderError)
+import Cardano.Binary (DecoderError (DecoderErrorCustom))
 import Cardano.Ledger.Alonzo.PParams qualified as L
 import Cardano.Ledger.Babbage.PParams qualified as L
 import Cardano.Ledger.BaseTypes qualified as BaseTypes
@@ -272,7 +272,8 @@ toScriptHash = textToIsString
 
 toDatum :: InlineDatum -> Either DecoderError C.HashableScriptData
 toDatum (InlineDatum (ScriptDatumCBOR text)) =
-  C.deserialiseFromCBOR (C.proxyToAsType Proxy) (Text.Encoding.encodeUtf8 text)
+  either (Left . DecoderErrorCustom "" . Text.pack) pure (Base16.decode $ Text.Encoding.encodeUtf8 text)
+    >>= C.deserialiseFromCBOR (C.proxyToAsType Proxy)
 
 {- | A @cardano-api@ tx output with a reference script that we only know
 the hash of.
@@ -349,8 +350,9 @@ convertOutput addr_ amount dataHash inlineDatum refScriptHash =
           C.TxOutValueShelleyBased
             C.shelleyBasedEra
             (C.toLedgerValue @era C.maryBasedEra $ foldMap (L.fromList . return . toAssetId) amount)
-        dat = fmap (C.TxOutDatumInline C.babbageBasedEra) (inlineDatum >>= either (const Nothing) Just . toDatum)
-            <|> fmap (C.TxOutDatumHash C.alonzoBasedEra . toDatumHash) dataHash
+        inlinedat = fmap (C.TxOutDatumInline C.babbageBasedEra) (inlineDatum >>= either (const Nothing) Just . toDatum)
+        datumhash = fmap (C.TxOutDatumHash C.alonzoBasedEra . toDatumHash) dataHash
+        dat = inlinedat <|> datumhash
 
         txuOutput = C.TxOut addr val (fromMaybe C.TxOutDatumNone dat) C.ReferenceScriptNone
      in case refScriptHash of
