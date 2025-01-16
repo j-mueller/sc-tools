@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -26,7 +27,9 @@ module Convex.Blockfrost.Types (
   addressUtxo,
   addressUtxoTxIn,
   ScriptResolutionFailure (..),
+  AsScriptResolutionFailure (..),
   DecodingError (..),
+  AsDecodingError (..),
   resolveScript,
   resolveTx,
 
@@ -113,12 +116,7 @@ import Cardano.Slotting.Time (
   mkSlotLength,
  )
 import Control.Applicative (Alternative (..))
-import Control.Lens (
-  (&),
-  (.~),
-  (<&>),
-  _4,
- )
+import Control.Lens (makeClassyPrisms, (&), (.~), (<&>), _4)
 import Control.Monad.Except (
   MonadError (..),
   runExceptT,
@@ -292,16 +290,20 @@ data TxOutUnresolvedScript era
   , txuScriptHash :: ScriptHash
   }
 
+data DecodingError
+  = Base16DecodeError String
+  | CBORError DecoderError
+  deriving stock (Eq, Show)
+
+makeClassyPrisms ''DecodingError
+
 -- | Failed to resolve a script hash to a plutus script
 data ScriptResolutionFailure
   = ScriptNotFound ScriptHash
   | ScriptDecodingError ScriptType ScriptHash DecodingError
   deriving stock (Eq, Show)
 
-data DecodingError
-  = Base16DecodeError String
-  | CBORError DecoderError
-  deriving stock (Eq, Show)
+makeClassyPrisms ''ScriptResolutionFailure
 
 decodeScriptCbor :: forall lang m. (MonadError ScriptResolutionFailure m, C.IsScriptLanguage lang) => ScriptType -> ScriptHash -> Text.Text -> m (C.Script lang)
 decodeScriptCbor tp hsh text =
@@ -353,7 +355,6 @@ convertOutput addr_ amount dataHash inlineDatum refScriptHash =
         inlinedat = fmap (C.TxOutDatumInline C.babbageBasedEra) (inlineDatum >>= either (const Nothing) Just . toDatum)
         datumhash = fmap (C.TxOutDatumHash C.alonzoBasedEra . toDatumHash) dataHash
         dat = inlinedat <|> datumhash
-
         txuOutput = C.TxOut addr val (fromMaybe C.TxOutDatumNone dat) C.ReferenceScriptNone
      in case refScriptHash of
           Nothing -> Right txuOutput

@@ -2,7 +2,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -21,6 +23,7 @@ module Convex.Query (
   operatorUtxos,
   selectOperatorUTxO,
   BalanceAndSubmitError (..),
+  AsBalanceAndSubmitError (..),
 
   -- * Wallet API queries
   WalletAPIQueryT (..),
@@ -32,6 +35,7 @@ import Cardano.Api (
   PaymentCredential (..),
  )
 import Cardano.Api qualified as C
+import Control.Lens.TH (makeClassyPrisms)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (ReaderT, ask, runReaderT)
@@ -178,3 +182,5 @@ data BalanceAndSubmitError era
   = BalanceError (BalanceTxError era)
   | SubmitError (ValidationError era)
   deriving stock (Show, Generic)
+
+makeClassyPrisms ''BalanceAndSubmitError
