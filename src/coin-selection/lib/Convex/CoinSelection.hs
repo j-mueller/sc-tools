@@ -2,6 +2,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -18,6 +20,7 @@
 module Convex.CoinSelection (
   -- * Data types
   CoinSelectionError (..),
+  AsCoinSelectionError (..),
   bodyError,
   TransactionSignatureCount (..),
   CSInputs (..),
@@ -29,7 +32,9 @@ module Convex.CoinSelection (
 
   -- * Balancing
   BalanceTxError (..),
+  AsBalanceTxError (..),
   BalancingError (..),
+  AsBalancingError (..),
   TxBalancingMessage (..),
   ChangeOutputPosition (..),
   balanceTransactionBody,
@@ -97,6 +102,7 @@ import Control.Lens (
   _3,
   (|>),
  )
+import Control.Lens.TH (makeClassyPrisms)
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
@@ -203,6 +209,8 @@ data CoinSelectionError
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
+makeClassyPrisms ''CoinSelectionError
+
 bodyError :: C.TxBodyError -> CoinSelectionError
 bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
@@ -213,6 +221,8 @@ data BalancingError era
   | ComputeBalanceChangeError
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
+
+makeClassyPrisms ''BalancingError
 
 balancingError :: (MonadError (BalancingError era) m) => Either (C.TxBodyErrorAutoBalance era) a -> m a
 balancingError = either (throwError . BalancingError . Text.pack . C.docToString . C.prettyError) pure
@@ -419,6 +429,14 @@ data BalanceTxError era
   | ABalancingError (BalancingError era)
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
+
+makeClassyPrisms ''BalanceTxError
+
+instance AsCoinSelectionError (BalanceTxError era) where
+  _CoinSelectionError = _ACoinSelectionError . _CoinSelectionError
+
+instance AsBalancingError (BalanceTxError era) era where
+  __BalancingError = _ABalancingError . __BalancingError
 
 {- | Balance the transaction using the given UTXOs and return address. This
 calls 'balanceTransactionBody' after preparing all the required inputs.
