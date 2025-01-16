@@ -33,16 +33,13 @@ module Convex.Class (
   failedTransactions,
   datums,
   txById,
-  _Phase1Error,
-  _Phase2Error,
 
   -- * Other types
   ExUnitsError (..),
+  AsExUnitsError (..),
   ValidationError (..),
+  AsValidationError (..),
   BlockchainException (..),
-  _VExUnits,
-  _PredicateFailures,
-  _ApplyTxFailure,
 
   -- * Utilities
   getMockChainState,
@@ -129,8 +126,8 @@ import Control.Lens (
   _1,
  )
 import Control.Lens.TH (
+  makeClassyPrisms,
   makeLensesFor,
-  makePrisms,
  )
 import Control.Monad.Except (
   MonadError,
@@ -189,7 +186,29 @@ data ExUnitsError era
   deriving stock (Show)
   deriving anyclass (Exception)
 
-makePrisms ''ExUnitsError
+{- | [Note] Classy prism errors
+
+Classy prisms are useful to create hierarchies of errors.
+
+If 'ExUnitsError' has classy prisms, then all functions returning these errors could also return
+'ValidationErrors's thusly:
+
+Start by creating an 'AsExUnitsError' instance for 'ValidationError's:
+@
+instance AsExUnitsError (ValidationError era) era where
+  _ExUnitsError :: L.Prism' (ValidationError era) (ExUnitsError era)
+  _ExUnitsError = _VExUnits . _ExUnitsError
+@
+
+Then functions throwing ExUnitsError throw like this:
+@
+throwError $ L.review _ExUnitsError $ Phase1Error bla
+@
+
+The whole tree of exceptions can be mapped in this fashion, which increases the interoperability
+between error-throwing functions without the need for explicit 'modifyError' calls.
+-}
+makeClassyPrisms ''ExUnitsError
 
 -- see https://github.com/j-mueller/sc-tools/issues/214
 data ValidationError era
@@ -208,7 +227,7 @@ instance (C.IsAlonzoBasedEra era) => Show (ValidationError era) where
         PredicateFailures errs' -> "PredicateFailures: " <> show errs'
         ApplyTxFailure err' -> "ApplyTxFailure: " <> show err'
 
-makePrisms ''ValidationError
+makeClassyPrisms ''ValidationError
 
 -- | Send transactions and resolve tx inputs.
 class (Monad m) => MonadBlockchain era m | m -> era where
