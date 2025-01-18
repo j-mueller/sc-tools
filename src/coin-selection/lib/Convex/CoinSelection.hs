@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
@@ -136,7 +136,7 @@ import Convex.Utxos (
 import Convex.Utxos qualified as Utxos
 import Convex.Wallet (Wallet)
 import Convex.Wallet qualified as Wallet
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Bifunctor (Bifunctor (..))
 import Data.Default (Default (..))
 import Data.Functor.Identity (Identity)
@@ -214,8 +214,14 @@ makeClassyPrisms ''CoinSelectionError
 bodyError :: C.TxBodyError -> CoinSelectionError
 bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
+-- | Balancing errors, including the *special* 'BalancingScriptExecutionErr'.
 data BalancingError era
   = BalancingError Text
+  | -- | A single type of balancing error is treated specially: the type with
+    -- 'C.ScriptExecutionError's.
+    -- TODO: I would like to retain the actual error structure, but this collides (quite massively)
+    -- with the required JSON encoding / decoding.
+    ScriptExecutionErr Text -- [(C.ScriptWitnessIndex, C.ScriptExecutionError)]
   | CheckMinUtxoValueError (C.TxOut C.CtxTx era) C.Quantity
   | BalanceCheckError (BalancingError era)
   | ComputeBalanceChangeError
@@ -224,8 +230,16 @@ data BalancingError era
 
 makeClassyPrisms ''BalancingError
 
+{- | Sort *most* balancing errors into 'BalancingError', but script execution errors into their own
+data constructor.
+-}
 balancingError :: (MonadError (BalancingError era) m) => Either (C.TxBodyErrorAutoBalance era) a -> m a
-balancingError = either (throwError . BalancingError . Text.pack . C.docToString . C.prettyError) pure
+balancingError = \case
+  Right a -> pure a
+  Left err@(C.TxBodyScriptExecutionError _es) -> throwError $ ScriptExecutionErr (asText err)
+  Left err -> throwError . BalancingError $ asText err
+ where
+  asText = Text.pack . C.docToString . C.prettyError
 
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage
