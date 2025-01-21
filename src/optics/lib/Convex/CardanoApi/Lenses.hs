@@ -87,6 +87,7 @@ module Convex.CardanoApi.Lenses (
 
   -- * Datums
   _TxOutDatumInline,
+  _TxOutSupplementalDatum,
   _TxOutDatumHash,
   _ScriptData,
 
@@ -458,6 +459,15 @@ _TxOutDatumHash = prism' from to
   to _ = Nothing
   from :: C.Hash C.ScriptData -> TxOutDatum ctx era
   from h = C.TxOutDatumHash C.alonzoBasedEra h
+
+_TxOutSupplementalDatum :: forall era. (C.IsAlonzoBasedEra era) => Prism' (TxOutDatum CtxTx era) C.HashableScriptData
+_TxOutSupplementalDatum = prism' from to
+ where
+  to :: TxOutDatum CtxTx era -> Maybe C.HashableScriptData
+  to (C.TxOutSupplementalDatum _ k) = Just k
+  to _ = Nothing
+  from :: C.HashableScriptData -> TxOutDatum CtxTx era
+  from cd = C.TxOutSupplementalDatum C.alonzoBasedEra cd
 
 _TxOutDatumInline :: forall ctx era. (C.IsBabbageBasedEra era) => Prism' (TxOutDatum ctx era) C.HashableScriptData
 _TxOutDatumInline = prism' from to
