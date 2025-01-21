@@ -38,6 +38,7 @@ common lang
 library
   import:          lang
   exposed-modules:
+    Cardano.Api.Extras
     Convex.CoinSelection
     Convex.CoinSelection.Class
     Convex.MockChain.CoinSelection
