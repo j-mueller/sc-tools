@@ -50,7 +50,6 @@ module Convex.CoinSelection (
 ) where
 
 import Cardano.Api qualified
-import Cardano.Api.Experimental qualified as C.Experimental
 import Cardano.Api.Ledger qualified as CLedger
 import Cardano.Api.Ledger qualified as L
 import Cardano.Api.Shelley (
@@ -332,11 +331,10 @@ balanceTransactionBody
             & set L.txFee t_fee
             & addChangeOutput changeOutputBalance
 
-    unsingnedTx <- balancingError . first C.TxBodyError $ C.Experimental.makeUnsignedTx (C.Experimental.babbageEraOnwardsToEra $ C.babbageBasedEra @era) finalBodyContent
-
+    finalTxBody <- balancingError . first C.TxBodyError $ C.createTransactionBody C.shelleyBasedEra finalBodyContent
     balances <- maybe (throwError ComputeBalanceChangeError) pure (balanceChanges csiUtxo finalBodyContent)
 
-    let finalBody = C.BalancedTxBody finalBodyContent unsingnedTx changeOutputBalance t_fee
+    let finalBody = C.BalancedTxBody finalBodyContent finalTxBody changeOutputBalance t_fee
     return (finalBody, balances)
 
 checkMinUTxOValue
@@ -396,186 +394,270 @@ handleExUnitsErrors C.ScriptInvalid failuresMap exUnitsMap
   scriptFailures = filter isScriptErrorEvaluationFailed (Map.toList failuresMap)
   isScriptErrorEvaluationFailed :: (C.ScriptWitnessIndex, C.ScriptExecutionError) -> Bool
   isScriptErrorEvaluationFailed (_, e) = case e of
-    C.ScriptErrorEvaluationFailed _ _ -> True
+    C.ScriptErrorEvaluationFailed{} -> True
     _ -> True
 
 substituteExecutionUnits
-  :: (C.IsShelleyBasedEra era)
-  => Map C.ScriptWitnessIndex C.ExecutionUnits
-  -> C.TxBodyContent BuildTx era
-  -> Either (C.TxBodyErrorAutoBalance x) (C.TxBodyContent BuildTx era)
-substituteExecutionUnits exUnitsMap =
-  mapTxScriptWitnesses f
- where
-  f
-    :: C.ScriptWitnessIndex
-    -> C.ScriptWitness witctx era
-    -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx era)
-  f _ wit@C.SimpleScriptWitness{} = Right wit
-  f idx (C.PlutusScriptWitness langInEra version script datum redeemer _) =
-    case Map.lookup idx exUnitsMap of
-      Nothing ->
-        Left $ C.TxBodyErrorScriptWitnessIndexMissingFromExecUnitsMap idx exUnitsMap
-      Just exunits -> Right $ C.PlutusScriptWitness langInEra version script datum redeemer exunits
-
--- | same behaviour as in Cardano.Api.TxBody.
-mapTxScriptWitnesses
-  :: forall era x
-   . (C.IsShelleyBasedEra era)
-  => ( forall witctx
-        . C.ScriptWitnessIndex
-       -> C.ScriptWitness witctx era
-       -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx era)
-     )
-  -> C.TxBodyContent BuildTx era
-  -> Either (C.TxBodyErrorAutoBalance x) (TxBodyContent BuildTx era)
-mapTxScriptWitnesses
-  f
-  txbodycontent@C.TxBodyContent
-    { C.txIns
-    , C.txWithdrawals
-    , C.txCertificates
-    , C.txMintValue
-    } = do
+  :: forall era
+   . Map C.ScriptWitnessIndex C.ExecutionUnits
+  -> TxBodyContent BuildTx era
+  -> Either (C.TxBodyErrorAutoBalance era) (TxBodyContent BuildTx era)
+substituteExecutionUnits
+  exUnitsMap
+  txbodycontent@( C.TxBodyContent
+                    txIns
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    _
+                    txWithdrawals
+                    txCertificates
+                    _
+                    txMintValue
+                    _
+                    txProposalProcedures
+                    txVotingProcedures
+                    _
+                    _
+                  ) = do
     mappedTxIns <- mapScriptWitnessesTxIns txIns
     mappedWithdrawals <- mapScriptWitnessesWithdrawals txWithdrawals
     mappedMintedVals <- mapScriptWitnessesMinting txMintValue
     mappedTxCertificates <- mapScriptWitnessesCertificates txCertificates
+    mappedVotes <- mapScriptWitnessesVotes txVotingProcedures
+    mappedProposals <- mapScriptWitnessesProposals txProposalProcedures
 
     Right $
       txbodycontent
-        { C.txIns = mappedTxIns
-        , C.txMintValue = mappedMintedVals
-        , C.txCertificates = mappedTxCertificates
-        , C.txWithdrawals = mappedWithdrawals
-        }
+        & C.setTxIns mappedTxIns
+        & C.setTxMintValue mappedMintedVals
+        & C.setTxCertificates mappedTxCertificates
+        & C.setTxWithdrawals mappedWithdrawals
+        & C.setTxVotingProcedures mappedVotes
+        & C.setTxProposalProcedures mappedProposals
    where
+    substituteExecUnits
+      :: C.ScriptWitnessIndex
+      -> C.ScriptWitness witctx era
+      -> Either (C.TxBodyErrorAutoBalance era) (C.ScriptWitness witctx era)
+    substituteExecUnits _ wit@C.SimpleScriptWitness{} = Right wit
+    substituteExecUnits idx (C.PlutusScriptWitness langInEra version script datum redeemer _) =
+      case Map.lookup idx exUnitsMap of
+        Nothing ->
+          Left $ C.TxBodyErrorScriptWitnessIndexMissingFromExecUnitsMap idx exUnitsMap
+        Just exunits ->
+          Right $
+            C.PlutusScriptWitness
+              langInEra
+              version
+              script
+              datum
+              redeemer
+              exunits
+
+    adjustScriptWitness
+      :: (C.ScriptWitness witctx era -> Either (C.TxBodyErrorAutoBalance era) (C.ScriptWitness witctx era))
+      -> C.Witness witctx era
+      -> Either (C.TxBodyErrorAutoBalance era) (C.Witness witctx era)
+    adjustScriptWitness _ (C.KeyWitness ctx) = Right $ C.KeyWitness ctx
+    adjustScriptWitness g (C.ScriptWitness ctx witness') = C.ScriptWitness ctx <$> g witness'
+
     mapScriptWitnessesTxIns
       :: [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn era))]
-      -> Either (C.TxBodyErrorAutoBalance x) [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn era))]
+      -> Either (C.TxBodyErrorAutoBalance era) [(C.TxIn, C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn era))]
     mapScriptWitnessesTxIns txins =
       let mappedScriptWitnesses
             :: [ ( C.TxIn
-                 , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn era))
+                 , Either (C.TxBodyErrorAutoBalance era) (C.BuildTxWith BuildTx (C.Witness C.WitCtxTxIn era))
                  )
                ]
           mappedScriptWitnesses =
             [ (txin, C.BuildTxWith <$> wit')
-            | -- The tx ins are indexed in the map order by txid
-            (ix, (txin, C.BuildTxWith wit)) <- zip [0 ..] (orderTxIns txins)
-            , let wit' = case wit of
-                    C.KeyWitness{} -> Right wit
-                    C.ScriptWitness ctx witness -> C.ScriptWitness ctx <$> witness'
-                     where
-                      witness' = f (C.ScriptWitnessIndexTxIn ix) witness
+            | (ix, txin, wit) <- indexTxIns txins
+            , let wit' = adjustScriptWitness (substituteExecUnits ix) wit
             ]
        in traverse
-            ( \(txIn, eWitness) ->
-                case eWitness of
-                  Left e -> Left e
-                  Right wit -> Right (txIn, wit)
-            )
+            (\(txIn, eWitness) -> (txIn,) <$> eWitness)
             mappedScriptWitnesses
 
     mapScriptWitnessesWithdrawals
       :: C.TxWithdrawals BuildTx era
-      -> Either (C.TxBodyErrorAutoBalance x) (C.TxWithdrawals BuildTx era)
+      -> Either (C.TxBodyErrorAutoBalance era) (C.TxWithdrawals BuildTx era)
     mapScriptWitnessesWithdrawals C.TxWithdrawalsNone = Right C.TxWithdrawalsNone
-    mapScriptWitnessesWithdrawals (C.TxWithdrawals supported withdrawals) =
+    mapScriptWitnessesWithdrawals txWithdrawals'@(C.TxWithdrawals supported _) =
       let mappedWithdrawals
             :: [ ( C.StakeAddress
-                 , Coin
-                 , Either (C.TxBodyErrorAutoBalance x) (C.BuildTxWith BuildTx (C.Witness C.WitCtxStake era))
+                 , L.Coin
+                 , Either (C.TxBodyErrorAutoBalance era) (C.BuildTxWith BuildTx (C.Witness C.WitCtxStake era))
                  )
                ]
           mappedWithdrawals =
             [ (addr, withdrawal, C.BuildTxWith <$> mappedWitness)
-            | -- The withdrawals are indexed in the map order by stake credential
-            (ix, (addr, withdrawal, C.BuildTxWith wit)) <- zip [0 ..] (orderStakeAddrs withdrawals)
-            , let mappedWitness = adjustWitness (f (C.ScriptWitnessIndexWithdrawal ix)) wit
+            | (ix, addr, withdrawal, wit) <- indexTxWithdrawals txWithdrawals'
+            , let mappedWitness = adjustScriptWitness (substituteExecUnits ix) wit
             ]
        in C.TxWithdrawals supported
             <$> traverse
-              ( \(sAddr, ll, eWitness) ->
-                  case eWitness of
-                    Left e -> Left e
-                    Right wit -> Right (sAddr, ll, wit)
-              )
+              (\(sAddr, ll, eWitness) -> (sAddr,ll,) <$> eWitness)
               mappedWithdrawals
-     where
-      adjustWitness
-        :: (C.ScriptWitness witctx era -> Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness witctx era))
-        -> C.Witness witctx era
-        -> Either (C.TxBodyErrorAutoBalance x) (C.Witness witctx era)
-      adjustWitness _ (C.KeyWitness ctx) = Right $ C.KeyWitness ctx
-      adjustWitness g (C.ScriptWitness ctx witness') = C.ScriptWitness ctx <$> g witness'
 
     mapScriptWitnessesCertificates
       :: C.TxCertificates BuildTx era
-      -> Either (C.TxBodyErrorAutoBalance x) (C.TxCertificates BuildTx era)
+      -> Either (C.TxBodyErrorAutoBalance era) (C.TxCertificates BuildTx era)
     mapScriptWitnessesCertificates C.TxCertificatesNone = Right C.TxCertificatesNone
-    mapScriptWitnessesCertificates (C.TxCertificates supported certs (C.BuildTxWith witnesses)) =
+    mapScriptWitnessesCertificates txCertificates'@(C.TxCertificates supported certs _) =
       let mappedScriptWitnesses
-            :: [(C.StakeCredential, Either (C.TxBodyErrorAutoBalance x) (C.Witness C.WitCtxStake era))]
+            :: [(C.StakeCredential, Either (C.TxBodyErrorAutoBalance era) (C.Witness C.WitCtxStake era))]
           mappedScriptWitnesses =
-            [ (stakecred, C.ScriptWitness ctx <$> witness')
-            | -- The certs are indexed in list order
-            (ix, cert) <- zip [0 ..] certs
-            , stakecred <- maybeToList (C.shelleyBasedEraConstraints @era C.shelleyBasedEra selectStakeCredential cert)
-            , C.ScriptWitness ctx witness <- maybeToList (List.lookup stakecred witnesses)
-            , let witness' = f (C.ScriptWitnessIndexCertificate ix) witness
+            [ (stakeCred, witness')
+            | (ix, _, stakeCred, witness) <- indexTxCertificates txCertificates'
+            , let witness' = adjustScriptWitness (substituteExecUnits ix) witness
             ]
        in C.TxCertificates supported certs . C.BuildTxWith
             <$> traverse
-              ( \(sCred, eScriptWitness) ->
-                  case eScriptWitness of
-                    Left e -> Left e
-                    Right wit -> Right (sCred, wit)
-              )
+              (\(sCred, eScriptWitness) -> (sCred,) <$> eScriptWitness)
               mappedScriptWitnesses
 
-    selectStakeCredential :: (EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto) => C.Certificate era -> Maybe C.StakeCredential
-    selectStakeCredential = \case
-      C.ShelleyRelatedCertificate _era cert -> case cert of
-        TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyRegCert k) -> Just (C.fromShelleyStakeCredential k)
-        TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyUnRegCert k) -> Just (C.fromShelleyStakeCredential k)
-        TxCert.ShelleyTxCertDelegCert (TxCert.ShelleyDelegCert k _) -> Just (C.fromShelleyStakeCredential k)
-        TxCert.ShelleyTxCertPool{} -> Nothing
-        TxCert.ShelleyTxCertGenesisDeleg{} -> Nothing
-        TxCert.ShelleyTxCertMir{} -> Nothing
-      C.ConwayCertificate _era cert -> case cert of
-        CLedger.ConwayTxCertDeleg (CLedger.ConwayRegCert k _) -> Just (C.fromShelleyStakeCredential k)
-        CLedger.ConwayTxCertDeleg (CLedger.ConwayUnRegCert k _) -> Just (C.fromShelleyStakeCredential k)
-        CLedger.ConwayTxCertDeleg (CLedger.ConwayDelegCert k _) -> Just (C.fromShelleyStakeCredential k)
-        CLedger.ConwayTxCertDeleg (CLedger.ConwayRegDelegCert k _dlgte _deposit) -> Just (C.fromShelleyStakeCredential k)
-        _ -> Nothing
+    mapScriptWitnessesVotes
+      :: Maybe (C.Featured C.ConwayEraOnwards era (C.TxVotingProcedures build era))
+      -> Either
+          (C.TxBodyErrorAutoBalance era)
+          (Maybe (C.Featured C.ConwayEraOnwards era (C.TxVotingProcedures build era)))
+    mapScriptWitnessesVotes Nothing = return Nothing
+    mapScriptWitnessesVotes (Just (C.Featured _ C.TxVotingProceduresNone)) = return Nothing
+    mapScriptWitnessesVotes (Just (C.Featured _ (C.TxVotingProcedures _ C.ViewTx))) = return Nothing
+    mapScriptWitnessesVotes (Just (C.Featured era txVotingProcedures'@(C.TxVotingProcedures vProcedures (C.BuildTxWith _)))) = do
+      let eSubstitutedExecutionUnits =
+            [ (vote, updatedWitness)
+            | (ix, vote, witness) <- indexTxVotingProcedures txVotingProcedures'
+            , let updatedWitness = substituteExecUnits ix witness
+            ]
+
+      substitutedExecutionUnits <- traverseScriptWitnesses eSubstitutedExecutionUnits
+
+      return $
+        Just
+          (C.Featured era (C.TxVotingProcedures vProcedures (C.BuildTxWith $ fromList substitutedExecutionUnits)))
+
+    mapScriptWitnessesProposals
+      :: Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures build era))
+      -> Either
+          (C.TxBodyErrorAutoBalance era)
+          (Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures build era)))
+    mapScriptWitnessesProposals Nothing = return Nothing
+    mapScriptWitnessesProposals (Just (C.Featured _ C.TxProposalProceduresNone)) = return Nothing
+    mapScriptWitnessesProposals (Just (C.Featured _ (C.TxProposalProcedures _ C.ViewTx))) = return Nothing
+    mapScriptWitnessesProposals (Just (C.Featured era txpp@(C.TxProposalProcedures osetProposalProcedures (C.BuildTxWith _)))) = do
+      let eSubstitutedExecutionUnits =
+            [ (proposal, updatedWitness)
+            | (ix, proposal, scriptWitness) <- indexTxProposalProcedures txpp
+            , let updatedWitness = substituteExecUnits ix scriptWitness
+            ]
+
+      substitutedExecutionUnits <- traverseScriptWitnesses eSubstitutedExecutionUnits
+
+      return $
+        Just
+          ( C.Featured
+              era
+              (C.TxProposalProcedures osetProposalProcedures (C.BuildTxWith $ fromList substitutedExecutionUnits))
+          )
 
     mapScriptWitnessesMinting
       :: C.TxMintValue BuildTx era
-      -> Either (C.TxBodyErrorAutoBalance x) (C.TxMintValue BuildTx era)
+      -> Either (C.TxBodyErrorAutoBalance era) (C.TxMintValue BuildTx era)
     mapScriptWitnessesMinting C.TxMintNone = Right C.TxMintNone
-    mapScriptWitnessesMinting (C.TxMintValue supported value (C.BuildTxWith witnesses)) =
-      let mappedScriptWitnesses
-            :: [(C.PolicyId, Either (C.TxBodyErrorAutoBalance x) (C.ScriptWitness C.WitCtxMint era))]
-          mappedScriptWitnesses =
-            [ (policyid, witness')
-            | -- The minting policies are indexed in policy id order in the value
-            let C.ValueNestedRep bundle = C.valueToNestedRep value
-            , (ix, C.ValueNestedBundle policyid _) <- zip [0 ..] bundle
-            , witness <- maybeToList (Map.lookup policyid witnesses)
-            , let witness' = f (C.ScriptWitnessIndexMint ix) witness
+    mapScriptWitnessesMinting txMintValue'@(C.TxMintValue w _) = do
+      let mappedScriptWitnesses =
+            [ (policyId, pure . (assetName',quantity,) <$> substitutedWitness)
+            | (ix, policyId, assetName', quantity, C.BuildTxWith witness) <- C.indexTxMintValue txMintValue'
+            , let substitutedWitness = C.BuildTxWith <$> substituteExecUnits ix witness
             ]
-       in do
-            final <-
-              traverse
-                ( \(pid, eScriptWitness) ->
-                    case eScriptWitness of
-                      Left e -> Left e
-                      Right wit -> Right (pid, wit)
-                )
-                mappedScriptWitnesses
-            Right . C.TxMintValue supported value . C.BuildTxWith $
-              Map.fromList final
+      final <- Map.fromListWith (<>) <$> traverseScriptWitnesses mappedScriptWitnesses
+      pure $ C.TxMintValue w final
+
+{- | Index transaction inputs ordered by TxIn
+Please note that the result can contain also 'KeyWitness'es.
+See section 4.1 of https://github.com/intersectmbo/cardano-ledger/releases/latest/download/alonzo-ledger.pdf
+-}
+indexTxIns
+  :: C.TxIns BuildTx era
+  -> [(C.ScriptWitnessIndex, C.TxIn, C.Witness C.WitCtxTxIn era)]
+indexTxIns txins =
+  [ (C.ScriptWitnessIndexTxIn ix, txIn, witness)
+  | (ix, (txIn, C.BuildTxWith witness)) <- zip [0 ..] $ orderTxIns txins
+  ]
+
+{- | Index the withdrawals with witnesses in the order of stake addresses.
+See section 4.1 of https://github.com/intersectmbo/cardano-ledger/releases/latest/download/alonzo-ledger.pdf
+-}
+indexTxWithdrawals
+  :: C.TxWithdrawals BuildTx era
+  -> [(C.ScriptWitnessIndex, C.StakeAddress, L.Coin, C.Witness C.WitCtxStake era)]
+indexTxWithdrawals C.TxWithdrawalsNone = []
+indexTxWithdrawals (C.TxWithdrawals _ withdrawals) =
+  [ (C.ScriptWitnessIndexWithdrawal ix, addr, coin, witness)
+  | (ix, (addr, coin, C.BuildTxWith witness)) <- zip [0 ..] (orderStakeAddrs withdrawals)
+  ]
+
+{- | Index certificates with witnesses by the order they appear in the list (in the transaction). If there are multiple witnesses for the same stake credential, they will be present multiple times with the same index.
+are multiple witnesses for the credential, there will be multiple entries for
+See section 4.1 of https://github.com/intersectmbo/cardano-ledger/releases/latest/download/alonzo-ledger.pdf
+-}
+indexTxCertificates
+  :: C.TxCertificates BuildTx era
+  -> [(C.ScriptWitnessIndex, C.Certificate era, C.StakeCredential, C.Witness C.WitCtxStake era)]
+indexTxCertificates C.TxCertificatesNone = []
+indexTxCertificates (C.TxCertificates _ certs (C.BuildTxWith witnesses)) =
+  [ (C.ScriptWitnessIndexCertificate ix, cert, stakeCred, wit)
+  | (ix, cert) <- zip [0 ..] certs
+  , stakeCred <- maybeToList (C.selectStakeCredentialWitness cert)
+  , wit <- findAll stakeCred witnesses
+  ]
+ where
+  findAll needle = map snd . filter ((==) needle . fst)
+
+-- | Index voting procedures by the order of the votes ('Ord').
+indexTxVotingProcedures
+  :: C.TxVotingProcedures BuildTx era
+  -> [ ( C.ScriptWitnessIndex
+       , L.Voter (CLedger.EraCrypto (C.ShelleyLedgerEra era))
+       , C.ScriptWitness C.WitCtxStake era
+       )
+     ]
+indexTxVotingProcedures C.TxVotingProceduresNone = []
+indexTxVotingProcedures (C.TxVotingProcedures vProcedures (C.BuildTxWith sWitMap)) =
+  [ (C.ScriptWitnessIndexVoting $ fromIntegral index, vote, scriptWitness)
+  | let allVoteMap = L.unVotingProcedures vProcedures
+  , (vote, scriptWitness) <- toList sWitMap
+  , index <- maybeToList $ Map.lookupIndex vote allVoteMap
+  ]
+
+-- | Index proposal procedures by their order ('Ord').
+indexTxProposalProcedures
+  :: C.TxProposalProcedures BuildTx era
+  -> [(C.ScriptWitnessIndex, L.ProposalProcedure (C.ShelleyLedgerEra era), C.ScriptWitness C.WitCtxStake era)]
+indexTxProposalProcedures C.TxProposalProceduresNone = []
+indexTxProposalProcedures txpp@(C.TxProposalProcedures _ (C.BuildTxWith witnesses)) = do
+  let allProposalsList = toList $ C.convProposalProcedures txpp
+  [ (C.ScriptWitnessIndexProposing $ fromIntegral ix, proposal, scriptWitness)
+    | (proposal, scriptWitness) <- toList witnesses
+    , ix <- maybeToList $ List.elemIndex proposal allProposalsList
+    ]
+
+traverseScriptWitnesses
+  :: [(a, Either (C.TxBodyErrorAutoBalance era) b)]
+  -> Either (C.TxBodyErrorAutoBalance era) [(a, b)]
+traverseScriptWitnesses =
+  traverse (\(item, eRes) -> eRes >>= (\res -> Right (item, res)))
 
 {- | This relies on the TxId Ord instance being consistent with the
 Ledger.TxId Ord instance via the toShelleyTxId conversion.
@@ -718,11 +800,7 @@ signForWallet wallet = signBalancedTxBody [C.WitnessPaymentKey (Wallet.getWallet
 -- | Sign the tx body with the given keys
 signBalancedTxBody :: forall era. (C.IsBabbageBasedEra era) => [C.ShelleyWitnessSigningKey] -> C.BalancedTxBody era -> C.Tx era
 signBalancedTxBody witnesses (C.BalancedTxBody _ txbody _changeOutput _fee) =
-  let era = C.babbageBasedEra @era
-      era2 = C.Experimental.babbageEraOnwardsToEra era
-   in C.Experimental.obtainCommonConstraints era2 $
-        let wit = C.Experimental.makeKeyWitness era2 txbody <$> witnesses
-         in C.ShelleyTx (C.babbageEraOnwardsToShelleyBasedEra era) (C.Experimental.signTx era2 [] wit txbody)
+  C.signShelleyTransaction C.shelleyBasedEra txbody witnesses
 
 {- | If the transaction body has no inputs then we add one from the wallet's UTxO set.
   (we have to do this because 'C.evaluateTransactionBalance' fails on a tx body with
@@ -787,7 +865,7 @@ runsScripts :: forall era. (C.IsMaryBasedEra era) => TxBodyContent BuildTx era -
 runsScripts body =
   inMary @era $
     let scriptIns = body ^.. (L.txIns . traversed . _2 . L._BuildTxWith . L._ScriptWitness)
-        minting = body ^. (L.txMintValue . L._TxMintValue . _2)
+        minting = body ^. (L.txMintValue . L._TxMintValue)
         certificates = body ^.. (L.txCertificates . L._TxCertificates . _2 . traversed . _2 . L._ScriptWitness)
         withdrawals = body ^.. (L.txWithdrawals . L._TxWithdrawals . traversed . _3 . L._BuildTxWith . L._ScriptWitness)
      in not (null scriptIns && Map.null minting && null withdrawals && null certificates)

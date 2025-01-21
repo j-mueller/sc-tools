@@ -218,7 +218,7 @@ Here, we want to get the index into the on-chain map, but instead index into the
 These two indexes should be the same by construction, but it is possible to violate this invariant when building a tx.
 -}
 lookupIndexMinted :: (C.IsMaryBasedEra era) => C.PolicyId -> TxBody era -> Maybe Int
-lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxMintValue . _2)
+lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxMintValue)
 
 -- | Look up the index of the @PolicyId@ in the transaction mint. Throws an error if the @PolicyId@ is not present.
 findIndexMinted :: (C.IsMaryBasedEra era) => C.PolicyId -> TxBody era -> Int
@@ -340,8 +340,8 @@ addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> over L.txIns ((tx
 
 addMintWithTxBody :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody era -> C.ScriptWitness C.WitCtxMint era) -> m ()
 addMintWithTxBody policy assetName quantity f =
-  let v = assetValue (C.unPolicyId policy) assetName quantity
-   in addTxBuilder (TxBuilder $ \body -> over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policy (f body))))
+  let entry body = (assetName, quantity, C.BuildTxWith $ f body)
+   in addTxBuilder (TxBuilder $ \body -> over (L.txMintValue . L._TxMintValue . at policy . L.anon [] null) ((entry body) :))
 
 addWithdrawalWithTxBody :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.StakeAddress -> C.Quantity -> (TxBody era -> C.Witness C.WitCtxStake era) -> m ()
 addWithdrawalWithTxBody address amount f =
@@ -383,6 +383,7 @@ addStakeScriptWitnessRef
      , Plutus.ToData redeemer
      , C.IsShelleyBasedEra era
      , C.HasScriptLanguageInEra lang era
+     , C.IsPlutusScriptLanguage lang
      )
   => C.StakeCredential
   -> C.TxIn
@@ -392,7 +393,7 @@ addStakeScriptWitnessRef
 addStakeScriptWitnessRef credential txIn plutusScriptVersion redeemer = do
   let scriptWitness = buildRefScriptWitness txIn plutusScriptVersion C.NoScriptDatumForStake redeemer
   let witness = C.ScriptWitness C.ScriptWitnessForStakeAddr scriptWitness
-  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, witness)))
+  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((credential, witness) :))
 
 {- | Like @addStakeWitness@ but uses a function that takes a @TxBody@ to build the witness.
 TODO Give an example of why this is useful. We should just remove it.
@@ -426,7 +427,7 @@ buildScriptWitness script datum redeemer =
 
 -- | Utility function to build a reference script witness
 buildRefScriptWitness
-  :: (Plutus.ToData redeemer, C.HasScriptLanguageInEra lang era)
+  :: (Plutus.ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn
   -> C.PlutusScriptVersion lang
   -> C.ScriptDatum witctx
@@ -436,7 +437,7 @@ buildRefScriptWitness refTxIn scrVer datum redeemer =
   C.PlutusScriptWitness
     C.scriptLanguageInEra
     scrVer
-    (C.PReferenceScript refTxIn Nothing)
+    (C.PReferenceScript refTxIn)
     datum
     (toHashableScriptData redeemer)
     (C.ExecutionUnits 0 0)
@@ -463,7 +464,7 @@ can depend on the index of the @TxIn@ in the inputs of the final transaction.
 -}
 spendPlutusRefBase
   :: forall redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era)
+   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
 spendPlutusRefBase txIn refTxIn scrVer dat red =
   let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildRefScriptWitness refTxIn scrVer dat (red $ findIndexSpending txIn txBody)
@@ -472,20 +473,20 @@ spendPlutusRefBase txIn refTxIn scrVer dat red =
 -- | Spend an output locked by a Plutus V2 validator using the redeemer
 spendPlutusRefBaseWithInRef
   :: forall redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era)
+   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
 spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat red = inBabbage @era $ spendPlutusRefBase txIn refTxIn scrVer dat (const red) >> addReference refTxIn
 
 spendPlutusRef
   :: forall datum redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era)
+   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
 spendPlutusRef txIn refTxIn scrVer (toHashableScriptData -> dat) = spendPlutusRefBaseWithInRef txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat)
 
 -- | same as spendPlutusV2Ref but considers inline datum at the spent utxo
 spendPlutusRefWithInlineDatum
   :: forall redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era)
+   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> redeemer -> m ()
 spendPlutusRefWithInlineDatum txIn refTxIn scrVer = spendPlutusRefBaseWithInRef txIn refTxIn scrVer C.InlineScriptDatum
 
@@ -494,14 +495,14 @@ This is to cover the case whereby the reference script utxo is expected to be co
 -}
 spendPlutusRefWithoutInRef
   :: forall datum redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era)
+   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
 spendPlutusRefWithoutInRef txIn refTxIn scrVer (toHashableScriptData -> dat) red = spendPlutusRefBase txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat) (const red)
 
 -- | same as spendPlutusV2RefWithoutInRef but considers inline datum at the spent utxo
 spendPlutusRefWithoutInRefInlineDatum
   :: forall redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era)
+   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> redeemer -> m ()
 spendPlutusRefWithoutInRefInlineDatum txIn refTxIn scrVer red = spendPlutusRefBase txIn refTxIn scrVer C.InlineScriptDatum (const red)
 
@@ -520,11 +521,11 @@ mintPlutus
   -> m ()
 mintPlutus script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.plutusScriptVersion script)
-      v = assetValue sh assetName quantity
       policyId = C.PolicyId sh
       wit = buildScriptWitness @era script C.NoScriptDatumForMint red
+      entry = (assetName, quantity, C.BuildTxWith wit)
    in inAlonzo @era $
-        setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+        setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue . at policyId . L.anon [] null) (entry :))
 
 -- | A value containing the given amount of the native asset
 assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
@@ -537,6 +538,7 @@ mintPlutusRef
      , MonadBuildTx era m
      , C.HasScriptLanguageInEra lang era
      , C.IsBabbageBasedEra era
+     , C.IsPlutusScriptLanguage lang
      )
   => C.TxIn
   -> C.PlutusScriptVersion lang
@@ -547,11 +549,11 @@ mintPlutusRef
   -> m ()
 mintPlutusRef refTxIn scrVer sh red assetName quantity =
   inBabbage @era $
-    let v = assetValue sh assetName quantity
-        wit = buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
+    let wit = buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
+        entry = (assetName, quantity, C.BuildTxWith wit)
         policyId = C.PolicyId sh
      in setScriptsValid
-          >> addBtx (over (L.txMintValue . L._TxMintValue) (over _1 (<> v) . over _2 (Map.insert policyId wit)))
+          >> addBtx (over (L.txMintValue . L._TxMintValue . at policyId . L.anon [] null) (entry :))
           >> addReference refTxIn
 
 mintSimpleScriptAssets :: forall era m. (MonadBuildTx era m, C.IsMaryBasedEra era) => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
@@ -589,22 +591,22 @@ payToAddress addr vl = addBtx $ over L.txOuts (payToAddressTxOut addr vl :)
 payToPublicKey :: (MonadBuildTx era m, C.IsMaryBasedEra era) => NetworkId -> Hash PaymentKey -> C.Value -> m ()
 payToPublicKey network pk vl =
   let val = mkTxOutValue vl
-      addr = C.makeShelleyAddressInEra (C.maryEraOnwardsToShelleyBasedEra C.maryBasedEra) network (C.PaymentCredentialByKey pk) C.NoStakeAddress
+      addr = C.makeShelleyAddressInEra (C.convert C.maryBasedEra) network (C.PaymentCredentialByKey pk) C.NoStakeAddress
       txo = C.TxOut addr val C.TxOutDatumNone C.ReferenceScriptNone
    in addOutput txo
 
-payToScriptHash :: forall era m. (MonadBuildTx era m, C.IsAlonzoBasedEra era) => NetworkId -> ScriptHash -> HashableScriptData -> C.StakeAddressReference -> C.Value -> m ()
+payToScriptHash :: forall era m. (MonadBuildTx era m, C.IsBabbageBasedEra era) => NetworkId -> ScriptHash -> HashableScriptData -> C.StakeAddressReference -> C.Value -> m ()
 payToScriptHash network script datum stakeAddress vl =
   inAlonzo @era $
     let val = mkTxOutValue vl
         addr = C.makeShelleyAddressInEra C.shelleyBasedEra network (C.PaymentCredentialByScript script) stakeAddress
-        dat = C.TxOutDatumInTx C.alonzoBasedEra datum
+        dat = C.TxOutDatumInline C.babbageBasedEra datum
         txo = C.TxOut addr val dat C.ReferenceScriptNone
      in addOutput txo
 
 payToScriptDatumHash
   :: forall a lang era m
-   . (MonadBuildTx era m, Plutus.ToData a, C.IsAlonzoBasedEra era)
+   . (MonadBuildTx era m, Plutus.ToData a, C.IsBabbageBasedEra era)
   => NetworkId -> C.Script lang -> a -> C.StakeAddressReference -> C.Value -> m ()
 payToScriptDatumHash network s datum stakeRef vl =
   let sh = C.hashScript s
@@ -639,7 +641,7 @@ createRefScriptDatumHash
    . (MonadBuildTx era m, Plutus.ToData a, C.IsBabbageBasedEra era, C.IsScriptLanguage lang)
   => C.AddressInEra era -> C.Script lang -> a -> C.Value -> m ()
 createRefScriptDatumHash addr script datum vl =
-  let dat = C.TxOutDatumInTx (C.babbageEraOnwardsToAlonzoEraOnwards C.babbageBasedEra) (toHashableScriptData datum)
+  let dat = C.TxOutDatumInline C.babbageBasedEra (toHashableScriptData datum)
    in createRefScriptBase addr script dat vl
 
 payToScriptInlineDatum :: forall a era m. (MonadBuildTx era m, Plutus.ToData a, C.IsBabbageBasedEra era) => NetworkId -> C.ScriptHash -> a -> C.StakeAddressReference -> C.Value -> m ()
@@ -675,7 +677,7 @@ minAdaDeposit (C.LedgerProtocolParameters params) txOut =
           -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
           -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
           & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minAdaValue) (Just . max minAdaValue))
-   in C.lovelaceToQuantity $ C.calculateMinimumUTxO (C.maryEraOnwardsToShelleyBasedEra C.maryBasedEra) txo params
+   in C.lovelaceToQuantity $ C.calculateMinimumUTxO (C.convert C.maryBasedEra) txo params
 
 -- | Apply 'setMinAdaDeposit' to all outputs
 setMinAdaDepositAll :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.LedgerProtocolParameters era -> m ()

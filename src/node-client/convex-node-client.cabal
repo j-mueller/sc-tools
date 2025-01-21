@@ -64,4 +64,3 @@ library
     , cardano-slotting
     , ouroboros-consensus
     , ouroboros-network-protocols
-    , typed-protocols

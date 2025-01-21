@@ -15,6 +15,7 @@ import Cardano.Api (
   ChainTip (..),
  )
 import Cardano.Api qualified as CAPI
+import Cardano.Api.ChainSync.ClientPipelined (Nat (..))
 import Cardano.Slotting.Slot (WithOrigin (At))
 import Control.Monad (when)
 import Convex.NodeClient.Types (
@@ -26,7 +27,6 @@ import Data.Time (
   diffUTCTime,
   getCurrentTime,
  )
-import Network.TypedProtocol.Pipelined (Nat (..))
 import Ouroboros.Consensus.Block.Abstract (WithOrigin (..))
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined (
   ClientPipelinedStIdle (..),

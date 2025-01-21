@@ -328,6 +328,7 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
                 , ledgerPp = Defaults.pParams params
                 , ledgerAccount = AccountState (Coin 0) (Coin 0)
                 , ledgerMempool = False
+                , ledgerEpochNo = Nothing
                 }
           , mcsPoolState =
               LedgerState

@@ -1,9 +1,6 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
@@ -21,6 +18,7 @@ import PlutusLedgerApi.V3.Contexts (
   TxInInfo (..),
   TxInfo (..),
  )
+import PlutusLedgerApi.V3.MintValue (mintValueMinted)
 import PlutusTx.Builtins.Internal qualified as BI
 import PlutusTx.IsData.Class (UnsafeFromData (unsafeFromBuiltinData))
 import PlutusTx.Prelude (BuiltinData, BuiltinUnit)
@@ -37,7 +35,7 @@ validator _ = P.error ()
 {-# INLINEABLE mintingPolicy #-}
 mintingPolicy :: BuiltinData -> BuiltinUnit
 mintingPolicy (unsafeFromBuiltinData -> ScriptContext{scriptContextScriptInfo = MintingScript ownCs, scriptContextTxInfo = TxInfo{txInfoMint}, scriptContextRedeemer = (unsafeFromBuiltinData P.. getRedeemer -> idx :: P.Integer)}) =
-  let mintList = flattenValue txInfoMint
+  let mintList = flattenValue (mintValueMinted txInfoMint)
       isOwnIndex (cs, _, _) = cs P.== ownCs
       ownIndex = P.findIndex isOwnIndex mintList
    in if ownIndex P.== (P.Just idx) then BI.unitval else P.traceError "Different indices"
