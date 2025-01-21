@@ -125,7 +125,7 @@ payToOperator' dbg value wFrom Operator{oPaymentKey} = inBabbage @era $ do
   p <- queryProtocolParameters
   let addr =
         C.makeShelleyAddressInEra @era
-          (C.babbageEraOnwardsToShelleyBasedEra C.babbageBasedEra)
+          (C.convert C.babbageBasedEra)
           Defaults.networkId
           (C.PaymentCredentialByKey $ C.verificationKeyHash $ verificationKey oPaymentKey)
           C.NoStakeAddress

@@ -35,7 +35,6 @@ module Convex.CardanoApi.Lenses (
   txVotingProcedures,
   txCurrentTreasuryValue,
   txTreasuryDonation,
-  txSupplementalData,
 
   -- * Prisms and Isos
   _TxMintValue,
@@ -88,7 +87,6 @@ module Convex.CardanoApi.Lenses (
 
   -- * Datums
   _TxOutDatumInline,
-  _TxOutDatumInTx,
   _TxOutDatumHash,
   _ScriptData,
 
@@ -198,7 +196,6 @@ emptyTx =
     , C.txVotingProcedures = Nothing
     , C.txCurrentTreasuryValue = Nothing
     , C.txTreasuryDonation = Nothing
-    , C.txSupplementalData = C.BuildTxWith C.TxSupplementalDataNone
     }
 
 -- | A transaction output with no value
@@ -337,12 +334,6 @@ txVotingProcedures = lens get set_
   get = C.txVotingProcedures
   set_ body k = body{C.txVotingProcedures = k}
 
-txSupplementalData :: Lens' (C.TxBodyContent v era) (BuildTxWith v (C.TxSupplementalDatums era))
-txSupplementalData = lens get set_
- where
-  get = C.txSupplementalData
-  set_ body k = body{C.txSupplementalData = k}
-
 _TxExtraKeyWitnesses :: (C.IsAlonzoBasedEra era) => Iso' (C.TxExtraKeyWitnesses era) [C.Hash C.PaymentKey]
 _TxExtraKeyWitnesses = iso from to
  where
@@ -416,16 +407,16 @@ _TxInsCollateralIso = iso from to
     [] -> C.TxInsCollateralNone
     xs -> C.TxInsCollateral C.alonzoBasedEra xs
 
-_TxMintValue :: (C.IsMaryBasedEra era) => Iso' (TxMintValue BuildTx era) (Value, Map PolicyId (ScriptWitness WitCtxMint era))
+_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId [(C.AssetName, Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))])
 _TxMintValue = iso from to
  where
-  from :: TxMintValue BuildTx era -> (Value, Map PolicyId (ScriptWitness WitCtxMint era))
+  from :: TxMintValue build era -> Map PolicyId [(C.AssetName, Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))]
   from = \case
-    C.TxMintNone -> (mempty, mempty)
-    C.TxMintValue _ vl (C.BuildTxWith mp) -> (vl, mp)
-  to (vl, mp)
-    | Map.null mp && vl == mempty = C.TxMintNone
-    | otherwise = C.TxMintValue C.maryBasedEra vl (C.BuildTxWith mp)
+    C.TxMintNone -> mempty
+    C.TxMintValue _ mp -> mp
+  to mp
+    | Map.null mp = C.TxMintNone
+    | otherwise = C.TxMintValue C.maryBasedEra mp
 
 _TxInsReferenceIso :: (C.IsBabbageBasedEra era) => Iso' (C.TxInsReference era) [C.TxIn]
 _TxInsReferenceIso = iso from to
@@ -467,15 +458,6 @@ _TxOutDatumHash = prism' from to
   to _ = Nothing
   from :: C.Hash C.ScriptData -> TxOutDatum ctx era
   from h = C.TxOutDatumHash C.alonzoBasedEra h
-
-_TxOutDatumInTx :: forall era. (C.IsAlonzoBasedEra era) => Prism' (TxOutDatum CtxTx era) C.HashableScriptData
-_TxOutDatumInTx = prism' from to
- where
-  to :: TxOutDatum CtxTx era -> Maybe C.HashableScriptData
-  to (C.TxOutDatumInTx _ k) = Just k
-  to _ = Nothing
-  from :: C.HashableScriptData -> TxOutDatum CtxTx era
-  from cd = C.TxOutDatumInTx C.alonzoBasedEra cd
 
 _TxOutDatumInline :: forall ctx era. (C.IsBabbageBasedEra era) => Prism' (TxOutDatum ctx era) C.HashableScriptData
 _TxOutDatumInline = prism' from to
@@ -648,7 +630,8 @@ _ScriptData = prism' from to
 
 _PlutusScriptWitness
   :: forall era lang witctx
-   . C.PlutusScriptVersion lang
+   . (C.IsPlutusScriptLanguage lang)
+  => C.PlutusScriptVersion lang
   -> Prism'
       (C.ScriptWitness witctx era)
       ( C.ScriptLanguageInEra lang era

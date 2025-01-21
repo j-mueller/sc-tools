@@ -295,8 +295,8 @@ txOutToLatestEra (C.TxOut addrInEra txOutValue txOutDatum ref) =
   convertDatumToLatestEra :: C.TxOutDatum C.CtxTx era1 -> C.TxOutDatum C.CtxTx era
   convertDatumToLatestEra C.TxOutDatumNone = C.TxOutDatumNone
   convertDatumToLatestEra (C.TxOutDatumHash _ h) = inBabbage @era $ C.TxOutDatumHash C.alonzoBasedEra h
-  convertDatumToLatestEra (C.TxOutDatumInTx _ d) = inBabbage @era $ C.TxOutDatumInTx C.alonzoBasedEra d
   convertDatumToLatestEra (C.TxOutDatumInline _ d) = C.TxOutDatumInline C.babbageBasedEra d
+  convertDatumToLatestEra (C.TxOutSupplementalDatum _ datum) = inBabbage @era $ C.TxOutSupplementalDatum C.alonzoBasedEra datum
 
   convertRefScriptToLatestEra :: CS.ReferenceScript era1 -> CS.ReferenceScript era
   convertRefScriptToLatestEra CS.ReferenceScriptNone = CS.ReferenceScriptNone

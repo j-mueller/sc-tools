@@ -12,8 +12,8 @@ import Cardano.Api (
   ChainPoint (..),
   ChainTip (..),
  )
+import Cardano.Api.ChainSync.ClientPipelined (N (Z))
 import Convex.NodeClient.Types (PipelinedLedgerStateClient (..))
-import Network.TypedProtocol.Pipelined (N (Z))
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined qualified as CSP
 
 {- | Where we start processing blocks. This is the intersection between the

@@ -8,6 +8,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as Ledger
+import Cardano.Ledger.BaseTypes (Mismatch (..))
 import Cardano.Ledger.Conway.Rules qualified as Rules
 import Cardano.Ledger.Shelley.API (ApplyTxError (..))
 import Control.Lens (view, (&), (.~), (^.), _3, _4)
@@ -405,7 +406,7 @@ largeTransactionTest = do
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
     (_, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO 20_313 16384)) :| [])) -> pure ()
+      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO (Mismatch 20_313 16384))) :| [])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
     (_, length . view failedTransactions -> numFailed) -> fail $ "Expected one failed transaction, found " <> show numFailed
 
