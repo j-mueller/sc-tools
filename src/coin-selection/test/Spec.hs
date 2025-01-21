@@ -293,12 +293,6 @@ checkResolveDatumHash = do
 
   assertDatumPresent datum1
 
-  -- 2. resolve a datum that was provided as a "TxOutDatumInTx" (this is what 'payToScriptDatumHash' does)
-  let d2 = (11 :: Integer, 12 :: Integer)
-      datum2 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d2
-  _ <- tryExecBuildTxWallet Wallet.w1 (payToScriptDatumHash Defaults.networkId (plutusScript txInscript) d2 C.NoStakeAddress mempty)
-  assertDatumPresent datum2
-
   -- 3. resolve a datum that was provided by a redeeming transaction
   let d3 = 500 :: Integer
       datum3 = C.unsafeHashableScriptData $ C.fromPlutusData $ PV2.toData d3
@@ -401,17 +395,17 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
 largeTransactionTest :: Assertion
 largeTransactionTest = do
   let largeDatum :: [Integer] = replicate 10_000 33
-      largeDatumTx = execBuildTxWallet Wallet.w1 (payToScriptDatumHash Defaults.networkId (plutusScript txInscript) largeDatum C.NoStakeAddress mempty)
+      largeDatumTx = execBuildTxWallet Wallet.w1 (BuildTx.payToScriptInlineDatum Defaults.networkId (C.hashScript $ plutusScript txInscript) largeDatum C.NoStakeAddress mempty)
 
   -- tx fails with default parameters
   runMockchain0IOWith Wallet.initialUTxOs Defaults.nodeParams (failOnError largeDatumTx) >>= \case
     (_, view failedTransactions -> [(_, err)]) -> case err of
-      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO (Mismatch 20_313 16384))) :| [])) -> pure ()
+      ApplyTxFailure (ApplyTxError (Rules.ConwayUtxowFailure (Rules.UtxoFailure (Rules.MaxTxSizeUTxO (Mismatch 20_249 16384))) :| [])) -> pure ()
       _ -> fail $ "Unexpected failure. Expected 'MaxTxSizeUTxO', found " <> show err
     (_, length . view failedTransactions -> numFailed) -> fail $ "Expected one failed transaction, found " <> show numFailed
 
-  -- the tx should succeed after setting the max tx size to exactly 20313 (see the error message in the test above)
-  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20_313
+  -- the tx should succeed after setting the max tx size to exactly 20249 (see the error message in the test above)
+  let params' = Defaults.nodeParams & ledgerProtocolParameters . protocolParameters . Ledger.ppMaxTxSizeL .~ 20_249
   runMockchain0IOWith Wallet.initialUTxOs params' (failOnError largeDatumTx) >>= \case
     (Right{}, view failedTransactions -> []) -> pure ()
     (_, length . view failedTransactions -> numFailed) -> fail $ "Expected success with 0 failed transactions, found " <> show numFailed

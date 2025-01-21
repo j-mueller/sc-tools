@@ -600,7 +600,7 @@ payToScriptHash network script datum stakeAddress vl =
   inAlonzo @era $
     let val = mkTxOutValue vl
         addr = C.makeShelleyAddressInEra C.shelleyBasedEra network (C.PaymentCredentialByScript script) stakeAddress
-        dat = C.TxOutDatumInline C.babbageBasedEra datum
+        dat = C.TxOutDatumHash C.alonzoBasedEra (C.hashScriptDataBytes datum)
         txo = C.TxOut addr val dat C.ReferenceScriptNone
      in addOutput txo
 
