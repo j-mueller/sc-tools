@@ -72,6 +72,7 @@ module Convex.MockChain (
   evalMockchain0T,
 ) where
 
+import Cardano.Api.Experimental qualified as C
 import Cardano.Api.Shelley (
   AddressInEra,
   Hash (StakePoolKeyHash),
@@ -88,6 +89,7 @@ import Cardano.Ledger.Alonzo.Plutus.Evaluate (
   evalPlutusScripts,
  )
 import Cardano.Ledger.Alonzo.TxWits (unTxDats)
+import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Babbage.Tx (IsValid (..))
 import Cardano.Ledger.BaseTypes (
   Globals (systemStart),
@@ -148,7 +150,7 @@ import Control.Lens (
   _1,
   _3,
  )
-import Control.Monad (forM)
+import Control.Monad (forM, void, when)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Primitive (PrimMonad)
@@ -358,7 +360,7 @@ getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo 
       Left e -> Left (Phase1Error e)
       Right rdmrs -> traverse (either (Left . Phase2Error) (Right . snd)) rdmrs
 
-applyTransaction :: forall era. (C.IsAlonzoBasedEra era) => NodeParams era -> MockChainState era -> C.Tx era -> Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
+applyTransaction :: forall era. (C.IsEra era, C.IsAlonzoBasedEra era) => NodeParams era -> MockChainState era -> C.Tx era -> Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
 applyTransaction params state' tx'@(C.ShelleyTx _era tx) = C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
   let currentSlot = state' ^. env . L.slot
       utxoState_ = state' ^. poolState . L.utxoState
@@ -367,7 +369,10 @@ applyTransaction params state' tx'@(C.ShelleyTx _era tx) = C.alonzoEraOnwardsCon
   result <- applyTx params state' vtx scripts
 
   -- Not sure if this step is needed.
-  _ <- first VExUnits (getTxExUnits params utxo tx')
+  _ <-
+    when (C.obtainCommonConstraints (C.useEra @era) (tx ^. L.isValidTxL @(C.LedgerEra era)) == L.IsValid True) $
+      void $
+        first VExUnits (getTxExUnits params utxo tx')
 
   pure result
 
@@ -445,7 +450,7 @@ instance (Monad m) => MonadState (MockChainState era) (MockchainT era m) where
   get = MockchainT $ lift get
   put = MockchainT . lift . put
 
-instance (Monad m, C.IsAlonzoBasedEra era) => MonadBlockchain era (MockchainT era m) where
+instance (Monad m, C.IsAlonzoBasedEra era, C.IsEra era) => MonadBlockchain era (MockchainT era m) where
   sendTx tx = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
     nps <- ask
     addDatumHashes tx
@@ -501,11 +506,11 @@ instance (Monad m, C.IsAlonzoBasedEra era) => MonadBlockchain era (MockchainT er
     let utime = either (error . (<>) "MockchainT: slotToUtcTime failed ") id (slotToUtcTime npEraHistory npSystemStart slotNo)
     return (slotNo, npSlotLength, utime)
 
-instance (Monad m, C.IsAlonzoBasedEra era) => MonadMockchain era (MockchainT era m) where
+instance (Monad m, C.IsAlonzoBasedEra era, C.IsEra era) => MonadMockchain era (MockchainT era m) where
   modifyMockChainState f = MockchainT $ state f
   askNodeParams = ask
 
-instance (Monad m, C.IsAlonzoBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsCardanoEra era, C.IsShelleyBasedEra era) => MonadUtxoQuery (MockchainT era m) where
+instance (Monad m, C.IsAlonzoBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsEra era) => MonadUtxoQuery (MockchainT era m) where
   utxosByPaymentCredentials cred = do
     UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
     let
