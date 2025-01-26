@@ -295,8 +295,8 @@ balanceTransactionBody
     exUnitsMap' <- balancingError $
       case Map.mapEither id exUnitsMap of
         (failures, exUnitsMap') ->
-          handleExUnitsErrors C.ScriptValid failures $
-            fmap snd exUnitsMap' -- TODO: should this take the script validity from csiTxBody?
+          handleExUnitsErrors (C.txScriptValidityToScriptValidity $ C.txScriptValidity csiTxBody) failures $
+            fmap snd exUnitsMap'
     txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody
     let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2 ^ (32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
