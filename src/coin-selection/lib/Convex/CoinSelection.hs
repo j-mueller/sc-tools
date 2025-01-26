@@ -226,8 +226,8 @@ data TxBalancingMessage
     PrepareInputs {availableBalance :: C.Value, transactionBalance :: C.Value}
   | -- | Balancing a transaction body
     StartBalancing {numInputs :: !Int, numOutputs :: !Int}
-  | -- | Execution units of the transaction, or error message in case of script error
-    ExUnitsMap {exUnits :: [(C.ScriptWitnessIndex, Either String C.ExecutionUnits)]}
+  | -- | Execution units of the transaction
+    ExUnitsMap {exUnits :: [(C.ScriptWitnessIndex, C.ExecutionUnits)]}
   | -- | The transaction fee
     Txfee {fee :: C.Quantity}
   | -- | The remaining balance (after paying the fee)
@@ -290,13 +290,14 @@ balanceTransactionBody
           csiUtxo
           txbody0
 
-    traceWith tracer $ ExUnitsMap $ fmap (second (first (C.docToString . C.prettyError) . fmap snd)) $ Map.toList exUnitsMap
-
     exUnitsMap' <- balancingError $
       case Map.mapEither id exUnitsMap of
         (failures, exUnitsMap') ->
           handleExUnitsErrors (C.txScriptValidityToScriptValidity $ C.txScriptValidity csiTxBody) failures $
             fmap snd exUnitsMap'
+
+    traceWith tracer $ ExUnitsMap $ Map.toList exUnitsMap'
+
     txbodycontent1 <- balancingError $ substituteExecutionUnits exUnitsMap' csiTxBody
     let txbodycontent1' = txbodycontent1 & set L.txFee (Coin (2 ^ (32 :: Integer) - 1)) & over L.txOuts (|> changeOutputLarge)
 
