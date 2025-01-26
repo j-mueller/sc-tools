@@ -382,20 +382,10 @@ handleExUnitsErrors C.ScriptValid failuresMap exUnitsMap =
     else Left (C.TxBodyScriptExecutionError failures)
  where
   failures :: [(C.ScriptWitnessIndex, C.ScriptExecutionError)]
-  failures = Map.toList failuresMap
+  failures = toList failuresMap
 handleExUnitsErrors C.ScriptInvalid failuresMap exUnitsMap
-  | null scriptFailures = Left C.TxBodyScriptBadScriptValidity
-  | null nonScriptFailures = Right exUnitsMap
-  | otherwise = Left (C.TxBodyScriptExecutionError nonScriptFailures)
- where
-  nonScriptFailures :: [(C.ScriptWitnessIndex, C.ScriptExecutionError)]
-  nonScriptFailures = filter (not . isScriptErrorEvaluationFailed) (Map.toList failuresMap)
-  scriptFailures :: [(C.ScriptWitnessIndex, C.ScriptExecutionError)]
-  scriptFailures = filter isScriptErrorEvaluationFailed (Map.toList failuresMap)
-  isScriptErrorEvaluationFailed :: (C.ScriptWitnessIndex, C.ScriptExecutionError) -> Bool
-  isScriptErrorEvaluationFailed (_, e) = case e of
-    C.ScriptErrorEvaluationFailed{} -> True
-    _ -> True
+  | null failuresMap = Left C.TxBodyScriptBadScriptValidity
+  | otherwise = Right $ Map.map (\_ -> C.ExecutionUnits 0 0) failuresMap <> exUnitsMap
 
 {- | Get the 'BalanceChanges' for a tx body. Returns 'Nothing' if
 a UTXO couldnt be found
