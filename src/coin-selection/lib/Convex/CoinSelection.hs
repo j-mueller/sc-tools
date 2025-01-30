@@ -9,6 +9,7 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
@@ -52,6 +53,7 @@ module Convex.CoinSelection (
   prepCSInputs,
   keyWitnesses,
   publicKeyCredential,
+  exactScriptExecutionError,
 ) where
 
 import Cardano.Api qualified
@@ -82,10 +84,13 @@ import Cardano.Ledger.Shelley.Core (EraCrypto)
 import Cardano.Ledger.Shelley.TxCert qualified as TxCert
 import Cardano.Slotting.Time (SystemStart)
 import Control.Lens (
+  Prism',
   at,
   makeLensesFor,
   over,
   preview,
+  prism',
+  review,
   set,
   to,
   traversed,
@@ -102,6 +107,7 @@ import Control.Lens (
   _3,
   (|>),
  )
+import Control.Lens qualified as L
 import Control.Lens.TH (makeClassyPrisms)
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (..))
@@ -136,7 +142,8 @@ import Convex.Utxos (
 import Convex.Utxos qualified as Utxos
 import Convex.Wallet (Wallet)
 import Convex.Wallet qualified as Wallet
-import Data.Aeson (FromJSON (..), ToJSON (..))
+import Data.Aeson (FromJSON (..), Options (sumEncoding), SumEncoding (..), ToJSON (..))
+import Data.Aeson.TH (defaultOptions, deriveFromJSON)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Default (Default (..))
 import Data.Function (on)
@@ -216,6 +223,11 @@ makeClassyPrisms ''CoinSelectionError
 bodyError :: C.TxBodyError -> CoinSelectionError
 bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
+-- Orphan instance, needed to allow full json from here on.
+-- TODO: Check that automatic generation is compatible with cardano-api encoding.
+
+$(deriveFromJSON defaultOptions{sumEncoding = TaggedObject{tagFieldName = "kind", contentsFieldName = "value"}} ''C.ScriptWitnessIndex)
+
 -- | Balancing errors, including the *special* 'BalancingScriptExecutionErr'.
 data BalancingError era
   = BalancingError Text
@@ -223,7 +235,7 @@ data BalancingError era
     -- 'C.ScriptExecutionError's.
     -- TODO: I would like to retain the actual error structure, but this collides (quite massively)
     -- with the required JSON encoding / decoding.
-    ScriptExecutionErr Text -- [(C.ScriptWitnessIndex, C.ScriptExecutionError)]
+    ScriptExecutionErr [(C.ScriptWitnessIndex, Text, [Text])]
   | CheckMinUtxoValueError (C.TxOut C.CtxTx era) C.Quantity
   | BalanceCheckError (BalancingError era)
   | ComputeBalanceChangeError
@@ -232,16 +244,43 @@ data BalancingError era
 
 makeClassyPrisms ''BalancingError
 
+{- | This prism will either match on the exact error using the script witness index and an error
+string, or just on being a script execution error. The latter is necessary, since in non-debug
+mode, there is no error to match on and the prism should not fail in its purpose in non-debug
+mode.
+-}
+exactScriptExecutionError :: forall e era. (AsBalancingError e era) => (Int, Text) -> Prism' e [(C.ScriptWitnessIndex, Text, [Text])]
+exactScriptExecutionError (i, s) = prism' tobe frombe
+ where
+  tobe :: [(C.ScriptWitnessIndex, Text, [Text])] -> e
+  tobe = review _ScriptExecutionErr
+  frombe :: e -> Maybe [(C.ScriptWitnessIndex, Text, [Text])]
+  frombe x = case preview _ScriptExecutionErr x of
+    Nothing -> Nothing
+    Just xs
+      -- index exists, and either we have no logs, of the last entry is the error string to match
+      -- on.
+      | Just (_, _, logs) <- xs L.^? L.ix i
+      , null logs || last logs == s ->
+          Just xs
+      -- We don't have any internal logs, but still a script error
+      | null xs -> Just xs
+      -- Not the correct error
+      | otherwise -> Nothing
+
 {- | Sort *most* balancing errors into 'BalancingError', but script execution errors into their own
 data constructor.
 -}
 balancingError :: (MonadError (BalancingError era) m) => Either (C.TxBodyErrorAutoBalance era) a -> m a
 balancingError = \case
   Right a -> pure a
-  Left err@(C.TxBodyScriptExecutionError _es) -> throwError $ ScriptExecutionErr (asText err)
+  Left (C.TxBodyScriptExecutionError es) -> throwError $ ScriptExecutionErr (map extractErrorInfo es)
   Left err -> throwError . BalancingError $ asText err
  where
   asText = Text.pack . C.docToString . C.prettyError
+  extractErrorInfo :: (C.ScriptWitnessIndex, C.ScriptExecutionError) -> (C.ScriptWitnessIndex, Text, [Text])
+  extractErrorInfo (wix, C.ScriptErrorEvaluationFailed evalErr logs) = (wix, Text.pack $ show evalErr, logs)
+  extractErrorInfo (wix, other) = (wix, Text.pack $ show other, [])
 
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage
