@@ -1,12 +1,15 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
@@ -18,6 +21,7 @@
 module Convex.CoinSelection (
   -- * Data types
   CoinSelectionError (..),
+  AsCoinSelectionError (..),
   bodyError,
   TransactionSignatureCount (..),
   CSInputs (..),
@@ -29,7 +33,9 @@ module Convex.CoinSelection (
 
   -- * Balancing
   BalanceTxError (..),
+  AsBalanceTxError (..),
   BalancingError (..),
+  AsBalancingError (..),
   TxBalancingMessage (..),
   ChangeOutputPosition (..),
   balanceTransactionBody,
@@ -47,12 +53,14 @@ module Convex.CoinSelection (
   prepCSInputs,
   keyWitnesses,
   publicKeyCredential,
+  exactScriptExecutionError,
 ) where
 
 import Cardano.Api qualified
 import Cardano.Api.Extras (substituteExecutionUnits)
 import Cardano.Api.Ledger qualified as CLedger
 import Cardano.Api.Ledger qualified as L
+import Cardano.Api.Plutus qualified as C
 import Cardano.Api.Shelley (
   BuildTx,
   ConwayEra,
@@ -77,10 +85,13 @@ import Cardano.Ledger.Shelley.Core (EraCrypto)
 import Cardano.Ledger.Shelley.TxCert qualified as TxCert
 import Cardano.Slotting.Time (SystemStart)
 import Control.Lens (
+  Prism',
   at,
   makeLensesFor,
   over,
   preview,
+  prism',
+  review,
   set,
   to,
   traversed,
@@ -97,6 +108,8 @@ import Control.Lens (
   _3,
   (|>),
  )
+import Control.Lens qualified as L
+import Control.Lens.TH (makeClassyPrisms)
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
@@ -130,7 +143,8 @@ import Convex.Utxos (
 import Convex.Utxos qualified as Utxos
 import Convex.Wallet (Wallet)
 import Convex.Wallet qualified as Wallet
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON (..), Options (sumEncoding), SumEncoding (..), ToJSON (..))
+import Data.Aeson.TH (defaultOptions, deriveFromJSON)
 import Data.Bifunctor (Bifunctor (..))
 import Data.Default (Default (..))
 import Data.Functor.Identity (Identity)
@@ -203,19 +217,70 @@ data CoinSelectionError
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
+makeClassyPrisms ''CoinSelectionError
+
 bodyError :: C.TxBodyError -> CoinSelectionError
 bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
+-- Orphan instance, needed to allow full json from here on.
+-- TODO: Check that automatic generation is compatible with cardano-api encoding.
+
+$(deriveFromJSON defaultOptions{sumEncoding = TaggedObject{tagFieldName = "kind", contentsFieldName = "value"}} ''C.ScriptWitnessIndex)
+
+-- | Balancing errors, including the *special* 'BalancingScriptExecutionErr'.
 data BalancingError era
   = BalancingError Text
+  | -- | A single type of balancing error is treated specially: the type with
+    -- 'C.ScriptExecutionError's.
+    -- TODO: I would like to retain the actual error structure, but this collides (quite massively)
+    -- with the required JSON encoding / decoding.
+    ScriptExecutionErr [(C.ScriptWitnessIndex, Text, [Text])]
   | CheckMinUtxoValueError (C.TxOut C.CtxTx era) C.Quantity
   | BalanceCheckError (BalancingError era)
   | ComputeBalanceChangeError
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
+makeClassyPrisms ''BalancingError
+
+{- | This prism will either match on the exact error using the script witness index and an error
+string, or just on being a script execution error. The latter is necessary, since in non-debug
+mode, there is no error to match on and the prism should not fail in its purpose in non-debug
+mode.
+-}
+exactScriptExecutionError :: forall e era. (AsBalancingError e era) => (Int, Text) -> Prism' e [(C.ScriptWitnessIndex, Text, [Text])]
+exactScriptExecutionError (i, s) = prism' tobe frombe
+ where
+  tobe :: [(C.ScriptWitnessIndex, Text, [Text])] -> e
+  tobe = review _ScriptExecutionErr
+  frombe :: e -> Maybe [(C.ScriptWitnessIndex, Text, [Text])]
+  frombe x = case preview _ScriptExecutionErr x of
+    Nothing -> Nothing
+    Just xs
+      -- index exists, and either we have no logs, of the last entry is the error string to match
+      -- on.
+      | Just (_, _, logs) <- xs L.^? L.ix i
+      , null logs || last logs == s ->
+          Just xs
+      -- We don't have any internal logs, but still a script error
+      | null xs -> Just xs
+      -- Not the correct error
+      | otherwise -> Nothing
+
+{- | Sort *most* balancing errors into 'BalancingError', but script execution errors into their own
+data constructor.
+-}
 balancingError :: (MonadError (BalancingError era) m) => Either (C.TxBodyErrorAutoBalance era) a -> m a
-balancingError = either (throwError . BalancingError . Text.pack . C.docToString . C.prettyError) pure
+balancingError = \case
+  Right a -> pure a
+  Left (C.TxBodyScriptExecutionError es) -> throwError $ ScriptExecutionErr (map extractErrorInfo es)
+  Left err -> throwError . BalancingError $ asText err
+ where
+  asText = Text.pack . C.docToString . C.prettyError
+  extractErrorInfo :: (C.ScriptWitnessIndex, C.ScriptExecutionError) -> (C.ScriptWitnessIndex, Text, [Text])
+  -- TODO: We could expose scriptWithContext and executionUnits as well.
+  extractErrorInfo (wix, C.ScriptErrorEvaluationFailed C.DebugPlutusFailure{C.dpfEvaluationError, C.dpfExecutionLogs}) = (wix, Text.pack $ show dpfEvaluationError, dpfExecutionLogs)
+  extractErrorInfo (wix, other) = (wix, Text.pack $ show other, [])
 
 -- | Messages that are produced during coin selection and balancing
 data TxBalancingMessage
@@ -428,6 +493,14 @@ data BalanceTxError era
   | ABalancingError (BalancingError era)
   deriving stock (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
+
+makeClassyPrisms ''BalanceTxError
+
+instance AsCoinSelectionError (BalanceTxError era) where
+  _CoinSelectionError = _ACoinSelectionError . _CoinSelectionError
+
+instance AsBalancingError (BalanceTxError era) era where
+  __BalancingError = _ABalancingError . __BalancingError
 
 {- | Balance the transaction using the given UTXOs and return address. This
 calls 'balanceTransactionBody' after preparing all the required inputs.

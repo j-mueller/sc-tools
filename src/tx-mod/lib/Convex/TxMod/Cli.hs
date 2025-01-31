@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Convex.TxMod.Cli (
   runMain,
@@ -16,7 +17,7 @@ import Blammo.Logging.Simple (
  )
 import Blockfrost.Client.Core (BlockfrostError)
 import Cardano.Api (TxId)
-import Control.Lens (view)
+import Control.Lens (makeClassyPrisms, view)
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
 import Control.Monad.IO.Class (MonadIO (..))
@@ -28,7 +29,7 @@ import Control.Monad.Reader (
  )
 import Convex.Blockfrost qualified
 import Convex.Blockfrost.Orphans ()
-import Convex.Blockfrost.Types (DecodingError)
+import Convex.Blockfrost.Types (AsDecodingError (..), DecodingError)
 import Convex.ResolvedTx (ResolvedTx)
 import Convex.ResolvedTx qualified
 import Convex.TxMod.Command (
@@ -55,6 +56,17 @@ import Options.Applicative (
   showHelpOnEmpty,
   showHelpOnError,
  )
+
+data AppError
+  = DecodingErr DecodingError
+  | BlockfrostErr BlockfrostError
+  | FileDecodeErr String
+  deriving stock (Show)
+
+makeClassyPrisms ''AppError
+
+instance AsDecodingError AppError where
+  _DecodingError = _DecodingErr . _DecodingError
 
 runMain :: IO ()
 runMain = do
@@ -87,12 +99,6 @@ newtype TxModApp a = TxModApp {unTxModApp :: ReaderT Env (ExceptT AppError IO) a
   deriving
     (MonadLogger, MonadLoggerIO)
     via (WithLogger Env (ExceptT AppError IO))
-
-data AppError
-  = DecodingErr DecodingError
-  | BlockfrostErr BlockfrostError
-  | FileDecodeErr String
-  deriving stock (Show)
 
 runTxModApp :: Env -> TxModApp a -> IO (Either AppError a)
 runTxModApp env TxModApp{unTxModApp} = runExceptT (runReaderT unTxModApp env)
