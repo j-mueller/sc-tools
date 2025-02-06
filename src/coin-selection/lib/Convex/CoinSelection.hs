@@ -16,6 +16,9 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+-- NOTE: We have an orphan instance for ScriptWitnessIndex, until (or if) upstream provides such an
+-- instance.
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | Building cardano transactions from tx bodies
 module Convex.CoinSelection (
@@ -227,7 +230,10 @@ bodyError = BodyError . Text.pack . C.docToString . C.prettyError
 
 $(deriveFromJSON defaultOptions{sumEncoding = TaggedObject{tagFieldName = "kind", contentsFieldName = "value"}} ''C.ScriptWitnessIndex)
 
--- | Balancing errors, including the *special* 'BalancingScriptExecutionErr'.
+{- | Balancing errors, including the important 'ScriptExecutionErr'. "Important" in the sense that we
+can write prisms such as 'exactScriptExecutionError' that allow for more fine-grained
+pattern-matching on the on-chain error.
+-}
 data BalancingError era
   = BalancingError Text
   | -- | A single type of balancing error is treated specially: the type with
@@ -243,10 +249,10 @@ data BalancingError era
 
 makeClassyPrisms ''BalancingError
 
-{- | This prism will either match on the exact error using the script witness index and an error
-string, or just on being a script execution error. The latter is necessary, since in non-debug
-mode, there is no error to match on and the prism should not fail in its purpose in non-debug
-mode.
+{- | This prism will match on the exact error using the script witness index and an error
+string if this information is available. It will behave as a script execution error if no debug logs
+are available. The latter is necessary, since in non-debug mode, there is no error to match on and
+the prism should not fail in its purpose in non-debug mode.
 -}
 exactScriptExecutionError :: forall e era. (AsBalancingError e era) => (Int, Text) -> Prism' e [(C.ScriptWitnessIndex, Text, [Text])]
 exactScriptExecutionError (i, s) = prism' tobe frombe
@@ -267,8 +273,12 @@ exactScriptExecutionError (i, s) = prism' tobe frombe
       -- Not the correct error
       | otherwise -> Nothing
 
-{- | Sort *most* balancing errors into 'BalancingError', but script execution errors into their own
-data constructor.
+{- | This convenience function takes @Left@s of type 'C.TxBodyErrorAutoBalance' and throws
+'C.TxBodyScriptErecutionError's as 'ScriptExecutionErr', with extraaction of the error log, if
+availalbe. Other @Left@s are thrown as 'BalancingError's.
+
+This is a convenient bridge from cardano-api errors to errors where we can pattern-match on script
+execution errors and have an error hierarchy.
 -}
 balancingError :: (MonadError (BalancingError era) m) => Either (C.TxBodyErrorAutoBalance era) a -> m a
 balancingError = \case

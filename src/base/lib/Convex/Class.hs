@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -118,6 +119,7 @@ import Control.Exception (
   throwIO,
  )
 import Control.Lens (
+  Prism',
   at,
   set,
   to,
@@ -202,8 +204,25 @@ instance AsExUnitsError (ValidationError era) era where
 
 Then functions throwing ExUnitsError throw like this:
 @
-throwError $ L.review _ExUnitsError $ Phase1Error bla
+fun :: (MonadError e m, AsExUnitsError e era) => m ()
+fun = do
+  ...
+  throwError $ L.review _ExUnitsError $ Phase1Error bla
 @
+and we are not forcing a specific error @e@, but only that @e@ can be created via the prism from an @ExUnitsError@.
+
+It is also possible to have multiple types of errors:
+@
+fun :: (MonadError e m, AsExUnitsError e era, AsValidationError e era, AsSomeOtherError e) => m ()
+fun = do
+  ...
+  throwError $ L.review _ExUnitsError $ Phase1Error bla
+  ...
+  throwError $ L.review _PredicateFailures $ []
+  ...
+  throwError $ L.review _OtherError
+@
+Note that @OtherError@ is "parallel" to @_ExUnitsError@ and not a descendent, i.e. not related.
 
 The whole tree of exceptions can be mapped in this fashion, which increases the interoperability
 between error-throwing functions without the need for explicit 'modifyError' calls.
@@ -228,6 +247,10 @@ instance (C.IsAlonzoBasedEra era) => Show (ValidationError era) where
         ApplyTxFailure err' -> "ApplyTxFailure: " <> show err'
 
 makeClassyPrisms ''ValidationError
+
+instance AsExUnitsError (ValidationError era) era where
+  _ExUnitsError :: Prism' (ValidationError era) (ExUnitsError era)
+  _ExUnitsError = _VExUnits . _ExUnitsError
 
 -- | Send transactions and resolve tx inputs.
 class (Monad m) => MonadBlockchain era m | m -> era where
