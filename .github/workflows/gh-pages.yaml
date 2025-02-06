@@ -40,7 +40,7 @@ jobs:
           cabal haddock-project --local --output=haddocks
 
       - name: Upload GH pages artifact
-        uses: actions/upload-pages-artifact@v2.0.0
+        uses: actions/upload-pages-artifact@v3.0.1
         with:
           path: haddocks
 
