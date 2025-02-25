@@ -44,9 +44,9 @@ import Cardano.Api (
   Tx,
   TxId,
   TxIn (..),
+  fromNetworkMagic,
   serialiseToCBOR,
  )
-import Cardano.Api.NetworkId (fromNetworkMagic)
 import Cardano.Api.Shelley (
   CtxUTxO,
   LedgerProtocolParameters (..),

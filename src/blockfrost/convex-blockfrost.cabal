@@ -47,11 +47,11 @@ library
   build-depends:
     , base                         >=4.14     && <5
     , base16-bytestring
+    , bech32
     , blockfrost-api               >=0.12.1.0
     , blockfrost-client
     , bytestring
     , cardano-api
-    , cardano-api:internal
     , cardano-binary
     , cardano-ledger-alonzo
     , cardano-ledger-babbage

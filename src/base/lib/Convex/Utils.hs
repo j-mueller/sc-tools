@@ -173,14 +173,14 @@ extractTx txIds =
             liftIO $
               C.writeFileTextEnvelope (C.File $ show txi <> ".json") Nothing tx
    in \case
-        BlockInMode C.ConwayEra (C.Block _ txns) ->
+        BlockInMode C.ConwayEra (C.getBlockTxs -> txns) ->
           traverse_ extractTx' txns
         _ -> pure ()
 
 -- | The UTxOs produced by the transaction
 txnUtxos :: Tx era -> [(TxIn, C.TxOut C.CtxTx era)]
 txnUtxos tx =
-  let C.TxBody C.TxBodyContent{C.txOuts} = C.getTxBody tx
+  let C.TxBodyContent{C.txOuts} = C.getTxBodyContent $ C.getTxBody tx
       txi = C.getTxId (C.getTxBody tx)
    in zip (C.TxIn txi . C.TxIx <$> [0 ..]) txOuts
 

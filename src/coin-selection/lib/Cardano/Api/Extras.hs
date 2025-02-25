@@ -16,6 +16,7 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Api.Shelley qualified as C
 import Control.Lens ((&))
+import Data.Bifunctor (Bifunctor (..))
 import Data.Function (on)
 import Data.List qualified as List
 import Data.Map (Map)
@@ -141,18 +142,27 @@ substituteExecutionUnits
       :: C.TxCertificates BuildTx era
       -> Either (C.TxBodyErrorAutoBalance era) (C.TxCertificates BuildTx era)
     mapScriptWitnessesCertificates C.TxCertificatesNone = Right C.TxCertificatesNone
-    mapScriptWitnessesCertificates txCertificates'@(C.TxCertificates supported certs _) =
+    mapScriptWitnessesCertificates txCertificates'@(C.TxCertificates supported _) = do
       let mappedScriptWitnesses
-            :: [(C.StakeCredential, Either (C.TxBodyErrorAutoBalance era) (C.Witness C.WitCtxStake era))]
+            :: [ ( C.Certificate era
+                 , Either
+                    (C.TxBodyErrorAutoBalance era)
+                    ( C.BuildTxWith
+                        BuildTx
+                        ( Maybe
+                            ( C.StakeCredential
+                            , C.Witness C.WitCtxStake era
+                            )
+                        )
+                    )
+                 )
+               ]
           mappedScriptWitnesses =
-            [ (stakeCred, witness')
-            | (ix, _, stakeCred, witness) <- indexTxCertificates txCertificates'
-            , let witness' = adjustScriptWitness (substituteExecUnits ix) witness
+            [ (cert, C.BuildTxWith . Just . (stakeCred,) <$> eWitness')
+            | (ix, cert, stakeCred, witness) <- indexTxCertificates txCertificates'
+            , let eWitness' = adjustScriptWitness (substituteExecUnits ix) witness
             ]
-       in C.TxCertificates supported certs . C.BuildTxWith
-            <$> traverse
-              (\(sCred, eScriptWitness) -> (sCred,) <$> eScriptWitness)
-              mappedScriptWitnesses
+      C.TxCertificates supported . fromList <$> traverseScriptWitnesses mappedScriptWitnesses
 
     mapScriptWitnessesVotes
       :: Maybe (C.Featured C.ConwayEraOnwards era (C.TxVotingProcedures build era))
@@ -176,28 +186,25 @@ substituteExecutionUnits
           (C.Featured era (C.TxVotingProcedures vProcedures (C.BuildTxWith $ fromList substitutedExecutionUnits)))
 
     mapScriptWitnessesProposals
-      :: Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures build era))
+      :: Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures BuildTx era))
       -> Either
           (C.TxBodyErrorAutoBalance era)
-          (Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures build era)))
+          (Maybe (C.Featured C.ConwayEraOnwards era (C.TxProposalProcedures BuildTx era)))
     mapScriptWitnessesProposals Nothing = return Nothing
-    mapScriptWitnessesProposals (Just (C.Featured _ C.TxProposalProceduresNone)) = return Nothing
-    mapScriptWitnessesProposals (Just (C.Featured _ (C.TxProposalProcedures _ C.ViewTx))) = return Nothing
-    mapScriptWitnessesProposals (Just (C.Featured era txpp@(C.TxProposalProcedures osetProposalProcedures (C.BuildTxWith _)))) = do
+    mapScriptWitnessesProposals (Just (C.Featured era txpp)) = do
       let eSubstitutedExecutionUnits =
             [ (proposal, updatedWitness)
             | (ix, proposal, scriptWitness) <- indexTxProposalProcedures txpp
             , let updatedWitness = substituteExecUnits ix scriptWitness
             ]
-
       substitutedExecutionUnits <- traverseScriptWitnesses eSubstitutedExecutionUnits
 
-      return $
-        Just
-          ( C.Featured
-              era
-              (C.TxProposalProcedures osetProposalProcedures (C.BuildTxWith $ fromList substitutedExecutionUnits))
-          )
+      pure $
+        Just $
+          C.Featured era $
+            C.conwayEraOnwardsConstraints era $
+              C.mkTxProposalProcedures $
+                second Just <$> substitutedExecutionUnits
 
     mapScriptWitnessesMinting
       :: C.TxMintValue BuildTx era
@@ -244,14 +251,10 @@ indexTxCertificates
   :: C.TxCertificates BuildTx era
   -> [(C.ScriptWitnessIndex, C.Certificate era, C.StakeCredential, C.Witness C.WitCtxStake era)]
 indexTxCertificates C.TxCertificatesNone = []
-indexTxCertificates (C.TxCertificates _ certs (C.BuildTxWith witnesses)) =
-  [ (C.ScriptWitnessIndexCertificate ix, cert, stakeCred, wit)
-  | (ix, cert) <- zip [0 ..] certs
-  , stakeCred <- maybeToList (C.selectStakeCredentialWitness cert)
-  , wit <- findAll stakeCred witnesses
+indexTxCertificates (C.TxCertificates _ certsWits) =
+  [ (C.ScriptWitnessIndexCertificate ix, cert, stakeCred, witness)
+  | (ix, (cert, C.BuildTxWith (Just (stakeCred, witness)))) <- zip [0 ..] $ toList certsWits
   ]
- where
-  findAll needle = map snd . filter ((==) needle . fst)
 
 -- | Index voting procedures by the order of the votes ('Ord').
 indexTxVotingProcedures
@@ -274,10 +277,10 @@ indexTxProposalProcedures
   :: C.TxProposalProcedures BuildTx era
   -> [(C.ScriptWitnessIndex, L.ProposalProcedure (C.ShelleyLedgerEra era), C.ScriptWitness C.WitCtxStake era)]
 indexTxProposalProcedures C.TxProposalProceduresNone = []
-indexTxProposalProcedures txpp@(C.TxProposalProcedures _ (C.BuildTxWith witnesses)) = do
-  let allProposalsList = toList $ C.convProposalProcedures txpp
+indexTxProposalProcedures (C.TxProposalProcedures proposals) = do
+  let allProposalsList = fst <$> toList proposals
   [ (C.ScriptWitnessIndexProposing $ fromIntegral ix, proposal, scriptWitness)
-    | (proposal, scriptWitness) <- toList witnesses
+    | (proposal, C.BuildTxWith (Just scriptWitness)) <- toList proposals
     , ix <- maybeToList $ List.elemIndex proposal allProposalsList
     ]
 

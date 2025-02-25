@@ -15,8 +15,8 @@ repository cardano-haskell-packages
 
 with-compiler: ghc-9.6.6
 index-state:
-  , hackage.haskell.org 2025-01-20T00:52:24Z
-  , cardano-haskell-packages 2025-01-20T10:49:32Z
+  , hackage.haskell.org 2025-02-14T16:51:26Z
+  , cardano-haskell-packages 2025-02-14T16:51:26Z
 
 multi-repl: true
 

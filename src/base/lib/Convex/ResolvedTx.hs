@@ -83,16 +83,14 @@ data ResolvedTx
 resolveTxMockchain :: (MonadMockchain C.ConwayEra m) => C.TxId -> m (Maybe ResolvedTx)
 resolveTxMockchain txI = runMaybeT $ do
   rtxTransaction <- MaybeT (getTxById txI)
-  let (C.Tx (C.TxBody bodyContent) _witnesses) = rtxTransaction
+  let bodyContent = C.getTxBodyContent $ C.getTxBody rtxTransaction
   let reqTxIns = Utils.requiredTxIns bodyContent
   utxo <- utxoByTxIn reqTxIns
   pure ResolvedTx{rtxTransaction, rtxInputs = C.unUTxO utxo}
 
 -- | The transaction's body content
 txBodyContent :: ResolvedTx -> C.TxBodyContent C.ViewTx C.ConwayEra
-txBodyContent ResolvedTx{rtxTransaction} =
-  let (C.Tx (C.TxBody content) _witnesses) = rtxTransaction
-   in content
+txBodyContent = C.getTxBodyContent . C.getTxBody . rtxTransaction
 
 txId :: ResolvedTx -> C.TxId
 txId = C.getTxId . C.getTxBody . rtxTransaction
@@ -250,7 +248,7 @@ addOutput txI _ = do
 addTxBody :: C.Tx C.ConwayEra -> GraphBuilder ()
 addTxBody transaction = do
   let i = C.getTxId $ C.getTxBody transaction
-      (C.Tx (C.TxBody content) _witnesses) = transaction
+      (C.Tx (C.getTxBodyContent -> content) _witnesses) = transaction
       withdrawals =
         case C.txWithdrawals content of
           C.TxWithdrawalsNone -> []
