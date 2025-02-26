@@ -1,8 +1,10 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+-- FIXME (j-mueller) The deprecation warning on Cardano.Api.Block covers the whole type instead of just the view pattern 'Block' that seems to have been intended.
+--                   We can remove the flag once that has been fixed
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 module Convex.NodeClient.Progress (progressClient) where
 
@@ -58,8 +60,9 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
     clientNextN :: Nat n -> ClientStNext n BlockInMode ChainPoint ChainTip IO ()
     clientNextN n =
       ClientStNext
-        { recvMsgRollForward = \(BlockInMode _era block@(CAPI.Block (BlockHeader _ _ currBlockNo@(BlockNo blockNo)) _)) serverChainTip -> do
-            let newClientTip = At currBlockNo
+        { recvMsgRollForward = \(BlockInMode _era block) serverChainTip -> do
+            let BlockHeader _ _ currBlockNo@(BlockNo blockNo) = CAPI.getBlockHeader block
+                newClientTip = At currBlockNo
                 newServerTip = fromChainTip serverChainTip
             when (blockNo `mod` 10_000 == 0) $ do
               printBlock block
@@ -97,8 +100,10 @@ progressClient = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
         }
 
     printBlock :: Block era -> IO ()
-    printBlock (CAPI.Block (BlockHeader _ _ currBlockNo) transactions) =
-      putStrLn $ show currBlockNo ++ " transactions: " ++ show (length transactions)
+    printBlock block =
+      let BlockHeader _ _ currBlockNo = CAPI.getBlockHeader block
+          transactions = CAPI.getBlockTxs block
+       in putStrLn $ show currBlockNo ++ " transactions: " ++ show (length transactions)
 
     printTip :: ChainTip -> IO ()
     printTip = \case

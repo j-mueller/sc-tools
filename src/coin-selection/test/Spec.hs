@@ -357,8 +357,8 @@ balanceMultiAddress = do
 
                         -- balance the tx using all of the operators' addressses
                         balancedTx <- runExceptT (balancePaymentCredentials mempty (operatorPaymentCredential op) (operatorPaymentCredential <$> operators) Nothing tx TrailingChange) >>= either (fail . show) pure
-                        txInputs <- let C.Tx (C.TxBody txBody) _ = balancedTx in keyWitnesses txBody
-                        let (Set.fromList -> extraWits) = let C.Tx (C.TxBody txBody) _ = balancedTx in view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) txBody
+                        txInputs <- let txBody = C.getTxBodyContent $ C.getTxBody balancedTx in keyWitnesses txBody
+                        let (Set.fromList -> extraWits) = let txBody = C.getTxBodyContent $ C.getTxBody balancedTx in view (L.txExtraKeyWits . L._TxExtraKeyWitnesses) txBody
                         -- add the required operators' signatures
                         finalTx <- flip execStateT balancedTx $ flip traverse_ (op : operators) $ \o -> do
                           Just pkh <- publicKeyCredential <$> operatorReturnOutput o

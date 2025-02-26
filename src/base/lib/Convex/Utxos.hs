@@ -12,6 +12,9 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+-- FIXME (j-mueller) The deprecation warning on Cardano.Api.Block covers the whole type instead of just the view pattern 'Block' that seems to have been intended.
+--                   We can remove the flag once that has been fixed
+{-# OPTIONS_GHC -Wno-deprecations #-}
 -- FIXME (koslambrou) Remove once we have the newtype for 'AnyCardanoEra TxOut'.
 {-# OPTIONS_GHC -Wno-orphans #-}
 
