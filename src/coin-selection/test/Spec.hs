@@ -461,7 +461,7 @@ withdrawZeroTrick = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
 
   pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
   unregisterTx <- BuildTx.execBuildTxT $ do
-    let cert = BuildTx.conwayStakeCredentialUnRegistrationCertificate scriptStakingCredential (pp ^. Ledger.ppKeyDepositL)
+    let cert = BuildTx.mkConwayStakeCredentialUnRegistrationCertificate scriptStakingCredential (pp ^. Ledger.ppKeyDepositL)
     BuildTx.addStakeScriptWitness cert scriptStakingCredential Scripts.v2StakingScript ()
   void $ tryBalanceAndSubmit mempty Wallet.w1 unregisterTx TrailingChange []
 
@@ -529,7 +529,7 @@ stakeKeyWithdrawalTest = do
       evalMockchain0IO mempty $
         BuildTx.execBuildTxT $ do
           cert <-
-            BuildTx.conwayStakeCredentialRegistrationAndDelegationCertificate
+            BuildTx.mkConwayStakeCredentialRegistrationAndDelegationCertificate
               stakeCred
               (Ledger.DelegVote Ledger.DRepAlwaysAbstain)
           BuildTx.addCertificate cert

@@ -82,10 +82,10 @@ module Convex.BuildTx (
   addWithdrawZeroPlutusV2InTransaction,
   addWithdrawZeroPlutusV2Reference,
   addCertificate,
-  conwayStakeCredentialRegistrationCertificate,
-  conwayStakeCredentialDelegationCertificate,
-  conwayStakeCredentialRegistrationAndDelegationCertificate,
-  conwayStakeCredentialUnRegistrationCertificate,
+  mkConwayStakeCredentialRegistrationCertificate,
+  mkConwayStakeCredentialDelegationCertificate,
+  mkConwayStakeCredentialRegistrationAndDelegationCertificate,
+  mkConwayStakeCredentialUnRegistrationCertificate,
   addStakeScriptWitness,
   addStakeScriptWitnessRef,
   addStakeWitnessWithTxBody,
@@ -734,32 +734,32 @@ addCertificate cert =
    in addBtx (over (L.txCertificates . L._TxCertificates) ((cert, C.BuildTxWith witness) OMap.|<))
 
 -- | Create a 'C.StakeCredential' registration as a ConwayCertificate to the transaction.
-conwayStakeCredentialRegistrationCertificate
+mkConwayStakeCredentialRegistrationCertificate
   :: forall era m
    . ( C.IsConwayBasedEra era
      , MonadBlockchain era m
      )
   => C.StakeCredential
   -> m (C.Certificate era)
-conwayStakeCredentialRegistrationCertificate stakeCred = do
+mkConwayStakeCredentialRegistrationCertificate stakeCred = do
   deposit <-
     C.conwayEraOnwardsConstraints @era C.conwayBasedEra $
       view (Ledger.ppKeyDepositL @(C.ShelleyLedgerEra era)) . C.unLedgerProtocolParameters <$> queryProtocolParameters
   pure $ C.makeStakeAddressRegistrationCertificate $ C.StakeAddrRegistrationConway C.conwayBasedEra deposit stakeCred
 
 -- | Create a certificate for delegation to some delegatee in a ConwayCertificate to the transaction.
-conwayStakeCredentialDelegationCertificate
+mkConwayStakeCredentialDelegationCertificate
   :: forall era
    . (C.IsConwayBasedEra era)
   => C.StakeCredential
   -> ConwayTxCert.Delegatee (Ledger.EraCrypto (C.ShelleyLedgerEra era))
   -> C.Certificate era
-conwayStakeCredentialDelegationCertificate stakeCred =
+mkConwayStakeCredentialDelegationCertificate stakeCred =
   C.makeStakeAddressDelegationCertificate
     . C.StakeDelegationRequirementsConwayOnwards C.conwayBasedEra stakeCred
 
 -- | Create a 'C.StakeCredential' and delegate to some delegatee in a single ConwayCertificate to the transaction.
-conwayStakeCredentialRegistrationAndDelegationCertificate
+mkConwayStakeCredentialRegistrationAndDelegationCertificate
   :: forall era m
    . ( C.IsConwayBasedEra era
      , MonadBlockchain era m
@@ -767,7 +767,7 @@ conwayStakeCredentialRegistrationAndDelegationCertificate
   => C.StakeCredential
   -> ConwayTxCert.Delegatee (Ledger.EraCrypto (C.ShelleyLedgerEra era))
   -> m (C.Certificate era)
-conwayStakeCredentialRegistrationAndDelegationCertificate stakeCred delegatee = do
+mkConwayStakeCredentialRegistrationAndDelegationCertificate stakeCred delegatee = do
   deposit <-
     C.conwayEraOnwardsConstraints @era C.conwayBasedEra $
       view (Ledger.ppKeyDepositL @(C.ShelleyLedgerEra era)) . C.unLedgerProtocolParameters <$> queryProtocolParameters
@@ -775,12 +775,12 @@ conwayStakeCredentialRegistrationAndDelegationCertificate stakeCred delegatee = 
   pure cert
 
 -- | Add a 'C.StakeCredential' as a ConwayEra and onwards deregistration certificate to the transaction.
-conwayStakeCredentialUnRegistrationCertificate
+mkConwayStakeCredentialUnRegistrationCertificate
   :: forall era
    . (C.IsConwayBasedEra era)
   => C.StakeCredential
   -> Ledger.Coin
   -- ^ Deposit, if present, must match the amount that was left as a deposit upon stake credential registration.
   -> C.Certificate era
-conwayStakeCredentialUnRegistrationCertificate stakeCred deposit =
+mkConwayStakeCredentialUnRegistrationCertificate stakeCred deposit =
   C.makeStakeAddressUnregistrationCertificate $ C.StakeAddrRegistrationConway C.conwayBasedEra deposit stakeCred

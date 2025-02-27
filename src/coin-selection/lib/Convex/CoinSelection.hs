@@ -63,7 +63,6 @@ import Cardano.Api qualified
 import Cardano.Api.Extras (substituteExecutionUnits)
 import Cardano.Api.Ledger qualified as CLedger
 import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Plutus qualified as C
 import Cardano.Api.Shelley (
   BuildTx,
   ConwayEra,

@@ -67,7 +67,6 @@ library
   -- cardano dependencies
   build-depends:
     , cardano-api
-    , cardano-api:internal
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-slotting

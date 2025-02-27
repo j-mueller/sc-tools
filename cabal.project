@@ -18,8 +18,6 @@ index-state:
   , hackage.haskell.org 2025-02-14T16:51:26Z
   , cardano-haskell-packages 2025-02-14T16:51:26Z
 
-multi-repl: true
-
 -- You never, ever, want this.
 write-ghc-environment-files: never
 
