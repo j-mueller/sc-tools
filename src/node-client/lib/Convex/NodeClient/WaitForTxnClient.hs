@@ -4,8 +4,9 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
--- FIXME (j-mueller) The deprecation warning on Cardano.Api.Block covers the whole type instead of just the view pattern 'Block' that seems to have been intended.
---                   We can remove the flag once that has been fixed
+-- FIXME (j-mueller) The deprecation warning on Cardano.Api.Block covers the
+--  whole type 'Block', but it looks as if the intention was just to cover the
+--  view pattern 'Block'. We can remove the flag once that has been fixed
 {-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- | A node client that waits for a transaction to appear on the chain
