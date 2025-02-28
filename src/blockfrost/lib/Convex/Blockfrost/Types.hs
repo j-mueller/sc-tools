@@ -250,16 +250,6 @@ instance (C.SerialiseAsRawBytes a) => C.SerialiseAsRawBytes (CustomBech32Stake a
   serialiseToRawBytes (CustomBech32Stake a) = C.serialiseToRawBytes a
   deserialiseFromRawBytes _asType = fmap CustomBech32Stake . C.deserialiseFromRawBytes (proxyToAsType Proxy)
 
--- The following two instances of @SerialiseAsBech32@ are used for generating payment credential queries that blockfrost understands
--- See: https://github.com/blockfrost/blockfrost-utils/blob/master/src/validation.ts#L109-L128
--- instance C.SerialiseAsBech32 (CustomBech32Stake (C.Hash C.StakeKey)) where
---   bech32PrefixFor _ = "stake"
---   bech32PrefixesPermitted _ = ["stake"]
-
--- instance C.SerialiseAsBech32 (CustomBech32Stake C.ScriptHash) where
---   bech32PrefixFor _ = "stake"
---   bech32PrefixesPermitted _ = ["stake"]
-
 toStakeAddress :: Address -> Maybe C.StakeAddress
 toStakeAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
 
