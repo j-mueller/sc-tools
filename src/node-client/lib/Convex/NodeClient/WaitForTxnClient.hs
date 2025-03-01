@@ -3,13 +3,19 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
+-- FIXME (j-mueller) The deprecation warning on Cardano.Api.Block covers the
+--  whole type 'Block', but it looks as if the intention was just to cover the
+--  view pattern 'Block'. We can remove the flag once that has been fixed
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- | A node client that waits for a transaction to appear on the chain
 module Convex.NodeClient.WaitForTxnClient (
   runWaitForTxn,
   MonadBlockchainWaitingT (..),
   runMonadBlockchainWaitingT,
-) where
+)
+where
 
 import Cardano.Api (
   BlockInMode,
@@ -82,7 +88,7 @@ applyBlock tmv txi _ () _ block = do
         else pure (Just ())
 
 checkTxIds :: TxId -> C.Block era -> Bool
-checkTxIds txi ((C.Block _ txns)) = any (checkTxId txi) txns
+checkTxIds txi (C.getBlockTxs -> txns) = any (checkTxId txi) txns
 
 checkTxId :: TxId -> C.Tx era -> Bool
 checkTxId txi tx = txi == C.getTxId (C.getTxBody tx)

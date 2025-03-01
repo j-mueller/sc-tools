@@ -203,7 +203,7 @@ foldClient' initialState ledgerStateArgs env applyRollback accumulate = Pipeline
     clientNextN n history =
       ClientStNext
         { recvMsgRollForward = \newBlock@(BlockInMode _ bim) serverChainTip -> do
-            let CAPI.Block bh@(BlockHeader slotNo _blockHash currBlockNo) _ = bim
+            let bh@(BlockHeader slotNo _blockHash currBlockNo) = CAPI.getBlockHeader bim
                 newClientTip = At currBlockNo
                 newServerTip = fromChainTip serverChainTip
                 cu =

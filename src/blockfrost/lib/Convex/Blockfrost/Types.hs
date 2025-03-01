@@ -92,11 +92,9 @@ import Blockfrost.Types.Shared.PolicyId (PolicyId (..))
 import Blockfrost.Types.Shared.Quantity (Quantity (..))
 import Blockfrost.Types.Shared.ScriptHash (ScriptHash (..))
 import Blockfrost.Types.Shared.TxHash (TxHash (..))
-import Cardano.Api (HasTypeProxy (..))
+import Cardano.Api (HasTypeProxy (..), UsingRawBytesHex (..))
 import Cardano.Api.Ledger qualified as C.Ledger
 import Cardano.Api.Ledger qualified as L
-import Cardano.Api.SerialiseBech32 (SerialiseAsBech32 (..))
-import Cardano.Api.SerialiseUsing (UsingRawBytesHex (..))
 import Cardano.Api.Shelley (Lovelace)
 import Cardano.Api.Shelley qualified as C
 import Cardano.Binary (DecoderError (DecoderErrorCustom))
@@ -115,6 +113,7 @@ import Cardano.Slotting.Time (
   SystemStart (..),
   mkSlotLength,
  )
+import Codec.Binary.Bech32 qualified as Bech32
 import Control.Applicative (Alternative (..))
 import Control.Lens (makeClassyPrisms, (&), (.~), (<&>), _4)
 import Control.Monad.Except (
@@ -206,6 +205,18 @@ toAssetId = \case
 toAddress :: (C.IsCardanoEra era) => Address -> Maybe (C.AddressInEra era)
 toAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
 
+serialiseToBech32 :: (C.SerialiseAsRawBytes a) => Text.Text -> a -> Text.Text
+serialiseToBech32 prefix = Bech32.encodeLenient hrPart . Bech32.dataPartFromBytes . C.serialiseToRawBytes
+ where
+  hrPart = case Bech32.humanReadablePartFromText prefix of
+    Right p -> p
+    Left err ->
+      error $
+        "serialiseToBech32: invalid prefix "
+          ++ show prefix
+          ++ ", "
+          ++ show err
+
 -- | Encode the 'C.PaymentCredential' as a blockfrost 'Address'
 
 -- NOTE: The payment credential is only 1/3 of the address (the other parts are network ID and stake credential).
@@ -213,8 +224,8 @@ toAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
 --       See https://github.com/blockfrost/blockfrost-haskell/issues/68
 fromPaymentCredential :: C.PaymentCredential -> Address
 fromPaymentCredential = \case
-  C.PaymentCredentialByKey key -> Address $ C.serialiseToBech32 $ CustomBech32Payment key
-  C.PaymentCredentialByScript script -> Address $ C.serialiseToBech32 $ CustomBech32Payment script
+  C.PaymentCredentialByKey key -> Address $ serialiseToBech32 "addr_vkh" key
+  C.PaymentCredentialByScript script -> Address $ serialiseToBech32 "script" script
 
 newtype CustomBech32Payment a = CustomBech32Payment a
 
@@ -225,16 +236,6 @@ instance (C.HasTypeProxy a) => C.HasTypeProxy (CustomBech32Payment a) where
 instance (C.SerialiseAsRawBytes a) => C.SerialiseAsRawBytes (CustomBech32Payment a) where
   serialiseToRawBytes (CustomBech32Payment a) = C.serialiseToRawBytes a
   deserialiseFromRawBytes _asType = fmap CustomBech32Payment . C.deserialiseFromRawBytes (proxyToAsType Proxy)
-
--- The following two instances of @SerialiseAsBech32@ are used for generating payment credential queries that blockfrost understands
--- See: https://github.com/blockfrost/blockfrost-utils/blob/master/src/validation.ts#L109-L128
-instance C.SerialiseAsBech32 (CustomBech32Payment (C.Hash C.PaymentKey)) where
-  bech32PrefixFor _ = "addr_vkh"
-  bech32PrefixesPermitted _ = ["addr_vkh"]
-
-instance C.SerialiseAsBech32 (CustomBech32Payment C.ScriptHash) where
-  bech32PrefixFor _ = "script"
-  bech32PrefixesPermitted _ = ["script"]
 
 fromStakeAddress :: C.StakeAddress -> Address
 fromStakeAddress = Address . C.serialiseToBech32
@@ -248,16 +249,6 @@ instance (C.HasTypeProxy a) => C.HasTypeProxy (CustomBech32Stake a) where
 instance (C.SerialiseAsRawBytes a) => C.SerialiseAsRawBytes (CustomBech32Stake a) where
   serialiseToRawBytes (CustomBech32Stake a) = C.serialiseToRawBytes a
   deserialiseFromRawBytes _asType = fmap CustomBech32Stake . C.deserialiseFromRawBytes (proxyToAsType Proxy)
-
--- The following two instances of @SerialiseAsBech32@ are used for generating payment credential queries that blockfrost understands
--- See: https://github.com/blockfrost/blockfrost-utils/blob/master/src/validation.ts#L109-L128
-instance C.SerialiseAsBech32 (CustomBech32Stake (C.Hash C.StakeKey)) where
-  bech32PrefixFor _ = "stake"
-  bech32PrefixesPermitted _ = ["stake"]
-
-instance C.SerialiseAsBech32 (CustomBech32Stake C.ScriptHash) where
-  bech32PrefixFor _ = "stake"
-  bech32PrefixesPermitted _ = ["stake"]
 
 toStakeAddress :: Address -> Maybe C.StakeAddress
 toStakeAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text

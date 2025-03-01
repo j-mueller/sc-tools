@@ -145,7 +145,7 @@ runBlockfrostT state proj =
 resolveTx :: (MonadBlockfrost m, MonadError Types.DecodingError m) => C.TxId -> m ResolvedTx
 resolveTx txId = do
   rtxTransaction <- Types.resolveTx txId >>= liftEither
-  let (C.Tx (C.TxBody txBodyContent) _witnesses) = rtxTransaction
+  let (C.Tx (C.getTxBodyContent -> txBodyContent) _witnesses) = rtxTransaction
   let reqTxIns = requiredTxIns txBodyContent
   utxo <- State.evalStateT (MonadBlockchain.getUtxoByTxIn reqTxIns) MonadBlockchain.emptyBlockfrostCache
   pure ResolvedTx{rtxTransaction, rtxInputs = C.unUTxO utxo}

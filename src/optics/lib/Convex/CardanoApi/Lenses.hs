@@ -54,6 +54,7 @@ module Convex.CardanoApi.Lenses (
   _TxExtraKeyWitnesses,
   _TxWithdrawals,
   _TxCertificates,
+  Certificates,
 
   -- ** Validity intervals
   _TxValidityNoLowerBound,
@@ -153,6 +154,8 @@ import Control.Lens (
  )
 import Control.Lens qualified as L
 import Convex.Scripts qualified as Scripts
+import Data.Map.Ordered.Strict (OMap)
+import Data.Map.Ordered.Strict qualified as OMap
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (..))
@@ -355,19 +358,27 @@ _TxWithdrawals = iso from to
   to [] = C.TxWithdrawalsNone
   to xs = C.TxWithdrawals C.shelleyBasedEra xs
 
+type Certificates build era =
+  OMap
+    (C.Certificate era)
+    (BuildTxWith build (Maybe (C.StakeCredential, C.Witness C.WitCtxStake era)))
+
+{- | The shelley-era constructor of 'C.TxCertificates'.
+Consider using 'C.mkTxCertificates' and 'indexTxCertificates'
+instead of constructing the 'Certificates' list directly.
+-}
 _TxCertificates
-  :: forall era
+  :: forall era build
    . (C.IsShelleyBasedEra era)
-  => Iso' (C.TxCertificates BuildTx era) ([C.Certificate era], [(C.StakeCredential, C.Witness C.WitCtxStake era)])
+  => Iso' (C.TxCertificates build era) (Certificates build era)
 _TxCertificates = iso from to
  where
-  from :: C.TxCertificates BuildTx era -> ([C.Certificate era], [(C.StakeCredential, C.Witness C.WitCtxStake era)])
-  from C.TxCertificatesNone = ([], [])
-  from (C.TxCertificates _ x (C.BuildTxWith y)) = (x, y)
+  from :: C.TxCertificates build era -> Certificates build era
+  from (C.TxCertificates _era x) = x
+  from _ = OMap.empty
 
-  to :: ([C.Certificate era], [(C.StakeCredential, C.Witness C.WitCtxStake era)]) -> C.TxCertificates BuildTx era
-  to ([], []) = C.TxCertificatesNone
-  to (x, y) = C.TxCertificates C.shelleyBasedEra x (C.BuildTxWith y)
+  to :: Certificates build era -> C.TxCertificates build era
+  to = C.TxCertificates C.shelleyBasedEra
 
 txAuxScripts :: Lens' (C.TxBodyContent v era) (C.TxAuxScripts era)
 txAuxScripts = lens get set_

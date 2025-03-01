@@ -12,6 +12,9 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+-- FIXME (j-mueller) The deprecation warning on Cardano.Api.Block covers the whole type instead of just the view pattern 'Block' that seems to have been intended.
+--                   We can remove the flag once that has been fixed
+{-# OPTIONS_GHC -Wno-deprecations #-}
 -- FIXME (koslambrou) Remove once we have the newtype for 'AnyCardanoEra TxOut'.
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -608,7 +611,7 @@ extractConway
   -> Maybe AddressCredential
   -> Block ConwayEra
   -> DList (UtxoChangeEvent a)
-extractConway ex state cred (CS.Block _blockHeader txns) = foldMap (extractConwayTxn' ex state cred) txns
+extractConway ex state cred (C.getBlockTxs -> txns) = foldMap (extractConwayTxn' ex state cred) txns
 
 checkOutput :: (C.TxIn -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe a) -> TxId -> Maybe AddressCredential -> TxIx -> C.InAnyCardanoEra (C.TxOut C.CtxTx) -> Maybe (TxIn, (C.InAnyCardanoEra (C.TxOut C.CtxTx), a))
 checkOutput _ex _txid _cred _ (C.InAnyCardanoEra _era (C.TxOut (C.AddressInEra C.ByronAddressInAnyEra _) _ _ _)) = Nothing
@@ -678,7 +681,7 @@ extractBabbage
   -> Maybe AddressCredential
   -> Block BabbageEra
   -> DList (UtxoChangeEvent a)
-extractBabbage ex state cred (CS.Block _blockHeader txns) = foldMap (extractBabbageTxn' ex state cred) txns
+extractBabbage ex state cred (C.getBlockTxs -> txns) = foldMap (extractBabbageTxn' ex state cred) txns
 
 -- | Extract from a transaction the UTXO changes at the given address
 extractBabbageTxn
