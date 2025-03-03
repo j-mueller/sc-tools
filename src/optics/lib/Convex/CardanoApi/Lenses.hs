@@ -408,10 +408,10 @@ _TxInsCollateralIso = iso from to
     [] -> C.TxInsCollateralNone
     xs -> C.TxInsCollateral C.alonzoBasedEra xs
 
-_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId (Map C.AssetName Quantity, BuildTxWith build (ScriptWitness WitCtxMint era)))
+_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId (Map C.AssetName (Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))))
 _TxMintValue = iso from to
  where
-  from :: TxMintValue build era -> Map PolicyId (Map C.AssetName Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))
+  from :: TxMintValue build era -> Map PolicyId (Map C.AssetName (Quantity, BuildTxWith build (ScriptWitness WitCtxMint era)))
   from = \case
     C.TxMintNone -> mempty
     C.TxMintValue _ mp -> fromCapiMap mp
@@ -420,31 +420,24 @@ _TxMintValue = iso from to
     | otherwise = C.TxMintValue C.maryBasedEra $ toCapiMap $ removeZeroEntries mp
 
   toCapiMap =
-    Map.map
-      ( \(innerMap, w) ->
-          map (\(an, q) -> (an, q, w)) $ Map.toList innerMap
-      )
+    Map.map (map (\(an, (q, w)) -> (an, q, w)) . Map.toList)
 
   fromCapiMap =
     -- Remove 0 quantity entries
     removeZeroEntries
       -- Convert to nested map structure
       . Map.map
-        ( \tups ->
-            foldr
-              ( \(an, q, wit) (m, _) ->
-                  (Map.insertWith (+) an q m, wit)
-              )
-              (mempty, L.view L._3 $ head tups)
-              tups
+        ( foldr
+            ( \(an, q, w) m ->
+                Map.insertWith (\(newQ, newWit) (q', _) -> (q' + newQ, newWit)) an (q, w) m
+            )
+            mempty
         )
-      -- Filter out empty lists
-      . Map.filter (not . null)
 
   removeZeroEntries =
     Map.filter
-      ( \(innerMap, _) ->
-          let filteredInner = Map.filter (/= 0) innerMap
+      ( \innerMap ->
+          let filteredInner = Map.filter ((/= 0) . fst) innerMap
            in not $ Map.null filteredInner
       )
 

@@ -338,14 +338,28 @@ is going to loop.
 addInputWithTxBody :: (MonadBuildTx era m) => C.TxIn -> (TxBody era -> C.Witness WitCtxTxIn era) -> m ()
 addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, C.BuildTxWith $ f body) :))
 
+mintTxBodyL
+  :: (Functor f, C.IsMaryBasedEra era)
+  => C.PolicyId
+  -> C.AssetName
+  -> C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era)
+  -> ( (C.Quantity, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era))
+       -> f (C.Quantity, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era))
+     )
+  -> TxBody era
+  -> f (TxBody era)
+mintTxBodyL policy assetName wit = L.txMintValue . L._TxMintValue . at policy . L.non Map.empty . at assetName . L.anon (0, wit) ((== 0) . fst)
+
 addMintWithTxBody :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody era -> C.ScriptWitness C.WitCtxMint era) -> m ()
 addMintWithTxBody policy assetName quantity f =
   let wit body = C.BuildTxWith $ f body
    in addTxBuilder
         ( TxBuilder $ \body ->
             over
-              (L.txMintValue . L._TxMintValue . at policy . L.anon (Map.empty, wit body) (Map.null . fst) . _1 . at assetName . L.non 0)
-              (+ quantity)
+              (mintTxBodyL policy assetName (wit body))
+              ( set _2 (wit body) -- overrides the existing witness
+                  . over _1 (+ quantity)
+              )
         )
 
 addWithdrawalWithTxBody :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.StakeAddress -> C.Quantity -> (TxBody era -> C.Witness C.WitCtxStake era) -> m ()
@@ -532,8 +546,10 @@ mintPlutus script red assetName quantity =
         setScriptsValid
           >> addBtx
             ( over
-                (L.txMintValue . L._TxMintValue . at policyId . L.anon (Map.empty, wit) (Map.null . fst) . _1 . at assetName . L.non 0)
-                (+ quantity)
+                (mintTxBodyL policyId assetName wit)
+                ( set _2 wit -- overrides the existing witness
+                    . over _1 (+ quantity)
+                )
             )
 
 -- | A value containing the given amount of the native asset
@@ -561,7 +577,13 @@ mintPlutusRef refTxIn scrVer sh red assetName quantity =
     let wit = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
         policyId = C.PolicyId sh
      in setScriptsValid
-          >> addBtx (over (L.txMintValue . L._TxMintValue . at policyId . L.anon (Map.empty, wit) (Map.null . fst) . _1 . at assetName . L.non 0) (+ quantity))
+          >> addBtx
+            ( over
+                (mintTxBodyL policyId assetName wit)
+                ( set _2 wit -- overrides the existing witness
+                    . over _1 (+ quantity)
+                )
+            )
           >> addReference refTxIn
 
 mintSimpleScriptAssets :: forall era m. (MonadBuildTx era m, C.IsMaryBasedEra era) => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
