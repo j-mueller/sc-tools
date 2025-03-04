@@ -408,16 +408,38 @@ _TxInsCollateralIso = iso from to
     [] -> C.TxInsCollateralNone
     xs -> C.TxInsCollateral C.alonzoBasedEra xs
 
-_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId [(C.AssetName, Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))])
+_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId (Map C.AssetName (Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))))
 _TxMintValue = iso from to
  where
-  from :: TxMintValue build era -> Map PolicyId [(C.AssetName, Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))]
+  from :: TxMintValue build era -> Map PolicyId (Map C.AssetName (Quantity, BuildTxWith build (ScriptWitness WitCtxMint era)))
   from = \case
     C.TxMintNone -> mempty
-    C.TxMintValue _ mp -> mp
+    C.TxMintValue _ mp -> fromCapiMap mp
   to mp
     | Map.null mp = C.TxMintNone
-    | otherwise = C.TxMintValue C.maryBasedEra mp
+    | otherwise = C.TxMintValue C.maryBasedEra $ toCapiMap $ removeZeroEntries mp
+
+  toCapiMap =
+    Map.map (map (\(an, (q, w)) -> (an, q, w)) . Map.toList)
+
+  fromCapiMap =
+    -- Remove 0 quantity entries
+    removeZeroEntries
+      -- Convert to nested map structure
+      . Map.map
+        ( foldr
+            ( \(an, q, w) m ->
+                Map.insertWith (\(newQ, newWit) (q', _) -> (q' + newQ, newWit)) an (q, w) m
+            )
+            mempty
+        )
+
+  removeZeroEntries =
+    Map.filter
+      ( \innerMap ->
+          let filteredInner = Map.filter ((/= 0) . fst) innerMap
+           in not $ Map.null filteredInner
+      )
 
 _TxInsReferenceIso :: (C.IsBabbageBasedEra era) => Iso' (C.TxInsReference era) [C.TxIn]
 _TxInsReferenceIso = iso from to

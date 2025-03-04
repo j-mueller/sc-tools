@@ -338,10 +338,29 @@ is going to loop.
 addInputWithTxBody :: (MonadBuildTx era m) => C.TxIn -> (TxBody era -> C.Witness WitCtxTxIn era) -> m ()
 addInputWithTxBody txIn f = addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, C.BuildTxWith $ f body) :))
 
+mintTxBodyL
+  :: (Functor f, C.IsMaryBasedEra era)
+  => C.PolicyId
+  -> C.AssetName
+  -> C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era)
+  -> ( (C.Quantity, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era))
+       -> f (C.Quantity, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era))
+     )
+  -> TxBody era
+  -> f (TxBody era)
+mintTxBodyL policy assetName wit = L.txMintValue . L._TxMintValue . at policy . L.non Map.empty . at assetName . L.anon (0, wit) ((== 0) . fst)
+
 addMintWithTxBody :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody era -> C.ScriptWitness C.WitCtxMint era) -> m ()
 addMintWithTxBody policy assetName quantity f =
-  let entry body = (assetName, quantity, C.BuildTxWith $ f body)
-   in addTxBuilder (TxBuilder $ \body -> over (L.txMintValue . L._TxMintValue . at policy . L.anon [] null) ((entry body) :))
+  let wit body = C.BuildTxWith $ f body
+   in addTxBuilder
+        ( TxBuilder $ \body ->
+            over
+              (mintTxBodyL policy assetName (wit body))
+              ( set _2 (wit body) -- overrides the existing witness
+                  . over _1 (+ quantity)
+              )
+        )
 
 addWithdrawalWithTxBody :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.StakeAddress -> C.Quantity -> (TxBody era -> C.Witness C.WitCtxStake era) -> m ()
 addWithdrawalWithTxBody address amount f =
@@ -358,7 +377,7 @@ addStakeWitness
   -> C.Witness C.WitCtxStake era
   -> m ()
 addStakeWitness credential witness =
-  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, witness)))
+  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((credential, witness) :))
 
 -- | Add a stake script witness to the transaction.
 addStakeScriptWitness
@@ -375,7 +394,7 @@ addStakeScriptWitness
 addStakeScriptWitness credential script redeemer = do
   let scriptWitness = buildScriptWitness script C.NoScriptDatumForStake redeemer
   let witness = C.ScriptWitness C.ScriptWitnessForStakeAddr scriptWitness
-  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, witness)))
+  addBtx (over (L.txCertificates . L._TxCertificates . _2) ((credential, witness) :))
 
 -- | Add a stake script reference witness to the transaction.
 addStakeScriptWitnessRef
@@ -400,7 +419,7 @@ TODO Give an example of why this is useful. We should just remove it.
 -}
 addStakeWitnessWithTxBody :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.StakeCredential -> (TxBody era -> C.Witness C.WitCtxStake era) -> m ()
 addStakeWitnessWithTxBody credential buildWitness =
-  addTxBuilder (TxBuilder $ \body -> over (L.txCertificates . L._TxCertificates . _2) ((:) (credential, buildWitness body)))
+  addTxBuilder (TxBuilder $ \body -> over (L.txCertificates . L._TxCertificates . _2) ((credential, buildWitness body) :))
 
 -- | Spend an output locked by a public key
 spendPublicKeyOutput :: (MonadBuildTx era m) => C.TxIn -> m ()
@@ -522,10 +541,16 @@ mintPlutus
 mintPlutus script red assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.plutusScriptVersion script)
       policyId = C.PolicyId sh
-      wit = buildScriptWitness @era script C.NoScriptDatumForMint red
-      entry = (assetName, quantity, C.BuildTxWith wit)
+      wit = C.BuildTxWith $ buildScriptWitness @era script C.NoScriptDatumForMint red
    in inAlonzo @era $
-        setScriptsValid >> addBtx (over (L.txMintValue . L._TxMintValue . at policyId . L.anon [] null) (entry :))
+        setScriptsValid
+          >> addBtx
+            ( over
+                (mintTxBodyL policyId assetName wit)
+                ( set _2 wit -- overrides the existing witness
+                    . over _1 (+ quantity)
+                )
+            )
 
 -- | A value containing the given amount of the native asset
 assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
@@ -549,11 +574,16 @@ mintPlutusRef
   -> m ()
 mintPlutusRef refTxIn scrVer sh red assetName quantity =
   inBabbage @era $
-    let wit = buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
-        entry = (assetName, quantity, C.BuildTxWith wit)
+    let wit = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
         policyId = C.PolicyId sh
      in setScriptsValid
-          >> addBtx (over (L.txMintValue . L._TxMintValue . at policyId . L.anon [] null) (entry :))
+          >> addBtx
+            ( over
+                (mintTxBodyL policyId assetName wit)
+                ( set _2 wit -- overrides the existing witness
+                    . over _1 (+ quantity)
+                )
+            )
           >> addReference refTxIn
 
 mintSimpleScriptAssets :: forall era m. (MonadBuildTx era m, C.IsMaryBasedEra era) => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
