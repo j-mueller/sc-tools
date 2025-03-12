@@ -47,9 +47,11 @@
   nixConfig = {
     extra-substituters = [
       "https://cache.iog.io"
+      "https://sc-tools.cachix.org"
     ];
     extra-trusted-public-keys = [
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
+      "sc-tools.cachix.org-1:DY2+6v0HuMvoCt7wEqZTPqzZBcNk/Lexb72Vixz6n6I="
     ];
     allow-import-from-derivation = true;
   };

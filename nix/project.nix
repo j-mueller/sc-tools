@@ -4,9 +4,6 @@ let
   sha256map = {
   };
 
-  cardano-node = inputs.cardano-node.packages.cardano-node;
-  cardano-cli = inputs.cardano-cli.legacyPackages.cardano-cli;
-
   modules = [
     ({ config, ... }: {
       packages = {
