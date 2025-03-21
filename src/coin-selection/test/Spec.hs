@@ -88,7 +88,6 @@ import Convex.Wallet.Operator (
   signTxOperator,
   verificationKey,
  )
-import Data.Either (isLeft)
 import Data.Foldable (traverse_)
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty (..))
@@ -102,7 +101,7 @@ import Test.Tasty (
   defaultMain,
   testGroup,
  )
-import Test.Tasty.HUnit (Assertion, assertBool, testCase)
+import Test.Tasty.HUnit (Assertion, testCase)
 import Test.Tasty.QuickCheck (
   Property,
   classify,
@@ -450,7 +449,6 @@ registerStakeCredentialNoWitness
      , MonadError (BalanceTxError era) m
      , MonadFail m
      , C.IsConwayBasedEra era
-     , C.HasScriptLanguageInEra C.PlutusScriptV2 era
      )
   => m C.TxIn
 registerStakeCredentialNoWitness = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
