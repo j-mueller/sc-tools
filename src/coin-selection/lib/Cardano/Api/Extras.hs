@@ -143,7 +143,21 @@ substituteExecutionUnits
       -> Either (C.TxBodyErrorAutoBalance era) (C.TxCertificates BuildTx era)
     mapScriptWitnessesCertificates C.TxCertificatesNone = Right C.TxCertificatesNone
     mapScriptWitnessesCertificates txCertificates'@(C.TxCertificates supported _) = do
-      let mappedScriptWitnesses
+      let indexAndAdjustScriptCertificates C.TxCertificatesNone = []
+          indexAndAdjustScriptCertificates (C.TxCertificates _ certs) =
+            [ (cert, eWitness)
+            | (ix, (cert, C.BuildTxWith mWitness)) <- zip [0 ..] (toList certs)
+            , let eWitness = case mWitness of
+                    Nothing -> pure $ C.BuildTxWith Nothing
+                    Just (stakeCred, witness) ->
+                      let adjustedWitness =
+                            adjustScriptWitness
+                              (substituteExecUnits $ C.ScriptWitnessIndexCertificate ix)
+                              witness
+                       in C.BuildTxWith . Just . (stakeCred,) <$> adjustedWitness
+            ]
+
+          mappedScriptWitnesses
             :: [ ( C.Certificate era
                  , Either
                     (C.TxBodyErrorAutoBalance era)
@@ -157,12 +171,19 @@ substituteExecutionUnits
                     )
                  )
                ]
-          mappedScriptWitnesses =
-            [ (cert, C.BuildTxWith . Just . (stakeCred,) <$> eWitness')
-            | (ix, cert, stakeCred, witness) <- indexTxCertificates txCertificates'
-            , let eWitness' = adjustScriptWitness (substituteExecUnits ix) witness
-            ]
-      C.TxCertificates supported . fromList <$> traverseScriptWitnesses mappedScriptWitnesses
+          -- NOTE: This was implemented using Cardano.Api internal functions
+          -- below. But this implementation (within `indexTxCertificates`) incorrectly filters out
+          -- Certificates with Nothing as witness. This means that TxRegCert
+          -- certificates for example will be removed from the resulting mapped
+          -- TxBodyContent.
+          -- [ (ix, cert, C.BuildTxWith . Just . (stakeCred,) <$> eWitness')
+          -- \| (ix, cert, stakeCred, witness) <- indexTxCertificates txCertificates'
+          -- , let eWitness' = adjustScriptWitness (substituteExecUnits ix) witness
+          -- ]
+          mappedScriptWitnesses = indexAndAdjustScriptCertificates txCertificates'
+
+      C.TxCertificates supported . fromList
+        <$> traverseScriptWitnesses mappedScriptWitnesses
 
     mapScriptWitnessesVotes
       :: Maybe (C.Featured C.ConwayEraOnwards era (C.TxVotingProcedures build era))
@@ -247,14 +268,17 @@ indexTxWithdrawals (C.TxWithdrawals _ withdrawals) =
 are multiple witnesses for the credential, there will be multiple entries for
 See section 4.1 of https://github.com/intersectmbo/cardano-ledger/releases/latest/download/alonzo-ledger.pdf
 -}
-indexTxCertificates
-  :: C.TxCertificates BuildTx era
-  -> [(C.ScriptWitnessIndex, C.Certificate era, C.StakeCredential, C.Witness C.WitCtxStake era)]
-indexTxCertificates C.TxCertificatesNone = []
-indexTxCertificates (C.TxCertificates _ certsWits) =
-  [ (C.ScriptWitnessIndexCertificate ix, cert, stakeCred, witness)
-  | (ix, (cert, C.BuildTxWith (Just (stakeCred, witness)))) <- zip [0 ..] $ toList certsWits
-  ]
+
+-- Commented out as use resulted in removal of no witness certificates. See
+-- note on `mapScriptWitnessesCertificates`
+-- indexTxCertificates
+--   :: C.TxCertificates BuildTx era
+--   -> [(C.ScriptWitnessIndex, C.Certificate era, C.StakeCredential, C.Witness C.WitCtxStake era)]
+-- indexTxCertificates C.TxCertificatesNone = []
+-- indexTxCertificates (C.TxCertificates _ certsWits) =
+--   [ (C.ScriptWitnessIndexCertificate ix, cert, stakeCred, witness)
+--   | (ix, (cert, C.BuildTxWith (Just (stakeCred, witness)))) <- zip [0 ..] $ toList certsWits
+--   ]
 
 -- | Index voting procedures by the order of the votes ('Ord').
 indexTxVotingProcedures

@@ -11,6 +11,7 @@ import Cardano.Ledger.Api qualified as Ledger
 import Cardano.Ledger.BaseTypes (Mismatch (..))
 import Cardano.Ledger.Conway.Rules qualified as Rules
 import Cardano.Ledger.Shelley.API (ApplyTxError (..))
+import Cardano.Ledger.Shelley.TxCert qualified as TxCert
 import Control.Lens (view, (&), (.~), (^.), _3, _4)
 import Control.Monad (replicateM, void, when)
 import Control.Monad.Except (MonadError, runExceptT)
@@ -88,6 +89,7 @@ import Convex.Wallet.Operator (
   verificationKey,
  )
 import Data.Foldable (traverse_)
+import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -144,6 +146,7 @@ tests =
     , testGroup
         "staking"
         [ testCase "register a script staking credential with ConwayCert" (mockchainSucceeds $ failOnError registerScriptStakingCredential)
+        , testCase "register stake credential with ConwayCert without witness" (mockchainSucceeds $ failOnError registerStakeCredentialNoWitness)
         , testCase "withdrawal zero trick with ConwayCert" (mockchainSucceeds $ failOnError withdrawZeroTrick)
         , testCase "register a stake pool" (mockchainSucceeds $ failOnError $ registerPool Wallet.w1)
         , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
@@ -440,6 +443,25 @@ registerScriptStakingCredential = C.conwayEraOnwardsConstraints @era C.conwayBas
     BuildTx.addStakeScriptWitness cert scriptStakingCredential Scripts.v2StakingScript ()
   C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
+registerStakeCredentialNoWitness
+  :: forall era m
+   . ( MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     )
+  => m C.TxIn
+registerStakeCredentialNoWitness = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
+  txBody <- BuildTx.execBuildTxT $ do
+    let cert :: C.Certificate era = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ C.ConwayCertificate C.conwayBasedEra $ TxCert.RegTxCert $ C.toShelleyStakeCredential scriptStakingCredential
+    BuildTx.addCertificate cert
+  txi <- C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
+  balanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] >>= \case
+    Left e | List.isInfixOf "StakeKeyRegisteredDELEG" (show e) -> pure ()
+    Left e -> fail $ "Expected StakeKeyRegisteredDELEG error, got" <> show e
+    Right _ -> fail "Expected failure when registering twice"
+  pure txi
+
 withdrawZeroTrick
   :: forall era m
    . ( MonadIO m
@@ -452,7 +474,6 @@ withdrawZeroTrick
   => m ()
 withdrawZeroTrick = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
   void registerScriptStakingCredential
-
   txBody <- execBuildTxT (BuildTx.addWithdrawZeroPlutusV2InTransaction Scripts.v2StakingScript ())
   txI <- C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
   singleUTxO txI >>= \case
