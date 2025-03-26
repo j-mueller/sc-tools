@@ -11,6 +11,7 @@ in
   packages = [
     cardano-cli
     cardano-node
+    pkgs.ghcid
   ];
 
   env = {

@@ -122,6 +122,8 @@ test-suite convex-devnet-test
     , cardano-api
     , cardano-ledger-api
     , cardano-ledger-core
+    , cardano-slotting
+    , ouroboros-consensus
     , ouroboros-consensus-cardano
     , ouroboros-consensus-protocol
     , plutus-core
@@ -136,5 +138,7 @@ test-suite convex-devnet-test
     , filepath
     , lens
     , mtl
+    , primitive
     , tasty
     , tasty-hunit
+    , time

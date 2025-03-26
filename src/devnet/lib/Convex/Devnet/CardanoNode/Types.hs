@@ -59,7 +59,7 @@ data PortsConfig = PortsConfig
 
 -- | Default value for 'PortsConfig'
 defaultPortsConfig :: PortsConfig
-defaultPortsConfig = PortsConfig 3001 []
+defaultPortsConfig = PortsConfig 3021 []
 
 -- | Describes a running pool node
 data RunningNode = RunningNode
