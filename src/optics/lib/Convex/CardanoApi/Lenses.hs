@@ -154,6 +154,7 @@ import Control.Lens (
  )
 import Control.Lens qualified as L
 import Convex.Scripts qualified as Scripts
+import Data.Bifunctor (first)
 import Data.Map.Ordered.Strict (OMap)
 import Data.Map.Ordered.Strict qualified as OMap
 import Data.Map.Strict (Map)
@@ -419,36 +420,32 @@ _TxInsCollateralIso = iso from to
     [] -> C.TxInsCollateralNone
     xs -> C.TxInsCollateral C.alonzoBasedEra xs
 
-_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId (Map C.AssetName (Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))))
+_TxMintValue :: forall era build. (C.IsMaryBasedEra era) => Iso' (TxMintValue build era) (Map PolicyId (Map C.AssetName C.Quantity, BuildTxWith build (ScriptWitness WitCtxMint era)))
 _TxMintValue = iso from to
  where
-  from :: TxMintValue build era -> Map PolicyId (Map C.AssetName (Quantity, BuildTxWith build (ScriptWitness WitCtxMint era)))
+  from :: TxMintValue build era -> Map PolicyId (Map C.AssetName C.Quantity, BuildTxWith build (ScriptWitness WitCtxMint era))
   from = \case
     C.TxMintNone -> mempty
     C.TxMintValue _ mp -> fromCapiMap mp
   to mp
     | Map.null mp = C.TxMintNone
-    | otherwise = C.TxMintValue C.maryBasedEra $ toCapiMap $ removeZeroEntries mp
+    | otherwise = C.TxMintValue C.maryBasedEra $ toCapiMap mp
 
-  toCapiMap =
-    Map.map (map (\(an, (q, w)) -> (an, q, w)) . Map.toList)
+  toCapiMap = Map.map (first C.PolicyAssets) . removeZeroEntries
 
   fromCapiMap =
     -- Remove 0 quantity entries
     removeZeroEntries
       -- Convert to nested map structure
       . Map.map
-        ( foldr
-            ( \(an, q, w) m ->
-                Map.insertWith (\(newQ, newWit) (q', _) -> (q' + newQ, newWit)) an (q, w) m
-            )
-            mempty
+        ( \(C.PolicyAssets innerMap, wit) ->
+            (innerMap, wit)
         )
 
   removeZeroEntries =
     Map.filter
-      ( \innerMap ->
-          let filteredInner = Map.filter ((/= 0) . fst) innerMap
+      ( \(innerMap, _wit) ->
+          let filteredInner = Map.filter (/= 0) innerMap
            in not $ Map.null filteredInner
       )
 

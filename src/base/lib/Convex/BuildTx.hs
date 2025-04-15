@@ -338,12 +338,12 @@ mintTxBodyL
   => C.PolicyId
   -> C.AssetName
   -> C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era)
-  -> ( (C.Quantity, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era))
-       -> f (C.Quantity, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era))
-     )
+  -> (C.Quantity -> f C.Quantity)
   -> TxBody era
   -> f (TxBody era)
-mintTxBodyL policy assetName wit = L.txMintValue . L._TxMintValue . at policy . L.non Map.empty . at assetName . L.anon (0, wit) ((== 0) . fst)
+mintTxBodyL policy assetName wit =
+  -- NOTE: witness is not overriden everytime we call mintTxBodyL. Should we override or keep the first?
+  L.txMintValue . L._TxMintValue . at policy . L.anon (mempty, wit) (Map.null . fst) . _1 . at assetName . L.non 0
 
 addMintWithTxBody :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody era -> C.ScriptWitness C.WitCtxMint era) -> m ()
 addMintWithTxBody policy assetName quantity f =
@@ -352,9 +352,7 @@ addMintWithTxBody policy assetName quantity f =
         ( TxBuilder $ \body ->
             over
               (mintTxBodyL policy assetName (wit body))
-              ( set _2 (wit body) -- overrides the existing witness
-                  . over _1 (+ quantity)
-              )
+              (+ quantity)
         )
 
 addWithdrawalWithTxBody :: (MonadBuildTx era m, C.IsShelleyBasedEra era) => C.StakeAddress -> C.Quantity -> (TxBody era -> C.Witness C.WitCtxStake era) -> m ()
@@ -535,9 +533,7 @@ mintPlutus script red assetName quantity =
           >> addBtx
             ( over
                 (mintTxBodyL policyId assetName wit)
-                ( set _2 wit -- overrides the existing witness
-                    . over _1 (+ quantity)
-                )
+                (+ quantity)
             )
 
 -- | A value containing the given amount of the native asset
@@ -568,9 +564,7 @@ mintPlutusRef refTxIn scrVer sh red assetName quantity =
           >> addBtx
             ( over
                 (mintTxBodyL policyId assetName wit)
-                ( set _2 wit -- overrides the existing witness
-                    . over _1 (+ quantity)
-                )
+                (+ quantity)
             )
           >> addReference refTxIn
 

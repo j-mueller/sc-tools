@@ -233,11 +233,11 @@ substituteExecutionUnits
     mapScriptWitnessesMinting C.TxMintNone = Right C.TxMintNone
     mapScriptWitnessesMinting txMintValue'@(C.TxMintValue w _) = do
       let mappedScriptWitnesses =
-            [ (policyId, pure . (assetName',quantity,) <$> substitutedWitness)
-            | (ix, policyId, assetName', quantity, C.BuildTxWith witness) <- C.indexTxMintValue txMintValue'
+            [ (policyId, (policyAssets,) <$> substitutedWitness)
+            | (ix, policyId, policyAssets, C.BuildTxWith witness) <- C.indexTxMintValue txMintValue'
             , let substitutedWitness = C.BuildTxWith <$> substituteExecUnits ix witness
             ]
-      final <- Map.fromListWith (<>) <$> traverseScriptWitnesses mappedScriptWitnesses
+      final <- fromList <$> traverseScriptWitnesses mappedScriptWitnesses
       pure $ C.TxMintValue w final
 
 {- | Index transaction inputs ordered by TxIn
