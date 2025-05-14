@@ -31,31 +31,16 @@ module Convex.NodeQueries (
   queryLocalState,
   queryProtocolParameters,
   queryProtocolParametersUpdate,
-  queryStakePools,
   queryStakeAddresses,
+  queryStakePools,
+  queryStakeVoteDelegatees,
   queryUTxOFilter,
 ) where
 
-import Cardano.Api (
-  AnyCardanoEra,
-  BlockNo,
-  ChainPoint,
-  ConsensusModeParams (..),
-  Env (..),
-  EpochSlots (..),
-  EraHistory,
-  InitialLedgerStateError,
-  LocalNodeConnectInfo (..),
-  NetworkId (Mainnet, Testnet),
-  NetworkMagic (..),
-  Quantity,
-  SlotNo,
-  SystemStart,
-  envSecurityParam,
- )
-import Cardano.Api qualified as CAPI
+import Cardano.Api qualified as C
 import Cardano.Api.Experimental (Era)
 import Cardano.Api.Experimental qualified as C.Experimental
+import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley (
   PoolId,
   StakeAddress,
@@ -121,7 +106,7 @@ data QueryException
   | -- | Mismatch between node era and query era
     QueryEraMismatchException EraMismatch
   | -- | Attempting to query the node in an era that is not one of the supported eras
-    QueryEraNotSupported CAPI.AnyCardanoEra
+    QueryEraNotSupported C.AnyCardanoEra
   deriving (Eq, Show)
 
 instance Exception QueryException
@@ -136,14 +121,14 @@ instance Exception TimeException
 
 -- | Load the node config file and create 'LocalNodeConnectInfo' and 'Env' values that can be used to talk to the node.
 loadConnectInfo
-  :: (MonadError InitialLedgerStateError m, MonadIO m)
+  :: (MonadError C.InitialLedgerStateError m, MonadIO m)
   => FilePath
   -- ^ Node config file (JSON)
   -> FilePath
   -- ^ Node socket
-  -> m (LocalNodeConnectInfo, Env)
+  -> m (C.LocalNodeConnectInfo, C.Env)
 loadConnectInfo nodeConfigFilePath socketPath = do
-  (env, _) <- liftIO (runExceptT (CAPI.initialLedgerState (CAPI.File nodeConfigFilePath))) >>= either throwError pure
+  (env, _) <- liftIO (runExceptT (C.initialLedgerState (C.File nodeConfigFilePath))) >>= either throwError pure
 
   -- Derive the NetworkId as described in network-magic.md from the
   -- cardano-ledger-specs repo.
@@ -151,69 +136,69 @@ loadConnectInfo nodeConfigFilePath socketPath = do
         (\(Consensus.WrapPartialLedgerConfig (Consensus.ByronPartialLedgerConfig bc _) :* _) -> bc)
           . HFC.getPerEraLedgerConfig
           . HFC.hardForkLedgerConfigPerEra
-          $ envLedgerConfig env
+          $ C.envLedgerConfig env
 
       networkMagic =
         getProtocolMagic $
           Cardano.Chain.Genesis.configProtocolMagic byronConfig
 
       networkId = case Cardano.Chain.Genesis.configReqNetMagic byronConfig of
-        RequiresNoMagic -> Mainnet
-        RequiresMagic -> Testnet (NetworkMagic networkMagic)
+        RequiresNoMagic -> C.Mainnet
+        RequiresMagic -> C.Testnet (C.NetworkMagic networkMagic)
 
-      localConsensusModeParams = CardanoModeParams . EpochSlots $ 10 * envSecurityParam env
+      localConsensusModeParams = C.CardanoModeParams . C.EpochSlots $ 10 * C.envSecurityParam env
 
   -- Connect to the node.
-  let connectInfo :: LocalNodeConnectInfo
+  let connectInfo :: C.LocalNodeConnectInfo
       connectInfo =
-        LocalNodeConnectInfo
-          { localConsensusModeParams
-          , localNodeNetworkId = networkId
-          , localNodeSocketPath = CAPI.File socketPath
+        C.LocalNodeConnectInfo
+          { C.localConsensusModeParams
+          , C.localNodeNetworkId = networkId
+          , C.localNodeSocketPath = C.File socketPath
           }
   pure (connectInfo, env)
 
 {- | 'LocalNodeConnectInfo' for a network ID and a socket path,
-    assuming default values for the 'CAPI.ConsensusModeParams'.
+    assuming default values for the 'C.ConsensusModeParams'.
     Cf. 'loadConnectInfo' which constructs the 'LocalNodeConnectInfo'
     based on a node configuration file
 -}
-localNodeConnectInfo :: NetworkId -> FilePath -> LocalNodeConnectInfo
-localNodeConnectInfo localNodeNetworkId (CAPI.File -> localNodeSocketPath) =
-  LocalNodeConnectInfo
-    { localConsensusModeParams = cardanoModeParams
-    , localNodeNetworkId
-    , localNodeSocketPath
+localNodeConnectInfo :: C.NetworkId -> FilePath -> C.LocalNodeConnectInfo
+localNodeConnectInfo localNodeNetworkId (C.File -> localNodeSocketPath) =
+  C.LocalNodeConnectInfo
+    { C.localConsensusModeParams = cardanoModeParams
+    , C.localNodeNetworkId
+    , C.localNodeSocketPath
     }
 
-cardanoModeParams :: CAPI.ConsensusModeParams
-cardanoModeParams = CAPI.CardanoModeParams $ CAPI.EpochSlots defaultByronEpochSlots
+cardanoModeParams :: C.ConsensusModeParams
+cardanoModeParams = C.CardanoModeParams $ C.EpochSlots defaultByronEpochSlots
  where
   -- NOTE(AB): extracted from Parsers in cardano-cli, this is needed to run in 'cardanoMode' which
   -- is the default for cardano-cli
   defaultByronEpochSlots = 21600 :: Word64
 
 -- | Get the system start from the local cardano node
-querySystemStart :: LocalNodeConnectInfo -> IO SystemStart
-querySystemStart = queryLocalState CAPI.QuerySystemStart
+querySystemStart :: C.LocalNodeConnectInfo -> IO C.SystemStart
+querySystemStart = queryLocalState C.QuerySystemStart
 
 -- | Get the era history from the local cardano node
-queryEraHistory :: LocalNodeConnectInfo -> IO EraHistory
-queryEraHistory = queryLocalState CAPI.QueryEraHistory
+queryEraHistory :: C.LocalNodeConnectInfo -> IO C.EraHistory
+queryEraHistory = queryLocalState C.QueryEraHistory
 
 -- | Get the chain point from the local cardano node
-queryChainPoint :: LocalNodeConnectInfo -> IO ChainPoint
-queryChainPoint = queryLocalState CAPI.QueryChainPoint
+queryChainPoint :: C.LocalNodeConnectInfo -> IO C.ChainPoint
+queryChainPoint = queryLocalState C.QueryChainPoint
 
 {- | Get the tip (slot no and block hash) as well as the length of the current slot
   Throws at least 'TimeException' if the time conversion fails and 'QueryException'
   if the node query fails.
 -}
-queryTip :: LocalNodeConnectInfo -> IO (SlotNo, SlotLength, CAPI.Hash CAPI.BlockHeader)
+queryTip :: C.LocalNodeConnectInfo -> IO (C.SlotNo, SlotLength, C.Hash C.BlockHeader)
 queryTip connectInfo =
   queryChainPoint connectInfo >>= \case
-    CAPI.ChainPointAtGenesis -> throwIO ChainPointAtGenesisFailure
-    CAPI.ChainPoint slot hsh -> do
+    C.ChainPointAtGenesis -> throwIO ChainPointAtGenesisFailure
+    C.ChainPoint slot hsh -> do
       sl <- querySlotLength connectInfo slot
       pure (slot, sl, hsh)
 
@@ -221,30 +206,30 @@ queryTip connectInfo =
   Throws at least 'TimeException' if the time conversion fails and 'QueryException'
   if the node query fails.
 -}
-queryTipSlotNo :: LocalNodeConnectInfo -> IO (SlotNo, SlotLength)
+queryTipSlotNo :: C.LocalNodeConnectInfo -> IO (C.SlotNo, SlotLength)
 queryTipSlotNo = fmap (\(s, l, _) -> (s, l)) . queryTip
 
-querySlotLength :: LocalNodeConnectInfo -> SlotNo -> IO SlotLength
+querySlotLength :: C.LocalNodeConnectInfo -> C.SlotNo -> IO SlotLength
 querySlotLength connectInfo slotNo = do
-  CAPI.EraHistory interpreter <- queryEraHistory connectInfo
+  C.EraHistory interpreter <- queryEraHistory connectInfo
   case interpretQuery interpreter (slotToSlotLength slotNo) of
     Left err -> throwIO $ TimePastHorizonException err
-    Right slength -> pure $ slength
+    Right slength -> pure slength
 
 -- | Get the block number from the local cardano node
-queryTipBlock :: LocalNodeConnectInfo -> IO (WithOrigin BlockNo)
-queryTipBlock = queryLocalState CAPI.QueryChainBlockNo
+queryTipBlock :: C.LocalNodeConnectInfo -> IO (WithOrigin C.BlockNo)
+queryTipBlock = queryLocalState C.QueryChainBlockNo
 
 -- | Get the node's era from the local cardano node
-queryEra :: LocalNodeConnectInfo -> IO AnyCardanoEra
-queryEra = queryLocalState CAPI.QueryCurrentEra
+queryEra :: C.LocalNodeConnectInfo -> IO C.AnyCardanoEra
+queryEra = queryLocalState C.QueryCurrentEra
 
 {- | Run a local state query on the local cardano node, using the volatile tip
   Throws 'QueryException' if connection to the node cannot be acquired
 -}
-queryLocalState :: CAPI.QueryInMode b -> LocalNodeConnectInfo -> IO b
+queryLocalState :: C.QueryInMode b -> C.LocalNodeConnectInfo -> IO b
 queryLocalState query connectInfo = do
-  runExceptT (CAPI.queryNodeLocalState connectInfo T.VolatileTip query) >>= \case
+  runExceptT (C.queryNodeLocalState connectInfo T.VolatileTip query) >>= \case
     Left err -> do
       throwIO $ QueryAcquireException $ show err
     Right result -> pure result
@@ -254,14 +239,14 @@ queryLocalState query connectInfo = do
 -- | Era-specific query with an era-independent result
 data EraQuery era result
   = forall eraResult. EraQuery
-  { eqQuery :: CAPI.QueryInShelleyBasedEra era eraResult
+  { eqQuery :: C.QueryInShelleyBasedEra era eraResult
   , eqResult :: eraResult -> result
   }
 
 -- | Run an 'EraQuery', throwing 'QueryException' if the node's era does not match the query era
-runEraQuery :: (CAPI.IsShelleyBasedEra era) => LocalNodeConnectInfo -> EraQuery era result -> IO result
+runEraQuery :: (C.IsShelleyBasedEra era) => C.LocalNodeConnectInfo -> EraQuery era result -> IO result
 runEraQuery connectInfo EraQuery{eqQuery, eqResult} =
-  queryLocalState (CAPI.QueryInEra $ CAPI.QueryInShelleyBasedEra CAPI.shelleyBasedEra eqQuery) connectInfo >>= \case
+  queryLocalState (C.QueryInEra $ C.QueryInShelleyBasedEra C.shelleyBasedEra eqQuery) connectInfo >>= \case
     Left eraMismatch -> throwIO (QueryEraMismatchException eraMismatch)
     Right x -> pure (eqResult x)
 
@@ -270,65 +255,75 @@ runEraQuery connectInfo EraQuery{eqQuery, eqResult} =
   if the node's era is not one of the supported eras, or if the node's
   era changes between us asking for the era and sending the era-specific query
 -}
-queryInSupportedEra :: LocalNodeConnectInfo -> (forall era. Era era -> EraQuery era result) -> IO result
+queryInSupportedEra :: C.LocalNodeConnectInfo -> (forall era. Era era -> EraQuery era result) -> IO result
 queryInSupportedEra connectInfo qry = do
   queryEra connectInfo >>= \case
-    CAPI.AnyCardanoEra CAPI.BabbageEra -> runEraQuery connectInfo (qry C.Experimental.BabbageEra)
-    CAPI.AnyCardanoEra CAPI.ConwayEra -> runEraQuery connectInfo (qry C.Experimental.ConwayEra)
+    C.AnyCardanoEra C.BabbageEra -> runEraQuery connectInfo (qry C.Experimental.BabbageEra)
+    C.AnyCardanoEra C.ConwayEra -> runEraQuery connectInfo (qry C.Experimental.ConwayEra)
     era -> throwIO (QueryEraNotSupported era)
 
 {- | Get the conway protocol parameters from the local cardano node
   Throws 'QueryException' if the node's era is not conway or if the connection
   to the node cannot be acquired
 -}
-queryProtocolParameters :: LocalNodeConnectInfo -> IO (PParams StandardConway)
+queryProtocolParameters :: C.LocalNodeConnectInfo -> IO (PParams StandardConway)
 queryProtocolParameters connectInfo =
   runEraQuery connectInfo $
-    EraQuery{eqQuery = CAPI.QueryProtocolParameters, eqResult = id}
+    EraQuery{eqQuery = C.QueryProtocolParameters, eqResult = id}
 
 {- | Get all the protocol parameter updates from the local cardano node
   Throws 'QueryException' if the node's era is not conway or if the connection
   to the node cannot be acquired
 -}
-queryProtocolParametersUpdate :: LocalNodeConnectInfo -> IO (Map (CAPI.Hash CAPI.GenesisKey) CAPI.ProtocolParametersUpdate)
+queryProtocolParametersUpdate :: C.LocalNodeConnectInfo -> IO (Map (C.Hash C.GenesisKey) C.ProtocolParametersUpdate)
 queryProtocolParametersUpdate connectInfo =
-  runEraQuery @CAPI.ConwayEra connectInfo $
-    EraQuery{eqQuery = CAPI.QueryProtocolParametersUpdate, eqResult = id}
+  runEraQuery @C.ConwayEra connectInfo $
+    EraQuery{eqQuery = C.QueryProtocolParametersUpdate, eqResult = id}
 
 {- | Get the stake and the IDs of the stake pool for a set of stake credentials
   Throws 'QueryException' if the node's era is not supported or if the connection
   to the node cannot be acquired
 -}
-queryStakeAddresses :: LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeAddress Quantity, Map StakeAddress PoolId)
+queryStakeAddresses :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeAddress C.Quantity, Map StakeAddress PoolId)
 queryStakeAddresses info creds = do
-  let LocalNodeConnectInfo{localNodeNetworkId} = info
+  let C.LocalNodeConnectInfo{C.localNodeNetworkId} = info
   queryInSupportedEra info $ \case
-    C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
-    C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap CAPI.lovelaceToQuantity)}
+    C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
+    C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
 
 {- | Get the set of registered stake pools
   Throws 'QueryException' if the node's era is not supported or if the connection
   to the node cannot be acquired
 -}
-queryStakePools :: LocalNodeConnectInfo -> IO (Set PoolId)
+queryStakePools :: C.LocalNodeConnectInfo -> IO (Set PoolId)
 queryStakePools connectInfo = queryInSupportedEra connectInfo $ \case
-  C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryStakePools, eqResult = id}
-  C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryStakePools, eqResult = id}
+  C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
+  C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
+
+{- | Get the delegatees for a set of stake credentials (only works starting at ConwayEra).
+  Throws 'QueryException' if the node's era is not supported or if the connection
+  to the node cannot be acquired.
+-}
+queryStakeVoteDelegatees :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeCredential (Ledger.DRep Ledger.StandardCrypto))
+queryStakeVoteDelegatees info creds = do
+  queryInSupportedEra info $ \case
+    C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
+    C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
 
 {- | Get the current epoch
   Throws 'QueryException' if the node's era is not supported or if the connection
   to the node cannot be acquired
 -}
-queryEpoch :: LocalNodeConnectInfo -> IO CAPI.EpochNo
+queryEpoch :: C.LocalNodeConnectInfo -> IO C.EpochNo
 queryEpoch connectInfo = queryInSupportedEra connectInfo $ \case
-  C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryEpoch, eqResult = id}
-  C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryEpoch, eqResult = id}
+  C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
+  C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
 
 {- | Query UTxO for all given addresses at given point.
   Throws 'QueryException' if the node's era is not supported or if the connection
   to the node cannot be acquired
 -}
-queryUTxOFilter :: LocalNodeConnectInfo -> CAPI.QueryUTxOFilter -> IO (UtxoSet CAPI.CtxUTxO ())
+queryUTxOFilter :: C.LocalNodeConnectInfo -> C.QueryUTxOFilter -> IO (UtxoSet C.CtxUTxO ())
 queryUTxOFilter connectInfo flt = queryInSupportedEra connectInfo $ \case
-  C.Experimental.BabbageEra -> EraQuery{eqQuery = CAPI.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
-  C.Experimental.ConwayEra -> EraQuery{eqQuery = CAPI.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
+  C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
+  C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}

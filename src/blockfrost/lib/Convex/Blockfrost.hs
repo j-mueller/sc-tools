@@ -1,9 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -107,8 +105,9 @@ instance (MonadIO m) => MonadBlockchain C.ConwayEra (BlockfrostT m) where
   sendTx = MonadBlockchain.sendTxBlockfrost
   utxoByTxIn = BlockfrostT . MonadBlockchain.getUtxoByTxIn
   queryProtocolParameters = BlockfrostT MonadBlockchain.getProtocolParams
-  queryStakeAddresses s _ = BlockfrostT (MonadBlockchain.getStakeAddresses s)
+  queryStakeAddresses stakeCreds _ = BlockfrostT (MonadBlockchain.getStakeAddresses stakeCreds)
   queryStakePools = BlockfrostT MonadBlockchain.getStakePools
+  queryStakeVoteDelegatees stakeCreds = BlockfrostT (MonadBlockchain.getStakeVoteDelegatees stakeCreds)
   querySystemStart = BlockfrostT MonadBlockchain.getSystemStart
   queryEraHistory = BlockfrostT MonadBlockchain.getEraHistory
   querySlotNo = BlockfrostT MonadBlockchain.getSlotNo
