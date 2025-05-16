@@ -116,7 +116,7 @@ balanceAndSubmitReturn
 balanceAndSubmitReturn tracer node wallet returnOutput tx changePosition keys = do
   utxos <- walletUtxos node wallet
   runningNodeBlockchain tracer node $ do
-    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn @era mempty wallet utxos returnOutput tx changePosition)
+    (C.Tx body wit, _) <- failOnError (CoinSelection.balanceForWalletReturn @era @(CoinSelection.BalanceTxError era) mempty wallet utxos returnOutput tx changePosition)
     let wit' = (C.makeShelleyKeyWitness C.shelleyBasedEra body <$> keys) ++ wit
         tx' = C.makeSignedTransaction wit' body
 
