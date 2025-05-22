@@ -9,6 +9,7 @@ import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as Ledger
 import Cardano.Ledger.BaseTypes (Mismatch (..))
+import Cardano.Ledger.Conway.PParams qualified as Ledger
 import Cardano.Ledger.Conway.Rules qualified as Rules
 import Cardano.Ledger.Shelley.API (ApplyTxError (..))
 import Cardano.Ledger.Shelley.TxCert qualified as TxCert
@@ -150,6 +151,7 @@ tests =
         , testCase "withdrawal zero trick with ConwayCert" (mockchainSucceeds $ failOnError withdrawZeroTrick)
         , testCase "register a stake pool" (mockchainSucceeds $ failOnError $ registerPool Wallet.w1)
         , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
+        , testCase "query stake vote delegatees" (mockchainSucceeds $ failOnError queryStakeVoteDelegateesTest)
         , testCase "stake key withdrawal" (mockchainSucceeds $ failOnError stakeKeyWithdrawalTest)
         ]
     ]
@@ -534,6 +536,49 @@ queryStakeAddressesTest = do
 
   when (length delegations /= 1) $ fail "Expected 1 delegation"
   when (length rewards /= 1) $ fail "Expected 1 reward"
+
+queryStakeVoteDelegateesTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
+queryStakeVoteDelegateesTest = do
+  stakeKey <- C.generateSigningKey C.AsStakeKey
+  let stakeCred = C.StakeCredentialByKey $ C.verificationKeyHash $ C.getVerificationKey stakeKey
+  drepKey <- C.generateSigningKey C.AsDRepKey
+  let drepKeyHash = C.unDRepKeyHash $ C.verificationKeyHash $ C.getVerificationKey drepKey
+      drepCred = Ledger.KeyHashObj drepKeyHash
+
+  pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
+  let
+    stakeCert =
+      C.makeStakeAddressRegistrationCertificate
+        . C.StakeAddrRegistrationConway C.ConwayEraOnwardsConway (pp ^. Ledger.ppKeyDepositL)
+        $ stakeCred
+    drepCert =
+      C.makeDrepRegistrationCertificate
+        (C.DRepRegistrationRequirements C.ConwayEraOnwardsConway drepCred (pp ^. Ledger.ppDRepDepositL))
+        Nothing
+    delegationCert =
+      C.makeStakeAddressDelegationCertificate $
+        C.StakeDelegationRequirementsConwayOnwards C.ConwayEraOnwardsConway stakeCred (Ledger.DelegVote $ Ledger.DRepKeyHash drepKeyHash)
+
+    stakeCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate stakeCert
+    drepCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate drepCert
+    delegCertTx = BuildTx.execBuildTx $ do
+      BuildTx.addCertificate delegationCert
+
+  -- activate stake
+  void $ tryBalanceAndSubmit mempty Wallet.w2 stakeCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+  -- activate drep
+  void $ tryBalanceAndSubmit mempty Wallet.w2 drepCertTx TrailingChange [C.WitnessDRepKey drepKey]
+  -- delegate to drep
+  void $ tryBalanceAndSubmit mempty Wallet.w2 delegCertTx TrailingChange [C.WitnessStakeKey stakeKey]
+
+  drepDelegations <- queryStakeVoteDelegatees (Set.fromList [stakeCred])
+
+  when (length drepDelegations /= 1) $ fail "Expected 1 delegation"
+  case Map.lookup stakeCred drepDelegations of
+    Just drep | drep == Ledger.DRepKeyHash drepKeyHash -> pure ()
+    _ -> fail "Wrong stake credential and DRep in the DRep delegation map"
 
 stakeKeyWithdrawalTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 stakeKeyWithdrawalTest = do

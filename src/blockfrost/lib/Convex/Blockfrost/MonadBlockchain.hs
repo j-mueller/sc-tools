@@ -18,6 +18,7 @@ module Convex.Blockfrost.MonadBlockchain (
   getProtocolParams,
   getStakeAddresses,
   getStakePools,
+  getStakeVoteDelegatees,
   getSystemStart,
   getEraHistory,
   getSlotNo,
@@ -47,6 +48,7 @@ import Cardano.Api (
   fromNetworkMagic,
   serialiseToCBOR,
  )
+import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley (
   CtxUTxO,
   LedgerProtocolParameters (..),
@@ -195,6 +197,13 @@ getStakePools = do
   checkCurrentEpoch
   getOrRetrieve stakePools $
     Set.fromList . fmap Types.poolId <$> S.toList_ (Types.pagedStream $ \page -> Client.listPools' page Ascending)
+
+-- Get the DRep votes for a set of stake credentials.
+--
+-- TODO To implement. Current blockfrost-haskell API doesn't support it.
+-- See `https://github.com/blockfrost/blockfrost-haskell/issues/76`.
+getStakeVoteDelegatees :: Set C.StakeCredential -> m (Map C.StakeCredential (Ledger.DRep Ledger.StandardCrypto))
+getStakeVoteDelegatees _stakeCredentials = error "NOT IMPLEMENTED YET."
 
 -- | Send a transaction to the network using blockfrost's API
 sendTxBlockfrost :: (MonadBlockfrost m) => Tx ConwayEra -> m (Either (ValidationError ConwayEra) TxId)
