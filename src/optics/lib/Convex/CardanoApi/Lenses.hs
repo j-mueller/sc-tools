@@ -127,9 +127,7 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes qualified as Shelley
-import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Credential qualified as Credential
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Hashes qualified as Hashes
 import Cardano.Ledger.Keys qualified as Keys
 import Cardano.Ledger.Shelley.API (
@@ -141,8 +139,8 @@ import Cardano.Ledger.Shelley.API (
 import Cardano.Ledger.Shelley.Governance (GovState)
 import Cardano.Ledger.Shelley.LedgerState (
   LedgerState (..),
-  updateStakeDistribution,
  )
+import Cardano.Ledger.State (EraStake, addInstantStake)
 import Control.Lens (
   Getter,
   Iso',
@@ -160,6 +158,7 @@ import Data.Map.Ordered.Strict qualified as OMap
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (..))
+import Data.Set (Set)
 import Data.Word (Word64)
 import GHC.IsList (IsList (fromList, toList))
 import PlutusLedgerApi.V1 (PubKeyHash (..))
@@ -215,18 +214,18 @@ txIns = lens get set_
   get = C.txIns
   set_ body txIns' = body{C.txIns = txIns'}
 
-txInsReference :: Lens' (C.TxBodyContent v era) (C.TxInsReference era)
+txInsReference :: Lens' (C.TxBodyContent v era) (C.TxInsReference v era)
 txInsReference = lens get set_
  where
   get = C.txInsReference
   set_ body txInsRef' = body{C.txInsReference = txInsRef'}
 
-txInsReferenceTxIns :: Getter (C.TxInsReference era) [C.TxIn]
+txInsReferenceTxIns :: Getter (C.TxInsReference build era) [C.TxIn]
 txInsReferenceTxIns = L.to get_
  where
   get_ = \case
     C.TxInsReferenceNone -> []
-    C.TxInsReference _ xs -> xs
+    C.TxInsReference _era xs _refDatums -> xs
 
 -- Lenses for working with cardano-api transactions
 txOuts :: Lens' (C.TxBodyContent v era) [TxOut CtxTx era]
@@ -449,16 +448,16 @@ _TxMintValue = iso from to
            in not $ Map.null filteredInner
       )
 
-_TxInsReferenceIso :: (C.IsBabbageBasedEra era) => Iso' (C.TxInsReference era) [C.TxIn]
+_TxInsReferenceIso :: forall era build. (C.IsBabbageBasedEra era, Applicative (BuildTxWith build)) => Iso' (C.TxInsReference build era) ([C.TxIn], C.BuildTxWith build (Set C.HashableScriptData))
 _TxInsReferenceIso = iso from to
  where
-  from :: C.TxInsReference era -> [C.TxIn]
+  from :: C.TxInsReference build era -> ([C.TxIn], C.BuildTxWith build (Set C.HashableScriptData))
   from = \case
-    C.TxInsReferenceNone -> []
-    C.TxInsReference _ ins -> ins
+    C.TxInsReferenceNone -> ([], mempty)
+    C.TxInsReference _ ins refDatums -> (ins, refDatums)
   to = \case
-    [] -> C.TxInsReferenceNone
-    xs -> C.TxInsReference C.babbageBasedEra xs
+    ([], _) -> C.TxInsReferenceNone
+    (xs, datums) -> C.TxInsReference C.babbageBasedEra xs datums
 
 _Value :: Iso' Value (Map AssetId Quantity)
 _Value = iso from to
@@ -508,10 +507,10 @@ _TxOutDatumInline = prism' from to
   from :: C.HashableScriptData -> TxOutDatum ctx era
   from cd = C.TxOutDatumInline C.babbageBasedEra cd
 
-_ShelleyAddress :: (C.IsShelleyBasedEra era) => Prism' (C.AddressInEra era) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
+_ShelleyAddress :: (C.IsShelleyBasedEra era) => Prism' (C.AddressInEra era) (Shelley.Network, Credential.PaymentCredential, Credential.StakeReference)
 _ShelleyAddress = prism' from to
  where
-  to :: C.AddressInEra era -> Maybe (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
+  to :: C.AddressInEra era -> Maybe (Shelley.Network, Credential.PaymentCredential, Credential.StakeReference)
   to x = case x of
     (C.AddressInEra (C.ShelleyAddressInEra _era) (C.ShelleyAddress ntw pmt stakeRef)) -> Just (ntw, pmt, stakeRef)
     (C.AddressInEra (C.ByronAddressInAnyEra) _) -> Nothing
@@ -524,7 +523,7 @@ _PaymentCredentialByKey = prism' from to
   to (C.PaymentCredentialByKey k) = Just k
   to _ = Nothing
 
-_ShelleyPaymentCredentialByKey :: Prism' (Credential.PaymentCredential StandardCrypto) (Keys.KeyHash 'Keys.Payment StandardCrypto)
+_ShelleyPaymentCredentialByKey :: Prism' (Credential.PaymentCredential) (Keys.KeyHash 'Keys.Payment)
 _ShelleyPaymentCredentialByKey = prism' from to
  where
   from = Credential.KeyHashObj
@@ -538,7 +537,7 @@ _PaymentCredentialByScript = prism' from to
   to (C.PaymentCredentialByScript k) = Just k
   to C.PaymentCredentialByKey{} = Nothing
 
-_ShelleyPaymentCredentialByScript :: Prism' (Credential.PaymentCredential StandardCrypto) (Hashes.ScriptHash StandardCrypto)
+_ShelleyPaymentCredentialByScript :: Prism' (Credential.PaymentCredential) (Hashes.ScriptHash)
 _ShelleyPaymentCredentialByScript = prism' from to
  where
   from = Credential.ScriptHashObj
@@ -595,14 +594,14 @@ slot = lens get set_
   get = ledgerSlotNo
   set_ l s = l{ledgerSlotNo = s}
 
-{- | 'UTxOState' iso. Note that this doesn't touch the '_stakeDistro' field. This is because the
-stake distro is a function of @utxo :: UTxO era@ and can be computed by @updateStakeDistribution mempty mempty utxo@.
+{- | 'UTxOState' iso. Note that this doesn't touch the 'utxosInstantStake' field. This is because the
+stake distro is a function of @utxo :: UTxO era@ and can be computed by @addInstantStake utxosUtxo mempty@.
 -}
-_UTxOState :: forall era. (Core.EraTxOut era) => Core.PParams era -> Iso' (UTxOState era) (UTxO era, Coin, Coin, GovState era, Coin)
-_UTxOState pp = iso from to
+_UTxOState :: forall era. (EraStake era) => Iso' (UTxOState era) (UTxO era, Coin, Coin, GovState era, Coin)
+_UTxOState = iso from to
  where
   from UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation} = (utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation)
-  to (utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation) = UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation, utxosStakeDistr = updateStakeDistribution pp mempty mempty utxosUtxo}
+  to (utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation) = UTxOState{utxosUtxo, utxosDeposited, utxosFees, utxosGovState, utxosDonation, utxosInstantStake = addInstantStake utxosUtxo mempty}
 
 utxoState :: Lens' (LedgerState era) (UTxOState era)
 utxoState = lens get set_
@@ -618,27 +617,27 @@ _AddressInEra = prism' from to
   to _ = Nothing
   from = C.AddressInEra (C.ShelleyAddressInEra C.shelleyBasedEra)
 
-_Address :: Iso' (Address ShelleyAddr) (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
+_Address :: Iso' (Address ShelleyAddr) (Shelley.Network, Credential.PaymentCredential, Credential.StakeReference)
 _Address = iso from to
  where
-  from :: Address ShelleyAddr -> (Shelley.Network, Credential.PaymentCredential StandardCrypto, Credential.StakeReference StandardCrypto)
+  from :: Address ShelleyAddr -> (Shelley.Network, Credential.PaymentCredential, Credential.StakeReference)
   from (C.ShelleyAddress n p s) = (n, p, s)
   to (n, p, s) = C.ShelleyAddress n p s
 
-_KeyHash :: Iso' (Keys.KeyHash 'Keys.Payment StandardCrypto) (C.Hash C.PaymentKey)
+_KeyHash :: Iso' (Keys.KeyHash 'Keys.Payment) (C.Hash C.PaymentKey)
 _KeyHash = iso from to
  where
-  from :: Keys.KeyHash 'Keys.Payment StandardCrypto -> C.Hash C.PaymentKey
+  from :: Keys.KeyHash 'Keys.Payment -> C.Hash C.PaymentKey
   from hash = C.PaymentKeyHash hash
   to (C.PaymentKeyHash h) = h
 
-_ScriptHash :: Iso' (Hashes.ScriptHash StandardCrypto) C.ScriptHash
+_ScriptHash :: Iso' (Hashes.ScriptHash) C.ScriptHash
 _ScriptHash = iso from to
  where
-  from :: Hashes.ScriptHash StandardCrypto -> C.ScriptHash
+  from :: Hashes.ScriptHash -> C.ScriptHash
   from = C.fromShelleyScriptHash
 
-  to :: C.ScriptHash -> Hashes.ScriptHash StandardCrypto
+  to :: C.ScriptHash -> Hashes.ScriptHash
   to = C.toShelleyScriptHash
 
 _PlutusPubKeyHash :: Prism' PubKeyHash (C.Hash C.PaymentKey)
@@ -650,10 +649,10 @@ _PlutusPubKeyHash = prism' from to
   to :: PubKeyHash -> Maybe (C.Hash C.PaymentKey)
   to (PubKeyHash h) = either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType $ Proxy @(C.Hash C.PaymentKey)) $ PlutusTx.fromBuiltin h
 
-_PaymentCredential :: Iso' C.PaymentCredential (Credential.PaymentCredential StandardCrypto)
+_PaymentCredential :: Iso' C.PaymentCredential (Credential.PaymentCredential)
 _PaymentCredential = iso from to
  where
-  from :: C.PaymentCredential -> Credential.PaymentCredential StandardCrypto
+  from :: C.PaymentCredential -> Credential.PaymentCredential
   from (C.PaymentCredentialByKey (C.PaymentKeyHash kh)) = Credential.KeyHashObj kh
   from (C.PaymentCredentialByScript sh) = Credential.ScriptHashObj (C.toShelleyScriptHash sh)
 

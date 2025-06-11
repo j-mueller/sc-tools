@@ -30,7 +30,7 @@ module Convex.NodeQueries (
   queryEpoch,
   queryLocalState,
   queryProtocolParameters,
-  queryProtocolParametersUpdate,
+  queryFuturePParams,
   queryStakeAddresses,
   queryStakePools,
   queryStakeVoteDelegatees,
@@ -71,7 +71,7 @@ import Data.Map (Map)
 import Data.SOP.Strict (NP ((:*)))
 import Data.Set (Set)
 import Data.Word (Word64)
-import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
+import Ouroboros.Consensus.Byron.ByronHFC qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras qualified as HFC
@@ -80,7 +80,7 @@ import Ouroboros.Consensus.HardFork.History (
   interpretQuery,
   slotToSlotLength,
  )
-import Ouroboros.Consensus.Shelley.Eras (StandardConway)
+import Ouroboros.Consensus.Shelley.Eras (ConwayEra)
 import Ouroboros.Network.Protocol.LocalStateQuery.Type qualified as T
 
 {- $eras
@@ -258,7 +258,7 @@ runEraQuery connectInfo EraQuery{eqQuery, eqResult} =
 queryInSupportedEra :: C.LocalNodeConnectInfo -> (forall era. Era era -> EraQuery era result) -> IO result
 queryInSupportedEra connectInfo qry = do
   queryEra connectInfo >>= \case
-    C.AnyCardanoEra C.BabbageEra -> runEraQuery connectInfo (qry C.Experimental.BabbageEra)
+    -- C.AnyCardanoEra C.BabbageEra -> runEraQuery connectInfo (qry C.Experimental.BabbageEra)
     C.AnyCardanoEra C.ConwayEra -> runEraQuery connectInfo (qry C.Experimental.ConwayEra)
     era -> throwIO (QueryEraNotSupported era)
 
@@ -266,19 +266,19 @@ queryInSupportedEra connectInfo qry = do
   Throws 'QueryException' if the node's era is not conway or if the connection
   to the node cannot be acquired
 -}
-queryProtocolParameters :: C.LocalNodeConnectInfo -> IO (PParams StandardConway)
+queryProtocolParameters :: C.LocalNodeConnectInfo -> IO (PParams ConwayEra)
 queryProtocolParameters connectInfo =
   runEraQuery connectInfo $
     EraQuery{eqQuery = C.QueryProtocolParameters, eqResult = id}
 
-{- | Get all the protocol parameter updates from the local cardano node
+{- | Get the future protocol parameters from the local cardano node
   Throws 'QueryException' if the node's era is not conway or if the connection
   to the node cannot be acquired
 -}
-queryProtocolParametersUpdate :: C.LocalNodeConnectInfo -> IO (Map (C.Hash C.GenesisKey) C.ProtocolParametersUpdate)
-queryProtocolParametersUpdate connectInfo =
+queryFuturePParams :: C.LocalNodeConnectInfo -> IO (Maybe (PParams ConwayEra))
+queryFuturePParams connectInfo =
   runEraQuery @C.ConwayEra connectInfo $
-    EraQuery{eqQuery = C.QueryProtocolParametersUpdate, eqResult = id}
+    EraQuery{eqQuery = C.QueryFuturePParams, eqResult = id}
 
 {- | Get the stake and the IDs of the stake pool for a set of stake credentials
   Throws 'QueryException' if the node's era is not supported or if the connection
@@ -288,7 +288,7 @@ queryStakeAddresses :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map 
 queryStakeAddresses info creds = do
   let C.LocalNodeConnectInfo{C.localNodeNetworkId} = info
   queryInSupportedEra info $ \case
-    C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
+    -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
     C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
 
 {- | Get the set of registered stake pools
@@ -297,17 +297,17 @@ queryStakeAddresses info creds = do
 -}
 queryStakePools :: C.LocalNodeConnectInfo -> IO (Set PoolId)
 queryStakePools connectInfo = queryInSupportedEra connectInfo $ \case
-  C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
+  -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
   C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
 
 {- | Get the delegatees for a set of stake credentials (only works starting at ConwayEra).
   Throws 'QueryException' if the node's era is not supported or if the connection
   to the node cannot be acquired.
 -}
-queryStakeVoteDelegatees :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeCredential (Ledger.DRep Ledger.StandardCrypto))
+queryStakeVoteDelegatees :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeCredential (Ledger.DRep))
 queryStakeVoteDelegatees info creds = do
   queryInSupportedEra info $ \case
-    C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
+    -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
     C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
 
 {- | Get the current epoch
@@ -316,7 +316,7 @@ queryStakeVoteDelegatees info creds = do
 -}
 queryEpoch :: C.LocalNodeConnectInfo -> IO C.EpochNo
 queryEpoch connectInfo = queryInSupportedEra connectInfo $ \case
-  C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
+  -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
   C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
 
 {- | Query UTxO for all given addresses at given point.
@@ -325,5 +325,5 @@ queryEpoch connectInfo = queryInSupportedEra connectInfo $ \case
 -}
 queryUTxOFilter :: C.LocalNodeConnectInfo -> C.QueryUTxOFilter -> IO (UtxoSet C.CtxUTxO ())
 queryUTxOFilter connectInfo flt = queryInSupportedEra connectInfo $ \case
-  C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
+  -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
   C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}

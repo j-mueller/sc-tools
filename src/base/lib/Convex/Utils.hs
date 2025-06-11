@@ -75,7 +75,6 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.UTxO qualified as L
 import Cardano.Ledger.Core qualified
 import Cardano.Ledger.Credential qualified as Shelley
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Slotting.EpochInfo.API (
   epochInfoSlotToUTCTime,
   hoistEpochInfo,
@@ -103,7 +102,6 @@ import Data.Aeson (
 import Data.Bifunctor (Bifunctor (..))
 import Data.Foldable (traverse_)
 import Data.Function ((&))
-import Data.Proxy (Proxy (..))
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as Text
@@ -124,7 +122,7 @@ scriptFromCborV1 :: String -> Either String (PlutusScript PlutusScriptV1)
 scriptFromCborV1 cbor = do
   let vl = object ["type" .= s "PlutusScriptV1", "description" .= s "", "cborHex" .= cbor]
   textEnvelope <- fromJSON vl & (\case Error err -> Left (show err); Success e -> Right e)
-  C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(PlutusScript PlutusScriptV1)) textEnvelope & first show
+  C.deserialiseFromTextEnvelope textEnvelope & first show
 
 unsafeScriptFromCborV1 :: String -> PlutusScript PlutusScriptV1
 unsafeScriptFromCborV1 = either error id . scriptFromCborV1
@@ -139,13 +137,13 @@ scriptFromCbor :: String -> Either String (PlutusScript PlutusScriptV2)
 scriptFromCbor cbor = do
   let vl = object ["type" .= s "PlutusScriptV2", "description" .= s "", "cborHex" .= cbor]
   textEnvelope <- fromJSON vl & (\case Error err -> Left (show err); Success e -> Right e)
-  C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(PlutusScript PlutusScriptV2)) textEnvelope & first show
+  C.deserialiseFromTextEnvelope textEnvelope & first show
 
 txFromCbor :: String -> Either String (Tx ConwayEra)
 txFromCbor cbor = do
   let vl = object ["type" .= s "Tx ConwayEra", "description" .= s "", "cborHex" .= cbor]
   textEnvelope <- fromJSON vl & (\case Error err -> Left (show err); Success e -> Right e)
-  C.deserialiseFromTextEnvelope (C.proxyToAsType $ Proxy @(Tx ConwayEra)) textEnvelope & first show
+  C.deserialiseFromTextEnvelope textEnvelope & first show
 
 unsafeScriptFromCbor :: String -> PlutusScript PlutusScriptV2
 unsafeScriptFromCbor = either error id . scriptFromCbor
@@ -247,28 +245,28 @@ failOnError action = runExceptT action >>= either (fail . show) pure
 
 -- | Read a serialised signing key from a file
 readSigningKeyFromFile :: FilePath -> IO (C.SigningKey C.PaymentKey)
-readSigningKeyFromFile = readKeyFromFile Proxy
+readSigningKeyFromFile = readKeyFromFile
 
 -- | Read a serialised verification key from a file. Try bech32 encoding first, then text envelope (JSON)
 readVerificationKeyFromFile :: FilePath -> IO (C.VerificationKey C.PaymentKey)
-readVerificationKeyFromFile = readKeyFromFile Proxy
+readVerificationKeyFromFile = readKeyFromFile
 
 -- | Read a serialised signing key from a file
 readStakingKeyFromFile :: FilePath -> IO (C.VerificationKey C.StakeKey)
-readStakingKeyFromFile = readKeyFromFile Proxy
+readStakingKeyFromFile = readKeyFromFile
 
 -- | Read a serialised key from a file. Try bech32 encoding first, then text envelope (JSON)
-readKeyFromFile :: (C.SerialiseAsBech32 key, C.HasTextEnvelope key) => Proxy key -> FilePath -> IO key
-readKeyFromFile p source = do
+readKeyFromFile :: (C.SerialiseAsBech32 key, C.HasTextEnvelope key) => FilePath -> IO key
+readKeyFromFile source = do
   txt <- Text.readFile source
-  case C.deserialiseFromBech32 (C.proxyToAsType p) txt of
+  case C.deserialiseFromBech32 txt of
     Left err1 ->
-      C.readFileTextEnvelope (C.proxyToAsType p) (C.File source) >>= \case
+      C.readFileTextEnvelope (C.File source) >>= \case
         Left err2 -> fail ("readKeyFromFile: Failed to read " <> source <> ". Errors: " <> show err1 <> ", " <> show err2)
         Right k -> pure k
     Right k -> pure k
 
-toShelleyPaymentCredential :: PaymentCredential -> Shelley.PaymentCredential StandardCrypto
+toShelleyPaymentCredential :: PaymentCredential -> Shelley.PaymentCredential
 toShelleyPaymentCredential (PaymentCredentialByKey (C.PaymentKeyHash kh)) =
   Shelley.KeyHashObj kh
 toShelleyPaymentCredential (PaymentCredentialByScript sh) =
@@ -279,12 +277,10 @@ type LedgerValueConstraints era =
   , Show (Cardano.Ledger.Core.Value (C.ShelleyLedgerEra era))
   )
 
-type EraCryptoConstraint era = Cardano.Ledger.Core.EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto
-
 inMary
   :: forall era a
    . (C.IsMaryBasedEra era)
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, LedgerValueConstraints era) => a)
   -> a
 inMary f = case C.maryBasedEra @era of
   C.MaryEraOnwardsMary -> f
@@ -295,7 +291,7 @@ inMary f = case C.maryBasedEra @era of
 inAlonzo
   :: forall era a
    . (C.IsAlonzoBasedEra era)
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, LedgerValueConstraints era) => a)
   -> a
 inAlonzo f = case C.alonzoBasedEra @era of
   C.AlonzoEraOnwardsAlonzo -> f
@@ -305,7 +301,7 @@ inAlonzo f = case C.alonzoBasedEra @era of
 inBabbage
   :: forall era a
    . (C.IsBabbageBasedEra era)
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, LedgerValueConstraints era) => a)
   -> a
 inBabbage f = case C.babbageBasedEra @era of
   C.BabbageEraOnwardsBabbage -> f
@@ -314,7 +310,7 @@ inBabbage f = case C.babbageBasedEra @era of
 inConway
   :: forall era a
    . (C.IsConwayBasedEra era)
-  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.IsBabbageBasedEra era, LedgerValueConstraints era, EraCryptoConstraint era) => a)
+  => ((C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsAllegraBasedEra era, C.IsMaryBasedEra era, C.IsAlonzoBasedEra era, C.IsBabbageBasedEra era, LedgerValueConstraints era) => a)
   -> a
 inConway f = case C.conwayBasedEra @era of
   C.ConwayEraOnwardsConway -> f

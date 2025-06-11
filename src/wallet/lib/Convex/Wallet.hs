@@ -40,7 +40,6 @@ import Cardano.Api (
  )
 import Cardano.Api qualified as C
 import Cardano.Ledger.Credential qualified as Shelley
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Control.Lens (preview, _2)
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Utxos (UtxoSet (..), onlyAda)
@@ -84,7 +83,7 @@ paymentCredential = C.PaymentCredentialByKey . verificationKeyHash
 verificationKeyHash :: Wallet -> C.Hash C.PaymentKey
 verificationKeyHash = C.verificationKeyHash . C.getVerificationKey . getWallet
 
-shelleyPaymentCredential :: Wallet -> Shelley.PaymentCredential StandardCrypto
+shelleyPaymentCredential :: Wallet -> Shelley.PaymentCredential
 shelleyPaymentCredential =
   fromMaybe (error "shelleyPaymentCredential: Expected ShelleyAddress in Conway era")
     . preview (L._AddressInEra @C.ConwayEra . L._Address . _2)
@@ -131,7 +130,7 @@ generateWallet :: IO Wallet
 generateWallet = Wallet <$> C.generateSigningKey C.AsPaymentKey
 
 parse :: Text -> Either C.Bech32DecodeError Wallet
-parse = fmap Wallet . C.deserialiseFromBech32 (C.AsSigningKey C.AsPaymentKey)
+parse = fmap Wallet . C.deserialiseFromBech32
 
 -- | Select Ada-only inputs that cover the given amount of lovelace
 selectAdaInputsCovering :: UtxoSet ctx a -> C.Quantity -> Maybe (C.Quantity, [C.TxIn])

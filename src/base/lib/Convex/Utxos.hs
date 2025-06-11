@@ -98,7 +98,6 @@ import Cardano.Ledger.BaseTypes qualified as CT
 import Cardano.Ledger.Conway.Scripts qualified as Scripts.Conway
 import Cardano.Ledger.Conway.TxBody qualified as Conway.TxBody
 import Cardano.Ledger.Credential qualified as Shelley
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.TxIn qualified as CT
 import Control.Lens (
   makeLenses,
@@ -149,7 +148,7 @@ import Prettyprinter (
 import Prettyprinter qualified
 import Prelude hiding (null)
 
-type AddressCredential = Shelley.PaymentCredential StandardCrypto
+type AddressCredential = Shelley.PaymentCredential
 
 -- | A set of unspent transaction outputs
 newtype UtxoSet ctx a = UtxoSet {_utxos :: Map C.TxIn (C.InAnyCardanoEra (C.TxOut ctx), a)}

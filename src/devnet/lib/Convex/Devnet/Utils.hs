@@ -14,7 +14,6 @@ module Convex.Devnet.Utils (
 ) where
 
 import Cardano.Api (
-  AsType,
   NetworkId,
   PaymentKey,
   SigningKey,
@@ -33,7 +32,6 @@ import Data.Aeson qualified as Aeson
 import Data.Bifunctor (Bifunctor (..))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Void (Void)
 import GHC.IO.Exception (
@@ -82,14 +80,11 @@ keysFor actor = do
   bs <- readConfigFile ("credentials" </> actor <.> "sk")
   let res =
         first C.TextEnvelopeAesonDecodeError (Aeson.eitherDecodeStrict bs)
-          >>= C.deserialiseFromTextEnvelope asSigningKey
+          >>= C.deserialiseFromTextEnvelope
   case res of
     Left err ->
       fail $ "cannot decode text envelope from '" <> show bs <> "', error: " <> show err
     Right sk -> pure (C.getVerificationKey sk, sk)
- where
-  asSigningKey :: AsType (SigningKey PaymentKey)
-  asSigningKey = C.proxyToAsType Proxy
 
 {- | Open given log file non-buffered in append mode and print a message with
 filepath to @stderr@ on exceptions.

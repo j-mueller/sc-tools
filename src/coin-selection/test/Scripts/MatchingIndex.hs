@@ -21,6 +21,7 @@ import PlutusLedgerApi.V3.Contexts (
 import PlutusLedgerApi.V3.MintValue (mintValueMinted)
 import PlutusTx.Builtins.Internal qualified as BI
 import PlutusTx.IsData.Class (UnsafeFromData (unsafeFromBuiltinData))
+import PlutusTx.List qualified as P
 import PlutusTx.Prelude (BuiltinData, BuiltinUnit)
 import PlutusTx.Prelude qualified as P
 

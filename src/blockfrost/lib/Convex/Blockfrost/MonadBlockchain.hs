@@ -202,7 +202,7 @@ getStakePools = do
 --
 -- TODO To implement. Current blockfrost-haskell API doesn't support it.
 -- See `https://github.com/blockfrost/blockfrost-haskell/issues/76`.
-getStakeVoteDelegatees :: Set C.StakeCredential -> m (Map C.StakeCredential (Ledger.DRep Ledger.StandardCrypto))
+getStakeVoteDelegatees :: Set C.StakeCredential -> m (Map C.StakeCredential (Ledger.DRep))
 getStakeVoteDelegatees _stakeCredentials = error "NOT IMPLEMENTED YET."
 
 -- | Send a transaction to the network using blockfrost's API

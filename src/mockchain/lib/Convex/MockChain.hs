@@ -95,9 +95,7 @@ import Cardano.Ledger.BaseTypes (
   getVersion,
   pvMajor,
  )
-import Cardano.Ledger.Conway (Conway)
 import Cardano.Ledger.Core qualified as Core
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Plutus.Evaluate (
   PlutusWithContext (..),
   ScriptResult (..),
@@ -129,6 +127,7 @@ import Cardano.Ledger.Shelley.LedgerState (
   rewards,
   smartUTxOState,
  )
+import Cardano.Ledger.State (EraStake)
 import Cardano.Ledger.UMap (
   RDPair (..),
   domRestrictedMap,
@@ -219,7 +218,6 @@ import Data.Foldable (for_, traverse_)
 import Data.Functor.Identity (Identity (..))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
-import Ouroboros.Consensus.Shelley.Eras (EraCrypto)
 import PlutusCore qualified as PLC
 import PlutusLedgerApi.Common (
   PlutusLedgerLanguage (..),
@@ -232,7 +230,7 @@ import UntypedPlutusCore qualified as UPLC
 {- | Apply the plutus script to all its arguments and return a plutus
 program
 -}
-getFullyAppliedScript :: NodeParams C.ConwayEra -> PlutusWithContext StandardCrypto -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
+getFullyAppliedScript :: NodeParams C.ConwayEra -> PlutusWithContext -> Either String (UPLC.Program UPLC.NamedDeBruijn UPLC.DefaultUni UPLC.DefaultFun ())
 getFullyAppliedScript params pwc@PlutusWithContext{pwcScript} = do
   let plutus = either id Plutus.Language.plutusFromRunnable pwcScript
       binScript = Plutus.Language.plutusBinary plutus
@@ -249,7 +247,7 @@ getFullyAppliedScript params pwc@PlutusWithContext{pwcScript} = do
   appliedTerm <- first show $ mkTermToEvaluate lng pv scriptForEval pArgs
   pure $ UPLC.Program () PLC.latestVersion appliedTerm
 
-getPlutusArgs :: PlutusWithContext StandardCrypto -> [Plutus.Data]
+getPlutusArgs :: PlutusWithContext -> [Plutus.Data]
 getPlutusArgs pwc =
   withRunnablePlutusWithContext
     pwc
@@ -257,7 +255,7 @@ getPlutusArgs pwc =
     (const plutusArgs)
 
 withRunnablePlutusWithContext
-  :: PlutusWithContext c
+  :: PlutusWithContext
   -> (PV3.EvaluationError -> a)
   -- ^ Handle the decoder failure
   -> (forall l. (Plutus.Language.PlutusLanguage l) => Plutus.Language.PlutusRunnable l -> PlutusArgs l -> a)
@@ -298,7 +296,7 @@ initialState params = initialStateFor params []
 
 genesisUTxO
   :: forall era capiEra
-   . (EraCrypto era ~ StandardCrypto, Core.EraTxOut era)
+   . (Core.EraTxOut era)
   => [(AddressInEra capiEra, Coin)]
   -> UTxO era
 genesisUTxO utxos =
@@ -329,7 +327,6 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
                 , ledgerIx = minBound
                 , ledgerPp = Defaults.pParams params
                 , ledgerAccount = AccountState (Coin 0) (Coin 0)
-                , ledgerMempool = False
                 , ledgerEpochNo = Nothing
                 }
           , mcsPoolState =
@@ -343,7 +340,7 @@ initialStateFor params@NodeParams{npNetworkId} utxos =
           , mcsTxById = Map.empty
           }
 
-utxoEnv :: NodeParams era -> SlotNo -> UtxoEnv (C.ShelleyLedgerEra era)
+utxoEnv :: (Ledger.EraCertState (C.ShelleyLedgerEra era)) => NodeParams era -> SlotNo -> UtxoEnv (C.ShelleyLedgerEra era)
 utxoEnv params slotNo = UtxoEnv slotNo (Defaults.pParams params) def
 
 -- | Compute the exunits of a transaction
@@ -357,14 +354,14 @@ getTxExUnits
 getTxExUnits NodeParams{npSystemStart, npEraHistory, npProtocolParameters} utxo (C.getTxBody -> tx) =
   C.shelleyBasedEraConstraints @era C.shelleyBasedEra $
     case C.evaluateTransactionExecutionUnits C.cardanoEra npSystemStart (C.toLedgerEpochInfo npEraHistory) npProtocolParameters (fromLedgerUTxO C.shelleyBasedEra utxo) tx of
-      Left e -> Left (Phase1Error e)
-      Right rdmrs -> traverse (either (Left . Phase2Error) (Right . snd)) rdmrs
+      -- Left e -> Left (Phase1Error e)
+      rdmrs -> traverse (either (Left . Phase2Error) (Right . snd)) rdmrs
 
-applyTransaction :: forall era. (C.IsEra era, C.IsAlonzoBasedEra era) => NodeParams era -> MockChainState era -> C.Tx era -> Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
+applyTransaction :: forall era. (EraStake (C.ShelleyLedgerEra era), C.IsEra era, C.IsAlonzoBasedEra era) => NodeParams era -> MockChainState era -> C.Tx era -> Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
 applyTransaction params state' tx'@(C.ShelleyTx _era tx) = C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
   let currentSlot = state' ^. env . L.slot
       utxoState_ = state' ^. poolState . L.utxoState
-      utxo = utxoState_ ^. L._UTxOState (C.unLedgerProtocolParameters $ npProtocolParameters params) . _1
+      utxo = utxoState_ ^. L._UTxOState . _1
   (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params currentSlot) utxoState_ tx)
   result <- applyTx params state' vtx scripts
 
@@ -376,7 +373,7 @@ applyTransaction params state' tx'@(C.ShelleyTx _era tx) = C.alonzoEraOnwardsCon
   pure result
 
 -- | Evaluate a transaction, returning all of its script contexts.
-evaluateTx :: NodeParams C.ConwayEra -> SlotNo -> UTxO Conway -> C.Tx C.ConwayEra -> Either (ValidationError C.ConwayEra) [PlutusWithContext StandardCrypto]
+evaluateTx :: NodeParams C.ConwayEra -> SlotNo -> UTxO L.ConwayEra -> C.Tx C.ConwayEra -> Either (ValidationError C.ConwayEra) [PlutusWithContext]
 evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
   (vtx, scripts) <- first PredicateFailures (constructValidated (Defaults.globals params) (utxoEnv params slotNo) (lsUTxOState (mcsPoolState state')) tx)
   _ <- applyTx params state' vtx scripts
@@ -385,7 +382,7 @@ evaluateTx params slotNo utxo (C.ShelleyTx _ tx) = do
   state' =
     initialState params
       & env . L.slot .~ slotNo
-      & poolState . L.utxoState . L._UTxOState (C.unLedgerProtocolParameters $ npProtocolParameters params) . _1 .~ utxo
+      & poolState . L.utxoState . L._UTxOState . _1 .~ utxo
 
 {- | Construct a 'ValidatedTx' from a 'Core.Tx' by setting the `IsValid`
 flag.
@@ -406,14 +403,14 @@ constructValidated
   -> UtxoEnv (C.ShelleyLedgerEra era)
   -> UTxOState (C.ShelleyLedgerEra era)
   -> Core.Tx (C.ShelleyLedgerEra era)
-  -> m (Core.Tx (C.ShelleyLedgerEra era), [PlutusWithContext StandardCrypto])
+  -> m (Core.Tx (C.ShelleyLedgerEra era), [PlutusWithContext])
 constructValidated globals (UtxoEnv _ pp _) st tx =
   C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $
     alonzoEraUtxo @era $
       case collectPlutusScriptsWithContext ei sysS pp tx utxo of
         Left errs -> throwError errs
         Right sLst ->
-          let scriptEvalResult = evalPlutusScripts @(EraCrypto (C.ShelleyLedgerEra era)) sLst
+          let scriptEvalResult = evalPlutusScripts sLst
               vTx = set L.isValidTxL (IsValid (lift_ scriptEvalResult)) tx
            in pure (vTx, sLst)
  where
@@ -429,7 +426,7 @@ applyTx
   => NodeParams era
   -> MockChainState era
   -> Core.Tx (C.ShelleyLedgerEra era)
-  -> [PlutusWithContext StandardCrypto]
+  -> [PlutusWithContext]
   -> Either (ValidationError era) (MockChainState era, Validated (Core.Tx (C.ShelleyLedgerEra era)))
 applyTx params oldState@MockChainState{mcsEnv, mcsPoolState} tx context = C.shelleyBasedEraConstraints @era C.shelleyBasedEra $ do
   (newMempool, vtx) <- first ApplyTxFailure (Cardano.Ledger.Shelley.API.applyTx (Defaults.globals params) mcsEnv mcsPoolState tx)
@@ -449,7 +446,7 @@ instance (Monad m) => MonadState (MockChainState era) (MockchainT era m) where
   get = MockchainT $ lift get
   put = MockchainT . lift . put
 
-instance (Monad m, C.IsConwayBasedEra era, C.IsEra era) => MonadBlockchain era (MockchainT era m) where
+instance (Monad m, C.IsConwayBasedEra era, C.IsEra era, EraStake (C.ShelleyLedgerEra era)) => MonadBlockchain era (MockchainT era m) where
   sendTx tx = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
     nps <- ask
     addDatumHashes tx
@@ -465,8 +462,7 @@ instance (Monad m, C.IsConwayBasedEra era, C.IsEra era) => MonadBlockchain era (
         txById . at i .= Just tx
         return (Right i)
   utxoByTxIn txIns = MockchainT $ C.alonzoEraOnwardsConstraints @era C.alonzoBasedEra $ do
-    nps <- ask
-    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState (Defaults.pParams nps) . _1 . to (fromLedgerUTxO C.shelleyBasedEra))
+    C.UTxO mp <- gets (view $ poolState . L.utxoState . L._UTxOState . _1 . to (fromLedgerUTxO C.shelleyBasedEra))
     let mp' = Map.restrictKeys mp txIns
     pure (C.UTxO mp')
 
@@ -517,11 +513,11 @@ instance (Monad m, C.IsConwayBasedEra era, C.IsEra era) => MonadBlockchain era (
     let utime = either (error . (<>) "MockchainT: slotToUtcTime failed ") id (slotToUtcTime npEraHistory npSystemStart slotNo)
     return (slotNo, npSlotLength, utime)
 
-instance (Monad m, C.IsConwayBasedEra era, C.IsEra era) => MonadMockchain era (MockchainT era m) where
+instance (Monad m, C.IsConwayBasedEra era, C.IsEra era, Ledger.EraCertState (C.ShelleyLedgerEra era), EraStake (C.ShelleyLedgerEra era)) => MonadMockchain era (MockchainT era m) where
   modifyMockChainState f = MockchainT $ state f
   askNodeParams = ask
 
-instance (Monad m, C.IsConwayBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsEra era) => MonadUtxoQuery (MockchainT era m) where
+instance (Monad m, C.IsConwayBasedEra era, C.IsCardanoEra era, C.IsShelleyBasedEra era, C.IsEra era, Ledger.EraCertState (C.ShelleyLedgerEra era), EraStake (C.ShelleyLedgerEra era)) => MonadUtxoQuery (MockchainT era m) where
   utxosByPaymentCredentials cred = do
     UtxoSet utxos <- fmap (onlyCredentials cred) utxoSet
     let
@@ -556,13 +552,13 @@ addDatumHashes (C.Tx (ShelleyTxBody era txBody _scripts scriptData _auxData _) _
     _ -> pure ()
 
 -- | All transaction outputs
-utxoSet :: forall era m. (MonadMockchain era m, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto, C.IsShelleyBasedEra era) => m (UtxoSet C.CtxUTxO ())
+utxoSet :: forall era m. (MonadMockchain era m, C.IsShelleyBasedEra era) => m (UtxoSet C.CtxUTxO ())
 utxoSet =
   let f utxos = (utxos, fromApiUtxo $ fromLedgerUTxO (C.shelleyBasedEra @era) utxos)
    in modifyUtxo f
 
 -- | The wallet's transaction outputs on the mockchain
-walletUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era, EraCrypto (ShelleyLedgerEra era) ~ StandardCrypto) => Wallet -> m (UtxoSet C.CtxUTxO ())
+walletUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era) => Wallet -> m (UtxoSet C.CtxUTxO ())
 walletUtxo wallet = do
   fmap (onlyCredential (paymentCredential wallet)) utxoSet
 
@@ -639,7 +635,6 @@ execMockchain0IO dist action = execMockchainIO action Defaults.nodeParams (initi
 -- not exported by cardano-api 1.35.3 (though it seems like it's exported in 1.36)
 fromLedgerUTxO
   :: (ShelleyLedgerEra era ~ ledgerera)
-  => (EraCrypto ledgerera ~ StandardCrypto)
   => C.ShelleyBasedEra era
   -> UTxO ledgerera
   -> C.UTxO era

@@ -37,7 +37,6 @@ import Cardano.Ledger.Core (
   PParams,
   downgradePParams,
  )
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Plutus.CostModels qualified as CostModels
 import Cardano.Ledger.Plutus.ExUnits (ExUnits (..))
 import Cardano.Ledger.Plutus.Language (Language (..))
@@ -71,7 +70,6 @@ import Ouroboros.Consensus.Block.Abstract qualified as Ouroboros
 import Ouroboros.Consensus.HardFork.History qualified as Ouroboros
 import Ouroboros.Consensus.Shelley.Eras (
   ConwayEra,
-  StandardConway,
  )
 
 networkId :: NetworkId
@@ -110,11 +108,11 @@ latestProtVer = L.ProtVer (toEnum 10) 0
 
 -- FIXME: Make this era independent
 
-protocolParameters :: PParams StandardConway
+protocolParameters :: PParams ConwayEra
 protocolParameters =
   let pparams =
         L.PParams $
-          L.emptyPParamsIdentity @(ConwayEra StandardCrypto)
+          L.emptyPParamsIdentity @ConwayEra
             & L.hkdMaxBHSizeL .~ 1_100
             & L.hkdMaxBBSizeL .~ 90_112
             & L.hkdMaxTxSizeL .~ 16_384
@@ -810,7 +808,7 @@ globals params@NodeParams{npSlotLength} =
 protVer :: (L.EraPParams (C.ShelleyLedgerEra era)) => NodeParams era -> ProtVer
 protVer = view L.ppProtocolVersionL . C.unLedgerProtocolParameters . npProtocolParameters
 
-genesisDefaultsFromParams :: forall era. (C.IsShelleyBasedEra era) => NodeParams era -> ShelleyGenesis StandardCrypto
+genesisDefaultsFromParams :: forall era. (C.IsShelleyBasedEra era) => NodeParams era -> ShelleyGenesis
 genesisDefaultsFromParams params@NodeParams{npNetworkId} =
   shelleyGenesisDefaults
     { sgSystemStart = startTime
