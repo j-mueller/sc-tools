@@ -19,15 +19,15 @@ module Convex.BuildTx (
   TxBuilder (..),
   liftTxBodyEndo,
 
-  -- ** Looking at transaction inputs
+  -- ** Looking at transaction fields
   lookupIndexSpending,
   lookupIndexReference,
   lookupIndexMinted,
   lookupIndexWithdrawal,
-  findIndexSpending,
-  findIndexReference,
-  findIndexMinted,
-  findIndexWithdrawal,
+  tryLookupIndexSpending,
+  tryLookupIndexReference,
+  tryLookupIndexMinted,
+  tryLookupIndexWithdrawal,
   buildTx,
   buildTxWith,
   addBtx,
@@ -92,7 +92,9 @@ module Convex.BuildTx (
 
   -- ** Minting and burning tokens
   mintPlutus,
+  mintPlutusWithTxBody,
   mintPlutusRef,
+  mintPlutusRefWithTxBody,
   mintSimpleScriptAssets,
 
   -- ** Constructing script witness
@@ -195,16 +197,16 @@ lookupIndexSpending :: C.TxIn -> TxBody era -> Maybe Int
 lookupIndexSpending txi = Map.lookupIndex txi . Map.fromList . (fmap (view L._BuildTxWith) <$>) . view L.txIns
 
 -- | Look up the index of the @TxIn@ in the list of spending inputs. Throws an error if the @TxIn@ is not present.
-findIndexSpending :: C.TxIn -> TxBody era -> Int
-findIndexSpending txi = fromJust . lookupIndexSpending txi
+tryLookupIndexSpending :: C.TxIn -> TxBody era -> Int
+tryLookupIndexSpending txi = fromJust . lookupIndexSpending txi
 
 -- | Look up the index of the @TxIn@ in the list of reference inputs
 lookupIndexReference :: (C.IsBabbageBasedEra era) => C.TxIn -> TxBody era -> Maybe Int
 lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReferenceIso)
 
 -- | Look up the index of the @TxIn@ in the list of reference inputs. Throws an error if the @TxIn@ is not present.
-findIndexReference :: (C.IsBabbageBasedEra era) => C.TxIn -> TxBody era -> Int
-findIndexReference txi = fromJust . lookupIndexReference txi
+tryLookupIndexReference :: (C.IsBabbageBasedEra era) => C.TxIn -> TxBody era -> Int
+tryLookupIndexReference txi = fromJust . lookupIndexReference txi
 
 {- | Look up the index of the @PolicyId@ in the transaction mint.
 Note: cardano-api represents a value as a @Map AssetId Quantity@, this is different than the on-chain representation
@@ -216,16 +218,16 @@ lookupIndexMinted :: (C.IsMaryBasedEra era) => C.PolicyId -> TxBody era -> Maybe
 lookupIndexMinted policy = Map.lookupIndex policy . view (L.txMintValue . L._TxMintValue)
 
 -- | Look up the index of the @PolicyId@ in the transaction mint. Throws an error if the @PolicyId@ is not present.
-findIndexMinted :: (C.IsMaryBasedEra era) => C.PolicyId -> TxBody era -> Int
-findIndexMinted policy = fromJust . lookupIndexMinted policy
+tryLookupIndexMinted :: (C.IsMaryBasedEra era) => C.PolicyId -> TxBody era -> Int
+tryLookupIndexMinted policy = fromJust . lookupIndexMinted policy
 
 -- | Look up the index of the @StakeAddress@ in the list of withdrawals.
 lookupIndexWithdrawal :: (C.IsShelleyBasedEra era) => C.StakeAddress -> TxBody era -> Maybe Int
 lookupIndexWithdrawal stakeAddress = Set.lookupIndex stakeAddress . Set.fromList . fmap (view _1) . view (L.txWithdrawals . L._TxWithdrawals)
 
 -- | Look up the index of the @StakeAddress@ in the list of withdrawals. Throws an error if the @StakeAddress@ is not present.
-findIndexWithdrawal :: (C.IsShelleyBasedEra era) => C.StakeAddress -> TxBody era -> Int
-findIndexWithdrawal stakeAddress = fromJust . lookupIndexWithdrawal stakeAddress
+tryLookupIndexWithdrawal :: (C.IsShelleyBasedEra era) => C.StakeAddress -> TxBody era -> Int
+tryLookupIndexWithdrawal stakeAddress = fromJust . lookupIndexWithdrawal stakeAddress
 
 {- |
 A function that modifies the final @TxBodyContent@, after seeing the @TxBodyContent@ of
@@ -345,7 +347,13 @@ mintTxBodyL policy assetName wit =
   -- NOTE: witness is not overriden everytime we call mintTxBodyL. Should we override or keep the first?
   L.txMintValue . L._TxMintValue . at policy . L.anon (mempty, wit) (Map.null . fst) . _1 . at assetName . L.non 0
 
-addMintWithTxBody :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.PolicyId -> C.AssetName -> C.Quantity -> (TxBody era -> C.ScriptWitness C.WitCtxMint era) -> m ()
+addMintWithTxBody
+  :: (MonadBuildTx era m, C.IsMaryBasedEra era)
+  => C.PolicyId
+  -> C.AssetName
+  -> C.Quantity
+  -> (TxBody era -> C.ScriptWitness C.WitCtxMint era)
+  -> m ()
 addMintWithTxBody policy assetName quantity f =
   let wit body = C.BuildTxWith $ f body
    in addTxBuilder
@@ -472,7 +480,7 @@ spendPlutusRefBase
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
 spendPlutusRefBase txIn refTxIn scrVer dat red =
-  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildRefScriptWitness refTxIn scrVer dat (red $ findIndexSpending txIn txBody)
+  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildRefScriptWitness refTxIn scrVer dat (red $ tryLookupIndexSpending txIn txBody)
    in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit body) :))
 
 -- | Spend an output locked by a Plutus V2 validator using the redeemer
@@ -524,17 +532,28 @@ mintPlutus
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutus script red assetName quantity =
+mintPlutus script redeemer = mintPlutusWithTxBody script (const redeemer)
+
+mintPlutusWithTxBody
+  :: forall redeemer lang era m
+   . ( Plutus.ToData redeemer
+     , MonadBuildTx era m
+     , C.HasScriptLanguageInEra lang era
+     , C.IsAlonzoBasedEra era
+     , C.IsPlutusScriptLanguage lang
+     )
+  => PlutusScript lang
+  -> (TxBody era -> redeemer)
+  -> C.AssetName
+  -> C.Quantity
+  -> m ()
+mintPlutusWithTxBody script f assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.plutusScriptVersion script)
       policyId = C.PolicyId sh
-      wit = C.BuildTxWith $ buildScriptWitness @era script C.NoScriptDatumForMint red
-   in inAlonzo @era $
+      wit txBody = buildScriptWitness @era script C.NoScriptDatumForMint $ f txBody
+   in inAlonzo @era $ do
         setScriptsValid
-          >> addBtx
-            ( over
-                (mintTxBodyL policyId assetName wit)
-                (+ quantity)
-            )
+        addMintWithTxBody policyId assetName quantity wit
 
 -- | A value containing the given amount of the native asset
 assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
@@ -556,17 +575,31 @@ mintPlutusRef
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutusRef refTxIn scrVer sh red assetName quantity =
+mintPlutusRef refTxIn scrVer sh redeemer = mintPlutusRefWithTxBody refTxIn scrVer sh (const redeemer)
+
+mintPlutusRefWithTxBody
+  :: forall redeemer lang era m
+   . ( Plutus.ToData redeemer
+     , MonadBuildTx era m
+     , C.HasScriptLanguageInEra lang era
+     , C.IsBabbageBasedEra era
+     , C.IsPlutusScriptLanguage lang
+     )
+  => C.TxIn
+  -> C.PlutusScriptVersion lang
+  -> C.ScriptHash
+  -> (TxBody era -> redeemer)
+  -> C.AssetName
+  -> C.Quantity
+  -> m ()
+mintPlutusRefWithTxBody refTxIn scrVer sh f assetName quantity =
   inBabbage @era $
-    let wit = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
+    let wit txBody = buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint $ f txBody
         policyId = C.PolicyId sh
-     in setScriptsValid
-          >> addBtx
-            ( over
-                (mintTxBodyL policyId assetName wit)
-                (+ quantity)
-            )
-          >> addReference refTxIn
+     in do
+          setScriptsValid
+          addMintWithTxBody policyId assetName quantity wit
+          addReference refTxIn
 
 mintSimpleScriptAssets :: forall era m. (MonadBuildTx era m, C.IsMaryBasedEra era) => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
 mintSimpleScriptAssets sscript assets =
