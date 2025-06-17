@@ -12,6 +12,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as L
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api.PParams qualified as L
+import Cardano.Ledger.BaseTypes (unsafeNonZero)
 import Cardano.Ledger.Block qualified as Ledger
 import Cardano.Ledger.Slot (EpochSize (..))
 import Control.Concurrent (threadDelay)
@@ -233,7 +234,7 @@ stakePoolRewards = do
           g
             { C.sgEpochLength = EpochSize 10
             , C.sgSlotLength = 1
-            , C.sgSecurityParam = 1
+            , C.sgSecurityParam = unsafeNonZero 1
             }
       )
       id

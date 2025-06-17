@@ -598,7 +598,7 @@ withCardanoStakePoolNodeDevnetConfig tracer stateDirectory wallet params nodeCon
     opCert =
       C.issueOperationalCertificate
         (C.getVerificationKey kesKey)
-        (Left stakePoolKey)
+        (Left $ C.AnyStakePoolNormalSigningKey stakePoolKey)
         kesPeriod
         opCertCounter
 

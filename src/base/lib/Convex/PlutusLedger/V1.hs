@@ -61,7 +61,7 @@ module Convex.PlutusLedger.V1 (
 import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes (CertIx (..), TxIx (..))
-import Cardano.Ledger.Credential (Ptr (..))
+import Cardano.Ledger.Credential (Ptr (..), SlotNo32 (..))
 import Cardano.Ledger.Mary.Value qualified as Mary (AssetName (..))
 import Codec.Serialise qualified as Codec
 import Data.ByteString.Lazy qualified as BSL
@@ -158,7 +158,7 @@ transCredential = \case
 transStakeAddressReference :: C.StakeAddressReference -> Maybe PV1.StakingCredential
 transStakeAddressReference = \case
   C.StakeAddressByValue x -> Just (PV1.StakingHash $ transStakeCredential x)
-  C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo slotNo) (TxIx txIx) (CertIx ptrIx))) -> Just (PV1.StakingPtr (fromIntegral slotNo) (fromIntegral txIx) (fromIntegral ptrIx))
+  C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (SlotNo32 slotNo) (TxIx txIx) (CertIx ptrIx))) -> Just (PV1.StakingPtr (fromIntegral slotNo) (fromIntegral txIx) (fromIntegral ptrIx))
   C.NoStakeAddress -> Nothing
 
 transStakeCredential :: C.StakeCredential -> PV1.Credential
@@ -174,7 +174,7 @@ unTransStakeAddressReference Nothing = Right C.NoStakeAddress
 unTransStakeAddressReference (Just (PV1.StakingHash credential)) =
   C.StakeAddressByValue <$> unTransStakeCredential credential
 unTransStakeAddressReference (Just (PV1.StakingPtr slotNo txIx ptrIx)) =
-  Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (C.SlotNo $ fromIntegral slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
+  Right (C.StakeAddressByPointer (C.StakeAddressPointer (Ptr (SlotNo32 $ fromInteger slotNo) (TxIx $ fromIntegral txIx) (CertIx $ fromIntegral ptrIx))))
 
 unTransAddressInEra :: (C.IsShelleyBasedEra era) => C.NetworkId -> PV1.Address -> Either C.SerialiseAsRawBytesError (C.AddressInEra era)
 unTransAddressInEra networkId addr =

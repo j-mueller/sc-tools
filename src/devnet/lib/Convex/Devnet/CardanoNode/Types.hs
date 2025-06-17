@@ -99,7 +99,7 @@ defaultStakePoolNodeParams = StakePoolNodeParams 0 (3 % 100) 0
 -- | Modifications to apply to the default genesis configurations
 data GenesisConfigChanges
   = GenesisConfigChanges
-  { cfShelley :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+  { cfShelley :: ShelleyGenesis -> ShelleyGenesis
   , -- this is spiritually a 'Cardano.Ledger.Alonzo.Genesis.AlonzoGenesis' value
     -- we can't JSON roundtrip it here because the cardano node that we use in
     -- CI uses a slightly different JSON encoding and will trip even if we
@@ -131,9 +131,9 @@ instance Monoid GenesisConfigChanges where
 -- | Change the alonzo genesis config to allow transactions with up to twice the normal size
 allowLargeTransactions :: GenesisConfigChanges
 allowLargeTransactions =
-  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+  let change :: ShelleyGenesis -> ShelleyGenesis
       change g = g{sgProtocolParams = double (sgProtocolParams g)}
-      double :: Core.PParams (ShelleyEra StandardCrypto) -> Core.PParams (ShelleyEra StandardCrypto)
+      double :: Core.PParams (ShelleyEra) -> Core.PParams (ShelleyEra)
       double = over (Core.ppLens . Core.hkdMaxTxSizeL) (* 2)
    in mempty{cfShelley = change}
 
@@ -143,6 +143,6 @@ allowLargeTransactions =
 -}
 setEpochLength :: EpochSize -> GenesisConfigChanges
 setEpochLength n =
-  let change :: ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+  let change :: ShelleyGenesis -> ShelleyGenesis
       change g = g{sgEpochLength = n}
    in mempty{cfShelley = change}

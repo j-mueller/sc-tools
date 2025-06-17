@@ -304,7 +304,7 @@ checkResolveDatumHash = do
         C.TxOut
           (C.makeShelleyAddressInEra C.shelleyBasedEra Defaults.networkId (C.PaymentCredentialByScript (C.hashScript (C.PlutusScript C.PlutusScriptV1 txInscript))) C.NoStakeAddress)
           (C.TxOutValueShelleyBased C.shelleyBasedEra mempty)
-          (C.TxOutDatumHash (C.babbageEraOnwardsToAlonzoEraOnwards C.babbageBasedEra) (C.hashScriptDataBytes datum3))
+          (C.TxOutDatumHash (C.convert C.babbageBasedEra) (C.hashScriptDataBytes datum3))
           C.ReferenceScriptNone
   txId <- tryExecBuildTxWallet Wallet.w1 (prependTxOut txo)
   _ <- tryExecBuildTxWallet Wallet.w1 (spendPlutus (C.TxIn txId (C.TxIx 0)) txInscript d3 ())

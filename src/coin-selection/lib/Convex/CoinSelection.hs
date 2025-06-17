@@ -74,14 +74,12 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Core (PParams (..), hkdKeyDepositL)
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Keys qualified as Keys
 import Cardano.Ledger.Shelley.API (
   Coin (..),
   KeyHash (..),
   KeyRole (..),
  )
-import Cardano.Ledger.Shelley.Core (EraCrypto)
 import Cardano.Ledger.Shelley.TxCert qualified as TxCert
 import Cardano.Slotting.Time (SystemStart)
 import Control.Lens (
@@ -355,15 +353,14 @@ balanceTransactionBody
     txbody0 <-
       balancingError . first C.TxBodyError $ C.createTransactionBody C.shelleyBasedEra $ csiTxBody & addChangeOutput changeOutputSmall
 
-    exUnitsMap <-
-      balancingError . first C.TxBodyErrorValidityInterval $
-        C.evaluateTransactionExecutionUnits
-          C.cardanoEra
-          systemStart
-          (C.toLedgerEpochInfo eraHistory)
-          protocolParams
-          csiUtxo
-          txbody0
+    let exUnitsMap =
+          C.evaluateTransactionExecutionUnits
+            C.cardanoEra
+            systemStart
+            (C.toLedgerEpochInfo eraHistory)
+            protocolParams
+            csiUtxo
+            txbody0
 
     exUnitsMap' <- balancingError $
       case Map.mapEither id exUnitsMap of
@@ -418,7 +415,7 @@ checkMinUTxOValue
   -> C.LedgerProtocolParameters era
   -> m ()
 checkMinUTxOValue txout@(C.TxOut _ v _ _) pparams' = do
-  let minUTxO = C.calculateMinimumUTxO C.shelleyBasedEra txout (C.unLedgerProtocolParameters pparams')
+  let minUTxO = C.calculateMinimumUTxO C.shelleyBasedEra (C.unLedgerProtocolParameters pparams') txout
   if C.txOutValueToLovelace v >= minUTxO
     then pure ()
     else throwing _CheckMinUtxoValueError (txout, C.lovelaceToQuantity minUTxO)
@@ -442,7 +439,7 @@ balanceCheck pparams output@(C.TxOut _ (C.txOutValueToValue -> value) _ _) =
    in if value == mempty
         then return ()
         else do
-          when (valueLovelace < 0) (balancingError $ Left $ C.TxBodyErrorAdaBalanceNegative valueLovelace)
+          when (valueLovelace < 0) (balancingError $ Left $ C.TxBodyErrorBalanceNegative valueLovelace mempty)
           checkMinUTxOValue output pparams
 
 handleExUnitsErrors
@@ -471,7 +468,7 @@ balanceChanges (C.UTxO lookups) body = do
   inputs <- Utxos.invBalanceChange . foldMap (txOutChange . id) <$> traverse (\(txi, _) -> Map.lookup txi lookups) (body ^. L.txIns)
   pure (outputs <> inputs)
 
-unregBalance :: forall era. (L.EraPParams (C.ShelleyLedgerEra era), EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto) => C.LedgerProtocolParameters era -> TxBodyContent BuildTx era -> Map.Map C.StakeCredential Coin
+unregBalance :: forall era. (L.EraPParams (C.ShelleyLedgerEra era)) => C.LedgerProtocolParameters era -> TxBodyContent BuildTx era -> Map.Map C.StakeCredential Coin
 unregBalance (C.unLedgerProtocolParameters -> PParams phkd) txbodycontent =
   let (deposit :: Coin) = view (hkdKeyDepositL @_ @Identity) phkd
       certs = txbodycontent ^. L.txCertificates
@@ -805,7 +802,7 @@ spentTxIns (view L.txIns -> inputs) =
 lookupTxIns :: (MonadBlockchain era m) => Set C.TxIn -> m (C.UTxO era)
 lookupTxIns = utxoByTxIn
 
-keyWitnesses :: (MonadBlockchain era m, C.IsShelleyBasedEra era) => C.TxBodyContent v era -> m (Set (Keys.KeyHash 'Keys.Payment StandardCrypto))
+keyWitnesses :: (MonadBlockchain era m, C.IsShelleyBasedEra era) => C.TxBodyContent v era -> m (Set (Keys.KeyHash 'Keys.Payment))
 keyWitnesses (requiredTxIns -> inputs) = do
   C.UTxO utxos <- utxoByTxIn inputs
   pure $ Set.fromList $ mapMaybe (publicKeyCredential . snd) $ Map.toList utxos
@@ -825,7 +822,7 @@ requiredSignatureCount txBuilder = inAlonzo @era $ do
         C.TxCertificates _ cs -> mconcat $ getCertKeyWits . fst <$> OMap.toAscList cs
         C.TxCertificatesNone -> Set.empty
 
-      getCertKeyWits :: C.Certificate era -> Set (KeyHash Witness StandardCrypto)
+      getCertKeyWits :: C.Certificate era -> Set (KeyHash Witness)
       {- Certificates that don't require a witness:
       \* For a DCertregkey certificate, cwitness is not defined as stake key
       registrations do not require a witness. (See SL-D5)
@@ -842,7 +839,7 @@ requiredSignatureCount txBuilder = inAlonzo @era $ do
 getTxCertWitness
   :: C.ShelleyBasedEra era
   -> L.TxCert (C.ShelleyLedgerEra era)
-  -> Maybe (KeyHash Witness StandardCrypto)
+  -> Maybe (KeyHash Witness)
 getTxCertWitness sbe ledgerCert = C.shelleyBasedEraConstraints sbe $
   case L.getVKeyWitnessTxCert ledgerCert of
     Just keyHash -> Just keyHash
@@ -850,12 +847,12 @@ getTxCertWitness sbe ledgerCert = C.shelleyBasedEraConstraints sbe $
 
 -- | Certificate key witness
 data CertificateKeyWitness era
-  = CertificateStakeKey (KeyHash Staking (EraCrypto (C.ShelleyLedgerEra era)))
-  | CertificateStakePoolKey (KeyHash StakePool (EraCrypto (C.ShelleyLedgerEra era)))
-  | CertificateGenesisKey (KeyHash Genesis (EraCrypto (C.ShelleyLedgerEra era)))
+  = CertificateStakeKey (KeyHash Staking)
+  | CertificateStakePoolKey (KeyHash StakePool)
+  | CertificateGenesisKey (KeyHash Genesis)
   deriving stock (Eq, Ord)
 
-publicKeyCredential :: (C.IsShelleyBasedEra era) => C.TxOut v era -> Maybe (Keys.KeyHash 'Keys.Payment StandardCrypto)
+publicKeyCredential :: (C.IsShelleyBasedEra era) => C.TxOut v era -> Maybe (Keys.KeyHash 'Keys.Payment)
 publicKeyCredential = preview (L._TxOut . _1 . L._ShelleyAddress . _2 . L._ShelleyPaymentCredentialByKey)
 
 spendPubKeyTxIn :: C.TxIn -> (C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn era))

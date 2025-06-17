@@ -74,11 +74,11 @@ import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
 import Cardano.Ledger.Core qualified as Core
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Plutus.Evaluate (PlutusWithContext (..))
 import Cardano.Ledger.Shelley.API (
   ApplyTxError,
   Coin (..),
+  EraCertState,
   MempoolEnv,
   MempoolState,
   UTxO (..),
@@ -143,7 +143,6 @@ import Convex.MonadLog (
  )
 import Convex.NodeParams (
   NodeParams,
-  pParams,
  )
 import Convex.Utils (
   posixTimeToSlotUnsafe,
@@ -264,7 +263,7 @@ class (Monad m) => MonadBlockchain era m | m -> era where
 
   queryStakeVoteDelegatees
     :: Set C.StakeCredential
-    -> m (Map C.StakeCredential (Ledger.DRep Ledger.StandardCrypto))
+    -> m (Map C.StakeCredential (Ledger.DRep))
     -- ^ Get the delegatees of the stake addresses
 
   querySystemStart :: m SystemStart
@@ -299,7 +298,7 @@ class (Monad m) => MonadBlockchain era m | m -> era where
   default queryStakeVoteDelegatees
     :: (MonadTrans t, m ~ t n, MonadBlockchain era n)
     => Set C.StakeCredential
-    -> m (Map C.StakeCredential (Ledger.DRep Ledger.StandardCrypto))
+    -> m (Map C.StakeCredential (Ledger.DRep))
   queryStakeVoteDelegatees = lift . queryStakeVoteDelegatees
 
   default querySystemStart :: (MonadTrans t, m ~ t n, MonadBlockchain era n) => m SystemStart
@@ -341,7 +340,7 @@ data MockChainState era
   = MockChainState
   { mcsEnv :: MempoolEnv (C.ShelleyLedgerEra era)
   , mcsPoolState :: MempoolState (C.ShelleyLedgerEra era)
-  , mcsTransactions :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext StandardCrypto])]
+  , mcsTransactions :: [(Validated (Core.Tx (C.ShelleyLedgerEra era)), [PlutusWithContext])]
   -- ^ Transactions that were submitted to the mockchain and validated
   , mcsFailedTransactions :: [(C.Tx era, ValidationError era)]
   -- ^ Transactions that were submitted to the mockchain, but failed with a validation error
@@ -386,7 +385,7 @@ getMockChainState = modifyMockChainState (\s -> (s, s))
 putMockChainState :: (MonadMockchain era m) => MockChainState era -> m ()
 putMockChainState s = modifyMockChainState (const ((), s))
 
-setReward :: forall era m. (Core.EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto, MonadMockchain era m) => C.StakeCredential -> Coin -> m ()
+setReward :: forall era m. (EraCertState (C.ShelleyLedgerEra era), MonadMockchain era m) => C.StakeCredential -> Coin -> m ()
 setReward cred coin = do
   mcs <- getMockChainState
   let
@@ -417,15 +416,15 @@ modifyUtxo
   => (UTxO (C.ShelleyLedgerEra era) -> (UTxO (C.ShelleyLedgerEra era), a)) -> m a
 modifyUtxo f =
   C.shelleyBasedEraConstraints @era C.shelleyBasedEra $
-    askNodeParams >>= \np -> modifyMockChainState $ \s ->
-      let (u', a) = f (s ^. poolState . L.utxoState . L._UTxOState (pParams np) . _1)
-       in (a, set (poolState . L.utxoState . L._UTxOState (pParams np) . _1) u' s)
+    modifyMockChainState $ \s ->
+      let (u', a) = f (s ^. poolState . L.utxoState . L._UTxOState . _1)
+       in (a, set (poolState . L.utxoState . L._UTxOState . _1) u' s)
 
--- | Get the UTxO set |
+-- | Get the UTxO set
 getUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era) => m (UTxO (C.ShelleyLedgerEra era))
 getUtxo = modifyUtxo (\s -> (s, s))
 
--- | Set the UTxO set |
+-- | Set the UTxO set
 setUtxo :: (MonadMockchain era m, C.IsShelleyBasedEra era) => UTxO (C.ShelleyLedgerEra era) -> m ()
 setUtxo u = modifyUtxo (const (u, ()))
 

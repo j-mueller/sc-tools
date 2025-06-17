@@ -14,7 +14,7 @@ module Convex.Scripts (
 
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Plutus.Data (Data (..))
-import Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
+import Ouroboros.Consensus.Shelley.Eras (BabbageEra)
 import PlutusLedgerApi.V1 qualified as PV1
 
 fromScriptData :: (PV1.FromData a) => C.ScriptData -> Maybe a
@@ -27,4 +27,4 @@ fromHashableScriptData :: (PV1.FromData a) => C.HashableScriptData -> Maybe a
 fromHashableScriptData (C.toPlutusData . C.getScriptData -> d) = PV1.fromData d
 
 toHashableScriptData :: (PV1.ToData a) => a -> C.HashableScriptData
-toHashableScriptData = C.fromAlonzoData @StandardBabbage . Data . PV1.toData
+toHashableScriptData = C.fromAlonzoData @BabbageEra . Data . PV1.toData

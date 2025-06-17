@@ -15,8 +15,8 @@ repository cardano-haskell-packages
 
 with-compiler: ghc-9.6.6
 index-state:
-  , hackage.haskell.org 2025-04-15T08:13:08Z
-  , cardano-haskell-packages 2025-04-11T16:42:25Z
+  , hackage.haskell.org 2025-05-26T19:51:53Z
+  , cardano-haskell-packages 2025-05-26T19:51:53Z
 
 -- You never, ever, want this.
 write-ghc-environment-files: never

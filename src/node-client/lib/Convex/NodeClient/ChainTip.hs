@@ -20,10 +20,8 @@ import Cardano.Api (
   BlockNo (..),
   ChainPoint (..),
   ChainTip (..),
-  Hash,
   chainTipToChainPoint,
   deserialiseFromRawBytesHex,
-  proxyToAsType,
   serialiseToRawBytesHexText,
  )
 import Data.Aeson (
@@ -35,7 +33,6 @@ import Data.Aeson (
   (.=),
  )
 import Data.Aeson qualified as Aeson
-import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -57,7 +54,7 @@ instance FromJSON JSONChainTip where
           fmap JSONChainTip $
             ChainTip
               <$> obj .: "slot"
-              <*> (obj .: "hash" >>= \(t :: Text) -> case deserialiseFromRawBytesHex (proxyToAsType $ Proxy @(Hash BlockHeader)) (Text.encodeUtf8 t) of Left err -> fail (show err); Right x -> pure x)
+              <*> (obj .: "hash" >>= \(t :: Text) -> case deserialiseFromRawBytesHex (Text.encodeUtf8 t) of Left err -> fail (show err); Right x -> pure x)
               <*> fmap Consensus.BlockNo (obj .: "block")
       )
       y

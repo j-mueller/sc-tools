@@ -200,7 +200,7 @@ findIndexSpending txi = fromJust . lookupIndexSpending txi
 
 -- | Look up the index of the @TxIn@ in the list of reference inputs
 lookupIndexReference :: (C.IsBabbageBasedEra era) => C.TxIn -> TxBody era -> Maybe Int
-lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . view (L.txInsReference . L._TxInsReferenceIso)
+lookupIndexReference txi = Set.lookupIndex txi . Set.fromList . fst . view (L.txInsReference . L._TxInsReferenceIso)
 
 -- | Look up the index of the @TxIn@ in the list of reference inputs. Throws an error if the @TxIn@ is not present.
 findIndexReference :: (C.IsBabbageBasedEra era) => C.TxIn -> TxBody era -> Int
@@ -584,7 +584,7 @@ addCollateral :: (MonadBuildTx era m, C.IsAlonzoBasedEra era) => C.TxIn -> m ()
 addCollateral i = addBtx $ over (L.txInsCollateral . L._TxInsCollateralIso) (i :)
 
 addReference :: (MonadBuildTx era m, C.IsBabbageBasedEra era) => C.TxIn -> m ()
-addReference i = addBtx $ over (L.txInsReference . L._TxInsReferenceIso) (i :)
+addReference i = addBtx $ over (L.txInsReference . L._TxInsReferenceIso . L._1) (i :)
 
 addAuxScript :: (MonadBuildTx era m, C.IsAllegraBasedEra era) => C.ScriptInEra era -> m ()
 addAuxScript s = addBtx (over (L.txAuxScripts . L._TxAuxScripts) (s :))
@@ -689,7 +689,7 @@ minAdaDeposit (C.LedgerProtocolParameters params) txOut =
           -- set the Ada value to a dummy amount to ensure that it is not 0 (if it was 0, the size of the output
           -- would be smaller, causing 'calculateMinimumUTxO' to compute an amount that is a little too small)
           & over (L._TxOut . _2 . L._TxOutValue . L._Value . at C.AdaAssetId) (maybe (Just minAdaValue) (Just . max minAdaValue))
-   in C.lovelaceToQuantity $ C.calculateMinimumUTxO (C.convert C.maryBasedEra) txo params
+   in C.lovelaceToQuantity $ C.calculateMinimumUTxO (C.convert C.maryBasedEra) params txo
 
 -- | Apply 'setMinAdaDeposit' to all outputs
 setMinAdaDepositAll :: (MonadBuildTx era m, C.IsMaryBasedEra era) => C.LedgerProtocolParameters era -> m ()
@@ -776,7 +776,7 @@ mkConwayStakeCredentialDelegationCertificate
   :: forall era
    . (C.IsConwayBasedEra era)
   => C.StakeCredential
-  -> ConwayTxCert.Delegatee (Ledger.EraCrypto (C.ShelleyLedgerEra era))
+  -> ConwayTxCert.Delegatee
   -> C.Certificate era
 mkConwayStakeCredentialDelegationCertificate stakeCred =
   C.makeStakeAddressDelegationCertificate
@@ -789,7 +789,7 @@ mkConwayStakeCredentialRegistrationAndDelegationCertificate
      , MonadBlockchain era m
      )
   => C.StakeCredential
-  -> ConwayTxCert.Delegatee (Ledger.EraCrypto (C.ShelleyLedgerEra era))
+  -> ConwayTxCert.Delegatee
   -> m (C.Certificate era)
 mkConwayStakeCredentialRegistrationAndDelegationCertificate stakeCred delegatee = do
   deposit <-

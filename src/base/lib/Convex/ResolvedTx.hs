@@ -57,7 +57,6 @@ import Data.GraphViz.Types.Generalised (DotGraph (..))
 import Data.GraphViz.Types.Monadic qualified as GV
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Proxy (Proxy (..))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -105,7 +104,7 @@ instance ToJSON ResolvedTx where
 instance FromJSON ResolvedTx where
   parseJSON = withObject "ResolvedTx" $ \obj ->
     ResolvedTx
-      <$> (obj .: "transaction" >>= either (fail . show) pure . C.deserialiseFromTextEnvelope (C.proxyToAsType Proxy))
+      <$> (obj .: "transaction" >>= either (fail . show) pure . C.deserialiseFromTextEnvelope)
       <*> obj .: "inputs"
 
 -- | A .dot (graphviz) representation of the transaction

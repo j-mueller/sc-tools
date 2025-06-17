@@ -155,7 +155,7 @@ import Ouroboros.Consensus.HardFork.History.Summary (
   EraEnd (..),
   EraSummary (..),
  )
-import Ouroboros.Consensus.Shelley.Eras (StandardConway)
+import Ouroboros.Consensus.Shelley.Eras (ConwayEra)
 import Streaming.Prelude (Of, Stream)
 import Streaming.Prelude qualified as S
 
@@ -188,7 +188,7 @@ quantity (Quantity n) = fromInteger n
 -- pool1axzm26vduyuxgw0x9ddh4vkvn7q5hyd558l0t9c08p556lf2zaj
 poolId :: PoolId -> C.PoolId
 poolId (PoolId text) =
-  either (error . show) id $ C.deserialiseFromBech32 (proxyToAsType $ Proxy @(C.Hash C.StakePoolKey)) text
+  either (error . show) id $ C.deserialiseFromBech32 text
 
 toAssetId :: Amount -> (C.AssetId, C.Quantity)
 toAssetId = \case
@@ -461,11 +461,11 @@ on mainnet.
 {- | Convert the 'ProtocolParams' to conway-era ledger params.
 See note [Protocol Parameter Conversion]
 -}
-protocolParametersConway :: ProtocolParams -> PParams StandardConway
+protocolParametersConway :: ProtocolParams -> PParams ConwayEra
 protocolParametersConway pp =
   let votingThresholdFromRational = C.unsafeBoundedRational @BaseTypes.UnitInterval . fromMaybe 0.51
    in L.PParams $
-        L.emptyPParamsIdentity @StandardConway
+        L.emptyPParamsIdentity @ConwayEra
           & L.hkdMinFeeAL .~ L.Coin (_protocolParamsMinFeeA pp)
           & L.hkdMinFeeBL .~ L.Coin (_protocolParamsMinFeeB pp)
           & L.hkdMaxBBSizeL .~ fromInteger (_protocolParamsMaxBlockSize pp)
