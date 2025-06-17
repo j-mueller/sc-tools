@@ -258,7 +258,6 @@ runEraQuery connectInfo EraQuery{eqQuery, eqResult} =
 queryInSupportedEra :: C.LocalNodeConnectInfo -> (forall era. Era era -> EraQuery era result) -> IO result
 queryInSupportedEra connectInfo qry = do
   queryEra connectInfo >>= \case
-    -- C.AnyCardanoEra C.BabbageEra -> runEraQuery connectInfo (qry C.Experimental.BabbageEra)
     C.AnyCardanoEra C.ConwayEra -> runEraQuery connectInfo (qry C.Experimental.ConwayEra)
     era -> throwIO (QueryEraNotSupported era)
 
@@ -288,7 +287,6 @@ queryStakeAddresses :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map 
 queryStakeAddresses info creds = do
   let C.LocalNodeConnectInfo{C.localNodeNetworkId} = info
   queryInSupportedEra info $ \case
-    -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
     C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakeAddresses creds localNodeNetworkId, eqResult = first (fmap C.lovelaceToQuantity)}
 
 {- | Get the set of registered stake pools
@@ -297,7 +295,6 @@ queryStakeAddresses info creds = do
 -}
 queryStakePools :: C.LocalNodeConnectInfo -> IO (Set PoolId)
 queryStakePools connectInfo = queryInSupportedEra connectInfo $ \case
-  -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
   C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakePools, eqResult = id}
 
 {- | Get the delegatees for a set of stake credentials (only works starting at ConwayEra).
@@ -307,7 +304,6 @@ queryStakePools connectInfo = queryInSupportedEra connectInfo $ \case
 queryStakeVoteDelegatees :: C.LocalNodeConnectInfo -> Set StakeCredential -> IO (Map StakeCredential (Ledger.DRep))
 queryStakeVoteDelegatees info creds = do
   queryInSupportedEra info $ \case
-    -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
     C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryStakeVoteDelegatees creds, eqResult = id}
 
 {- | Get the current epoch
@@ -316,7 +312,6 @@ queryStakeVoteDelegatees info creds = do
 -}
 queryEpoch :: C.LocalNodeConnectInfo -> IO C.EpochNo
 queryEpoch connectInfo = queryInSupportedEra connectInfo $ \case
-  -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
   C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryEpoch, eqResult = id}
 
 {- | Query UTxO for all given addresses at given point.
@@ -325,5 +320,4 @@ queryEpoch connectInfo = queryInSupportedEra connectInfo $ \case
 -}
 queryUTxOFilter :: C.LocalNodeConnectInfo -> C.QueryUTxOFilter -> IO (UtxoSet C.CtxUTxO ())
 queryUTxOFilter connectInfo flt = queryInSupportedEra connectInfo $ \case
-  -- C.Experimental.BabbageEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
   C.Experimental.ConwayEra -> EraQuery{eqQuery = C.QueryUTxO flt, eqResult = Utxos.fromApiUtxo}
