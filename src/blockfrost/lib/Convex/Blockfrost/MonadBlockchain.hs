@@ -84,7 +84,7 @@ import Data.ByteString.Lazy qualified as BSL
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (
-  fromJust,
+  fromMaybe,
   mapMaybe,
  )
 import Data.SOP.NonEmpty qualified as NonEmpty
@@ -236,7 +236,7 @@ getEraHistory = getOrRetrieve eraHistory $ do
     C.EraHistory $
       Qry.mkInterpreter $
         Summary.Summary $
-          fromJust (error "getEraHistory: Unexpected number of entries") $
+          fromMaybe (error "getEraHistory: Unexpected number of entries") $
             NonEmpty.nonEmptyFromList @(CardanoEras StandardCrypto) summaries
 
 {- | Get the current slot number, slot length and UTC time of the start
