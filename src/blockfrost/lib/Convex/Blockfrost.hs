@@ -57,6 +57,8 @@ import Data.Coerce (coerce)
 import Data.Set qualified as Set
 import Streaming.Prelude (Of, Stream)
 import Streaming.Prelude qualified as S
+import Blockfrost.Types.Cardano.Assets qualified as BF.Assets
+import Cardano.Api qualified as C
 
 {- | Monad transformer that implements the @MonadBlockchain@
 class using blockfrost's API
@@ -148,3 +150,22 @@ resolveTx txId = do
   let reqTxIns = requiredTxIns txBodyContent
   utxo <- State.evalStateT (MonadBlockchain.getUtxoByTxIn reqTxIns) MonadBlockchain.emptyBlockfrostCache
   pure ResolvedTx{rtxTransaction, rtxInputs = C.unUTxO utxo}
+
+lookupUtxo :: (Types.MonadBlockfrost m) => Client.AddressUtxo -> m (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))
+lookupUtxo addr = runExceptT $ do
+  k <- either (Types.resolveScript >=> liftEither) pure (Types.addressUtxo @C.ConwayEra addr)
+  pure (Types.addressUtxoTxIn addr, k)
+
+streamUTxOsWithAssetId
+  :: (Types.MonadBlockfrost m)
+  => C.AssetId
+  -> Stream (Of (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))) m ()
+streamUTxOsWithAssetId (Types.assetIdToBlockfrostAssetId -> assetId) = do
+  -- Stream all addresses that currently hold this asset
+  S.for (Types.pagedStream (\p -> Client.getAssetAddresses' assetId p Client.Ascending)) $ \aa -> do
+    -- 'aa' :: BF.Assets.AssetAddress
+    let addr :: Types.Address
+        addr = BF.Assets._assetAddressAddress aa
+    -- For each such address, stream only UTxOs that contain *this* asset at that address
+    S.mapM lookupUtxo $
+      Types.pagedStream (\p -> Client.getAddressUtxosAsset' addr assetId p Client.Ascending)
