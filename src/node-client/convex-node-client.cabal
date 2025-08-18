@@ -47,7 +47,7 @@ library
   hs-source-dirs:  lib
   build-depends:
     , aeson
-    , base          >=4.14.0
+    , base             >=4.14.0
     , containers
     , mtl
     , primitive
@@ -55,6 +55,7 @@ library
     , text
     , time
     , transformers
+    , typed-protocols
 
   build-depends:   convex-base
 

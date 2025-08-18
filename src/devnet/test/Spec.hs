@@ -10,7 +10,6 @@ module Main where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api.PParams qualified as L
 import Cardano.Ledger.BaseTypes (unsafeNonZero)
 import Cardano.Ledger.Block qualified as Ledger

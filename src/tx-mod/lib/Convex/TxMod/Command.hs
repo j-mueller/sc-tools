@@ -6,12 +6,16 @@ module Convex.TxMod.Command (
 ) where
 
 import Cardano.Api (TxId)
+import Cardano.Api qualified as C
+import Cardano.Api.Parser.Text qualified as Parser
+import Data.Text qualified as Text
 import Options.Applicative (
   CommandFields,
   Mod,
   Parser,
   argument,
   command,
+  eitherReader,
   fullDesc,
   help,
   info,
@@ -21,7 +25,6 @@ import Options.Applicative (
   optional,
   progDesc,
   short,
-  str,
   strOption,
   subparser,
   (<|>),
@@ -49,7 +52,7 @@ parseGraph =
 parseTxId :: Parser TxId
 parseTxId =
   argument
-    str
+    (eitherReader (Parser.runParser C.parseTxId . Text.pack))
     (metavar "TX_ID" <> help "The transaction ID")
 
 parseTxOutFile :: Parser FilePath

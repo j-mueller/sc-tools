@@ -53,6 +53,7 @@ library
     Convex.PlutusTx
     Convex.ResolvedTx
     Convex.Utils
+    Convex.Utils.String
     Convex.UtxoMod
     Convex.Utxos
 
@@ -76,7 +77,7 @@ library
   build-depends:
     , base16-bytestring
     , bytestring
-    , cardano-api                  ==10.16.3.0
+    , cardano-api                  ==10.17.2.0
     , cardano-binary
     , cardano-crypto-class
     , cardano-crypto-wrapper
@@ -116,7 +117,7 @@ test-suite convex-base-test
   -- CHaP dependencies
   build-depends:
     , cardano-api
-    , cardano-api:gen
+    , cardano-api-gen
 
   -- Hackage dependencies
   build-depends:

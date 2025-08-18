@@ -8,7 +8,7 @@ module Convex.PlutusLedger.V3 (
   transTxOutRef,
 ) where
 
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import PlutusLedgerApi.V3 qualified as PV3
 import PlutusTx.Prelude qualified as PlutusTx
 

@@ -59,11 +59,7 @@ module Convex.CoinSelection (
   exactScriptExecutionError,
 ) where
 
-import Cardano.Api qualified
-import Cardano.Api.Extras (substituteExecutionUnits)
-import Cardano.Api.Ledger qualified as CLedger
-import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley (
+import Cardano.Api (
   BuildTx,
   ConwayEra,
   EraHistory,
@@ -72,7 +68,11 @@ import Cardano.Api.Shelley (
   TxOut,
   UTxO (..),
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified
+import Cardano.Api qualified as C
+import Cardano.Api.Extras (substituteExecutionUnits)
+import Cardano.Api.Ledger qualified as CLedger
+import Cardano.Api.Ledger qualified as L
 import Cardano.Ledger.Core (PParams (..), hkdKeyDepositL)
 import Cardano.Ledger.Keys qualified as Keys
 import Cardano.Ledger.Shelley.API (

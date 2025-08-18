@@ -43,8 +43,6 @@ import Cardano.Api (
   envSecurityParam,
  )
 import Cardano.Api qualified as CAPI
-import Cardano.Api.ChainSync.ClientPipelined (Nat (..))
-import Cardano.Api.Shelley qualified as CAPI
 import Cardano.Slotting.Slot (WithOrigin (At))
 import Convex.NodeClient.ChainTip (
   JSONBlockNo (..),
@@ -66,6 +64,7 @@ import Data.Functor ((<&>))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import GHC.Generics (Generic)
+import Network.TypedProtocol.Core (Nat (Succ, Zero))
 import Ouroboros.Consensus.Block.Abstract (WithOrigin (..))
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined (
   ClientPipelinedStIdle (..),

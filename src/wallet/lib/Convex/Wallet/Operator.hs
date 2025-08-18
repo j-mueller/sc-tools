@@ -38,7 +38,7 @@ module Convex.Wallet.Operator (
 ) where
 
 import Cardano.Api (CtxTx, PaymentCredential, TxOut)
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Convex.CardanoApi.Lenses (emptyTxOut)
 import Convex.Class (MonadBlockchain (queryNetworkId))
 import Convex.PlutusLedger.V1 (transPubKeyHash, transStakeKeyHash)
