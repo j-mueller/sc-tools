@@ -150,7 +150,7 @@ adaLabel ada =
 valueLabel :: (C.IsMaryBasedEra era) => C.TxOut ctx era -> A.RecordField
 valueLabel =
   let renderAsset C.AdaAssetId (C.Quantity n) = adaLabel n
-      renderAsset (C.AssetId C.PolicyId{C.unPolicyId} (C.AssetName assetName)) (C.Quantity n) =
+      renderAsset (C.AssetId C.PolicyId{C.unPolicyId} (C.UnsafeAssetName assetName)) (C.Quantity n) =
         let lbl = shortenHash56 (Text.pack $ filter ((/=) '"') $ show unPolicyId) <> "." <> Text.decodeUtf8 (Base16.encode assetName)
          in lbl <> ": " <> Text.pack (show n)
       renderValue = Text.unlines . fmap (uncurry renderAsset) . toList

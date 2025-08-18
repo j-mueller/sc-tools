@@ -18,7 +18,7 @@ module Scripts (
 ) where
 
 import Cardano.Api (TxIn)
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Convex.BuildTx (MonadBuildTx)
 import Convex.BuildTx qualified as BuildTx
 import Convex.PlutusTx (compiledCodeToScript)

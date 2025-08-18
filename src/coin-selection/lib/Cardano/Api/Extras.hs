@@ -8,8 +8,7 @@ module Cardano.Api.Extras (
   substituteExecutionUnits,
 ) where
 
-import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley (
+import Cardano.Api (
   BuildTx,
   BuildTxWith (..),
   Certificate,
@@ -44,7 +43,8 @@ import Cardano.Api.Shelley (
   setTxVotingProcedures,
   setTxWithdrawals,
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
+import Cardano.Api.Ledger qualified as L
 import Control.Lens ((&))
 import Data.Bitraversable (bitraverse)
 import Data.Function (on)

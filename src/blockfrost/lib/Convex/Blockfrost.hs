@@ -119,7 +119,7 @@ instance (MonadIO m) => MonadBlockchain C.ConwayEra (BlockfrostT m) where
 lookupUtxo :: (Types.MonadBlockfrost m) => Client.AddressUtxo -> m (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))
 lookupUtxo addr = runExceptT $ do
   k <- either (Types.resolveScript >=> liftEither) pure (Types.addressUtxo @C.ConwayEra addr)
-  pure (Types.addressUtxoTxIn addr, k)
+  pure (either (error . (<>) "lookupUtxo: hex conversion failed: ") id $ Types.addressUtxoTxIn addr, k)
 
 -- | Load all UTxOs for a payment credential in a stream. This includes resolution of reference scripts with 'Types.resolveScript'
 streamUtxos :: (Types.MonadBlockfrost m) => C.PaymentCredential -> Stream (Of (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))) m ()
