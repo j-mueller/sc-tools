@@ -3,8 +3,8 @@
 
 module Convex.PlutusLedgerSpec where
 
+import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Shelley
-import Cardano.Api.Shelley qualified as C
 import Convex.PlutusLedger.V1 (
   transAddressShelley,
   unTransAddressShelley,
