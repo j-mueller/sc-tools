@@ -2,12 +2,10 @@
   description = "sc-tools";
 
   inputs = {
-    iogx = {
-      url = "github:input-output-hk/iogx";
+
+    haskell-nix = {
+      url = "github:input-output-hk/haskell.nix";
       inputs.hackage.follows = "hackage";
-      inputs.CHaP.follows = "CHaP";
-      inputs.haskell-nix.follows = "haskell-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     nixpkgs.follows = "haskell-nix/nixpkgs";
@@ -22,10 +20,14 @@
       flake = false;
     };
 
-    haskell-nix = {
-      url = "github:input-output-hk/haskell.nix";
-      inputs.hackage.follows = "hackage";
+    iohk-nix = {
+      url = "github:input-output-hk/iohk-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
+
+    flake-utils.url = "github:numtide/flake-utils";
 
     cardano-node = {
       url = "github:input-output-hk/cardano-node?ref=10.1.4";
@@ -37,12 +39,11 @@
   };
 
 
-  outputs = inputs: inputs.iogx.lib.mkFlake {
-    inherit inputs;
-    repoRoot = ./.;
-    outputs = import ./nix/outputs.nix;
-    systems = [ "x86_64-linux" ];
-  };
+  # TODO: Not great, but this way we don't get other systems evaluated while working on things.
+  # outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system: 
+  outputs = inputs: inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: 
+    import ./nix/outputs.nix { inherit inputs system; }
+  );
 
   nixConfig = {
     extra-substituters = [
@@ -54,7 +55,9 @@
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
       "sc-tools.cachix.org-1:DY2+6v0HuMvoCt7wEqZTPqzZBcNk/Lexb72Vixz6n6I="
       "cache.ml42.de:RKmSRP9TOc87nh9FZCM/b/pMIE3kBLEeIe71ReCBwRM="
+      "loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk="
     ];
     allow-import-from-derivation = true;
+    accept-flake-config = true;
   };
 }
