@@ -40,8 +40,8 @@
 
 
   # TODO: Not great, but this way we don't get other systems evaluated while working on things.
-  # outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system: 
-  outputs = inputs: inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: 
+  outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system: 
+  # outputs = inputs: inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (system: 
     import ./nix/outputs.nix { inherit inputs system; }
   );
 
