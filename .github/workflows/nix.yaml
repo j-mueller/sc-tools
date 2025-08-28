@@ -20,4 +20,4 @@ jobs:
         name: sc-tools
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Flake check
-      run: nix flake check --accept-flake-config
+      run: nix flake check --accept-flake-config --system x86_64-linux
