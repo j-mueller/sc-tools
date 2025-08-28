@@ -223,7 +223,7 @@ spendPlutusScriptReference txIn = do
 mintingPlutus :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV1 era) => m C.TxId
 mintingPlutus = inBabbage @era $ do
   void $ Wallet.w2 `paymentTo` Wallet.w1
-  let tx = execBuildTx (mintPlutus mintingScript () (unsafeAssetName "assetName") 100)
+  let tx = execBuildTx (mintPlutus mintingScript () (unsafeAssetName "deadbeef") 100)
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
 spendTokens :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
@@ -238,11 +238,11 @@ spendTokens2 txi = do
   let q = 98
       wTo = Wallet.w2
       wFrom = Wallet.w1
-      vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) (unsafeAssetName "assetName") q
+      vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "deadbeef" q
       tx = execBuildTx $ do
         payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
         BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
-        mintPlutus mintingScript () (unsafeAssetName "assetName") (-2)
+        mintPlutus mintingScript () (unsafeAssetName "deadbeef") (-2)
         setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
@@ -266,7 +266,7 @@ spendSingletonOutput txi = do
 
 nativeAssetPaymentTo :: (MonadMockchain C.ConwayEra m, MonadFail m, MonadError (BalanceTxError C.ConwayEra) m) => C.Quantity -> Wallet -> Wallet -> m C.TxId
 nativeAssetPaymentTo q wFrom wTo = do
-  let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) (unsafeAssetName "assetName") q
+  let vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) (unsafeAssetName "deadbeef") q
       tx =
         execBuildTx $
           payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
@@ -375,7 +375,7 @@ buildTxMixedInputs = mockchainSucceeds $ failOnError $ do
   testWallet <- liftIO Wallet.generateWallet
   -- configure the UTxO set to that the new wallet has two outputs, each with 40 native tokens and 10 Ada.
   utxoSet <- Utxos.fromApiUtxo . fromLedgerUTxO C.ShelleyBasedEraConway <$> getUtxo
-  let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) (unsafeAssetName "assetName") 40 <> C.lovelaceToValue 10_000_000
+  let utxoVal = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) (unsafeAssetName "deadbeef") 40 <> C.lovelaceToValue 10_000_000
       newUTxO = C.TxOut (Wallet.addressInEra Defaults.networkId testWallet) (C.TxOutValueShelleyBased C.ShelleyBasedEraConway $ C.toMaryValue utxoVal) C.TxOutDatumNone C.ReferenceScriptNone
       txi :: C.TxId = unsafeTxId "771dfef6ad6f1fc51eb399c07ff89257b06ba9822aec8f83d89012f04eb738f2"
   setUtxo $
@@ -492,8 +492,8 @@ matchingIndexMP :: forall m. (MonadMockchain C.ConwayEra m, MonadError (BalanceT
 matchingIndexMP = do
   let sh = C.hashScript (C.PlutusScript C.PlutusScriptV3 Scripts.matchingIndexMPScript)
       policyId = C.PolicyId sh
-      runTx assetName = Scripts.mintMatchingIndex policyId assetName 100
-  void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx (unsafeAssetName <$> ["assetName1", "assetName2", "assetName3"])) TrailingChange []
+      runTx deadbeef = Scripts.mintMatchingIndex policyId deadbeef 100
+  void $ tryBalanceAndSubmit mempty Wallet.w1 (execBuildTx $ traverse_ runTx (unsafeAssetName <$> ["deadbeefaa", "deadbeefbb", "deadbeefcc"])) TrailingChange []
 
 queryStakeAddressesTest :: forall m. (MonadIO m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()
 queryStakeAddressesTest = do
