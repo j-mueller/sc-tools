@@ -59,6 +59,7 @@ module Convex.BuildTx (
   spendPlutus,
   spendPlutusRef,
   spendPlutusRefWithInlineDatum,
+  spendPlutusRefBase,
   spendPlutusRefWithoutInRef,
   spendPlutusRefWithoutInRefInlineDatum,
   spendPlutusInlineDatum,
