@@ -10,6 +10,8 @@
 
 -- | Conversion between blockfrost and @cardano-api@ types
 module Convex.Blockfrost.Types (
+  policyIdToBlockfrostPolicyId,
+  assetIdToBlockfrostAssetId,
   toLovelace,
   toQuantity,
   toPolicyId,
@@ -158,6 +160,13 @@ import Ouroboros.Consensus.HardFork.History.Summary (
 import Ouroboros.Consensus.Shelley.Eras (ConwayEra)
 import Streaming.Prelude (Of, Stream)
 import Streaming.Prelude qualified as S
+
+policyIdToBlockfrostPolicyId :: C.PolicyId -> PolicyId
+policyIdToBlockfrostPolicyId = C.PolicyId . C.serialiseToRawBytesHexText
+
+assetIdToBlockfrostAssetId :: C.AssetId -> AssetId
+assetIdToBlockfrostAssetId (C.AssetId policyId tokenName) = AssetId $ (C.serialiseToRawBytesHexText policyId) <> (C.serialiseToRawBytesHexText tokenName)
+assetIdToBlockfrostAssetId C.AdaAssetId = AssetId ""
 
 toLovelace :: Lovelaces -> Lovelace
 toLovelace = C.Ledger.Coin . toInteger
