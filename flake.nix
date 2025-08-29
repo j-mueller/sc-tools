@@ -27,7 +27,10 @@
 
     pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
 
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-utils = {
+      url = "github:numtide/flake-utils";
+      inputs.systems.follows = "systems";
+    };
 
     cardano-node = {
       url = "github:input-output-hk/cardano-node?ref=10.1.4";
@@ -36,12 +39,13 @@
     cardano-cli = {
       url = "github:intersectmbo/cardano-cli?ref=cardano-cli-10.1.1.0";
     };
+
+    systems.url = "github:nix-systems/default";
   };
 
 
-  # TODO: Not great, but this way we don't get other systems evaluated while working on things.
-  # outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system: 
-  outputs = inputs: inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (system: 
+  # NOTE: nix flake show --override-input systems github:nix-systems/x86_64-linux
+  outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system:
     import ./nix/outputs.nix { inherit inputs system; }
   );
 
