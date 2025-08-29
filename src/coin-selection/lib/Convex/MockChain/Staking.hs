@@ -4,8 +4,8 @@
 
 module Convex.MockChain.Staking (registerPool) where
 
+import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Core qualified as Ledger
 import Control.Lens ((^.))
 import Control.Monad (void)

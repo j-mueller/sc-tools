@@ -33,15 +33,15 @@ module Convex.NodeParams (
   L.hkdCostModelsL,
 ) where
 
-import Cardano.Api.Ledger (PParams)
-import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley (
+import Cardano.Api (
   EraHistory,
   LedgerProtocolParameters (..),
   NetworkId (..),
   PoolId,
   ShelleyLedgerEra,
  )
+import Cardano.Api.Ledger (PParams)
+import Cardano.Api.Ledger qualified as L
 import Cardano.Ledger.Alonzo.PParams qualified as L
 import Cardano.Slotting.Time (SlotLength, SystemStart)
 import Control.Lens.TH (makeLensesFor)

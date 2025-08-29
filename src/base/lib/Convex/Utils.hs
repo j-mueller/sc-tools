@@ -71,7 +71,7 @@ import Cardano.Api (
   Tx,
   TxIn,
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Cardano.Ledger.Alonzo.UTxO qualified as L
 import Cardano.Ledger.Core qualified
 import Cardano.Ledger.Credential qualified as Shelley

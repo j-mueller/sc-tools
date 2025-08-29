@@ -103,6 +103,7 @@ module Convex.CardanoApi.Lenses (
 ) where
 
 import Cardano.Api (
+  Address,
   AddressInEra,
   AssetId,
   BuildTx,
@@ -110,7 +111,10 @@ import Cardano.Api (
   CtxTx,
   PolicyId,
   Quantity (..),
+  ReferenceScript,
   ScriptWitness,
+  ShelleyAddr,
+  SlotNo,
   TxMintValue,
   TxOut,
   TxOutDatum,
@@ -119,13 +123,7 @@ import Cardano.Api (
   ViewTx,
   WitCtxMint,
  )
-import Cardano.Api.Shelley (
-  Address,
-  ReferenceScript,
-  ShelleyAddr,
-  SlotNo,
- )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Cardano.Ledger.BaseTypes qualified as Shelley
 import Cardano.Ledger.Credential qualified as Credential
 import Cardano.Ledger.Hashes qualified as Hashes

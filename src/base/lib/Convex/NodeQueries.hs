@@ -37,15 +37,15 @@ module Convex.NodeQueries (
   queryUTxOFilter,
 ) where
 
-import Cardano.Api qualified as C
-import Cardano.Api.Experimental (Era)
-import Cardano.Api.Experimental qualified as C.Experimental
-import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley (
+import Cardano.Api (
   PoolId,
   StakeAddress,
   StakeCredential,
  )
+import Cardano.Api qualified as C
+import Cardano.Api.Experimental (Era)
+import Cardano.Api.Experimental qualified as C.Experimental
+import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Chain.Genesis qualified
 import Cardano.Crypto (
   RequiresNetworkMagic (..),

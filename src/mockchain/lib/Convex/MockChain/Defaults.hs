@@ -19,14 +19,14 @@ module Convex.MockChain.Defaults (
   nodeParams,
 ) where
 
-import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley (
+import Cardano.Api (
   EraHistory (EraHistory),
   NetworkId (..),
   NetworkMagic (..),
   shelleyGenesisDefaults,
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
+import Cardano.Api.Ledger qualified as L
 import Cardano.Ledger.Alonzo.PParams (DowngradeAlonzoPParams (..))
 import Cardano.Ledger.Alonzo.PParams qualified as L
 import Cardano.Ledger.Babbage.PParams (DowngradeBabbagePParams (..))

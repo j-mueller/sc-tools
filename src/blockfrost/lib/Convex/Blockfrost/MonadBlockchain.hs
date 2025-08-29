@@ -41,22 +41,20 @@ import Blockfrost.Types.Cardano.Genesis qualified as Genesis
 import Blockfrost.Types.Shared.CBOR (CBORString (..))
 import Cardano.Api (
   ConwayEra,
+  CtxUTxO,
+  LedgerProtocolParameters (..),
   NetworkId,
+  PoolId,
   Tx,
   TxId,
   TxIn (..),
+  TxOut,
+  UTxO,
   fromNetworkMagic,
   serialiseToCBOR,
  )
+import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley (
-  CtxUTxO,
-  LedgerProtocolParameters (..),
-  PoolId,
-  TxOut,
-  UTxO,
- )
-import Cardano.Api.Shelley qualified as C
 import Cardano.Slotting.Time (
   SlotLength,
   SystemStart,
@@ -79,7 +77,7 @@ import Convex.Utils (
   slotToUtcTime,
   txnUtxos,
  )
-import Data.Bifunctor (Bifunctor (second))
+import Data.Bifunctor (Bifunctor (first, second))
 import Data.ByteString.Lazy qualified as BSL
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -208,7 +206,8 @@ getStakeVoteDelegatees _stakeCredentials = error "NOT IMPLEMENTED YET."
 -- | Send a transaction to the network using blockfrost's API
 sendTxBlockfrost :: (MonadBlockfrost m) => Tx ConwayEra -> m (Either (ValidationError ConwayEra) TxId)
 sendTxBlockfrost =
-  fmap (Right . Types.toTxHash) . submitTx . CBORString . BSL.fromStrict . serialiseToCBOR
+  -- TODO: Fix error handling, see https://github.com/j-mueller/sc-tools/issues/271
+  fmap (first (error . (<>) "sendTxBlockfrost: Parse tx hash failed") . Types.toTxHash) . submitTx . CBORString . BSL.fromStrict . serialiseToCBOR
 
 {- | Get a single 'TxIn'. If it is not in the cache, download the entire transaction
     and add all of its UTxOs to the cache.

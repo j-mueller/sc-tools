@@ -84,6 +84,7 @@ test-suite convex-blockfrost-test
     , base               >=4.14.0
     , blockfrost-api
     , cardano-api
+    , convex-base
     , convex-blockfrost
     , safe-money
     , tasty

@@ -112,8 +112,7 @@ module Convex.BuildTx (
   mkTxOutValue,
 ) where
 
-import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley (
+import Cardano.Api (
   Hash,
   HashableScriptData,
   NetworkId,
@@ -123,7 +122,8 @@ import Cardano.Api.Shelley (
   ScriptHash,
   WitCtxTxIn,
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
+import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Ledger.Api qualified as Ledger
 import Cardano.Ledger.Conway.TxCert qualified as ConwayTxCert (Delegatee (..))
 import Control.Lens (

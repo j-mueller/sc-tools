@@ -16,8 +16,8 @@ module Convex.CoinSelection.Class (
   runTracingBalancingT,
 ) where
 
-import Cardano.Api.Shelley (AddressInEra)
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api (AddressInEra)
+import Cardano.Api qualified as C
 import Control.Monad.Catch (
   MonadCatch,
   MonadMask,

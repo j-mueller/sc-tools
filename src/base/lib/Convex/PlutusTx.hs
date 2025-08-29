@@ -6,7 +6,7 @@ module Convex.PlutusTx (
 ) where
 
 import Cardano.Api (PlutusScript)
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import PlutusLedgerApi.Common (serialiseCompiledCode)
 import PlutusTx.Code (CompiledCode)
 

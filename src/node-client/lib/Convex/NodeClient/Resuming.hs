@@ -12,8 +12,8 @@ import Cardano.Api (
   ChainPoint (..),
   ChainTip (..),
  )
-import Cardano.Api.ChainSync.ClientPipelined (N (Z))
 import Convex.NodeClient.Types (PipelinedLedgerStateClient (..))
+import Network.TypedProtocol.Core (N (Z))
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined qualified as CSP
 
 {- | Where we start processing blocks. This is the intersection between the
@@ -33,7 +33,7 @@ resumingClient
   -- ^ Function that returns the actual node client, depending on where we resumed from
   -> PipelinedLedgerStateClient
 resumingClient syncPoints f = PipelinedLedgerStateClient $ CSP.ChainSyncClientPipelined $ do
-  let initialise :: CSP.ClientPipelinedStIdle 'Z BlockInMode ChainPoint ChainTip IO ()
+  let initialise :: CSP.ClientPipelinedStIdle Z BlockInMode ChainPoint ChainTip IO ()
       initialise =
         CSP.SendMsgFindIntersect syncPoints $
           CSP.ClientPipelinedStIntersect
