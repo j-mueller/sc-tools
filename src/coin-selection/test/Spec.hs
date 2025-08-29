@@ -238,7 +238,7 @@ spendTokens2 txi = do
   let q = 98
       wTo = Wallet.w2
       wFrom = Wallet.w1
-      vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) "deadbeef" q
+      vl = assetValue (C.hashScript $ C.PlutusScript C.PlutusScriptV1 mintingScript) (unsafeAssetName "deadbeef") q
       tx = execBuildTx $ do
         payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
         BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
