@@ -45,7 +45,7 @@ tests =
             assertEqual
               "asset ID should match"
               (toAssetId $ AssetAmount $ Money.toSomeDiscrete (12 :: Money.Discrete' "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a76e7574636f696e" '(1, 1)))
-              (C.AssetId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7" "6e7574636f696e", 12)
+              (Right (C.AssetId (unsafePolicyId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7") (unsafeAssetName "6e7574636f696e"), 12))
         , testCase "address" $
             deserialiseAddress "addr1qxqs59lphg8g6qndelq8xwqn60ag3aeyfcp33c2kdp46a09re5df3pzwwmyq946axfcejy5n4x0y99wqpgtp2gd0k09qsgy6pz"
         , testCase "stake address" $
