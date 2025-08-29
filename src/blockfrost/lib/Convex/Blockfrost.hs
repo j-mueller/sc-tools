@@ -18,6 +18,7 @@ module Convex.Blockfrost (
 
   -- * Obtaining fully resolved transactions
   resolveTx,
+  streamUTxOsWithAssetId,
 ) where
 
 import Blockfrost.Client qualified as Client
@@ -29,6 +30,8 @@ import Blockfrost.Client.Types (
   Project,
  )
 import Blockfrost.Client.Types qualified as Types
+import Blockfrost.Types.Cardano.Assets qualified as BF.Assets
+import Blockfrost.Types.Shared.Address qualified as Types
 import Cardano.Api qualified as C
 import Control.Monad ((>=>))
 import Control.Monad.Except (
@@ -57,8 +60,6 @@ import Data.Coerce (coerce)
 import Data.Set qualified as Set
 import Streaming.Prelude (Of, Stream)
 import Streaming.Prelude qualified as S
-import Blockfrost.Types.Cardano.Assets qualified as BF.Assets
-import Cardano.Api qualified as C
 
 {- | Monad transformer that implements the @MonadBlockchain@
 class using blockfrost's API
@@ -150,11 +151,6 @@ resolveTx txId = do
   let reqTxIns = requiredTxIns txBodyContent
   utxo <- State.evalStateT (MonadBlockchain.getUtxoByTxIn reqTxIns) MonadBlockchain.emptyBlockfrostCache
   pure ResolvedTx{rtxTransaction, rtxInputs = C.unUTxO utxo}
-
-lookupUtxo :: (Types.MonadBlockfrost m) => Client.AddressUtxo -> m (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))
-lookupUtxo addr = runExceptT $ do
-  k <- either (Types.resolveScript >=> liftEither) pure (Types.addressUtxo @C.ConwayEra addr)
-  pure (Types.addressUtxoTxIn addr, k)
 
 streamUTxOsWithAssetId
   :: (Types.MonadBlockfrost m)
