@@ -10,6 +10,8 @@
 
 -- | Conversion between blockfrost and @cardano-api@ types
 module Convex.Blockfrost.Types (
+  policyIdToBlockfrostPolicyId,
+  assetIdToBlockfrostAssetId,
   toLovelace,
   toQuantity,
   toPolicyId,
@@ -86,6 +88,7 @@ import Blockfrost.Types.Cardano.Transactions (
 import Blockfrost.Types.Shared.Ada (Lovelaces)
 import Blockfrost.Types.Shared.Address (Address (..))
 import Blockfrost.Types.Shared.Amount (Amount (..))
+import Blockfrost.Types.Shared.AssetId (AssetId (..))
 import Blockfrost.Types.Shared.CBOR (CBORString (..))
 import Blockfrost.Types.Shared.DatumHash (DatumHash (..))
 import Blockfrost.Types.Shared.PolicyId (PolicyId (..))
@@ -158,6 +161,13 @@ import Ouroboros.Consensus.HardFork.History.Summary (
 import Ouroboros.Consensus.Shelley.Eras (ConwayEra)
 import Streaming.Prelude (Of, Stream)
 import Streaming.Prelude qualified as S
+
+policyIdToBlockfrostPolicyId :: C.PolicyId -> PolicyId
+policyIdToBlockfrostPolicyId = PolicyId . C.serialiseToRawBytesHexText
+
+assetIdToBlockfrostAssetId :: C.AssetId -> AssetId
+assetIdToBlockfrostAssetId (C.AssetId policyId tokenName) = AssetId $ C.serialiseToRawBytesHexText policyId <> C.serialiseToRawBytesHexText tokenName
+assetIdToBlockfrostAssetId C.AdaAssetId = AssetId ""
 
 toLovelace :: Lovelaces -> Lovelace
 toLovelace = C.Ledger.Coin . toInteger

@@ -27,6 +27,7 @@ tests: True
 packages:
   src/base
   src/blockfrost
+  src/maestro
   src/coin-selection
   src/devnet
   src/mockchain
@@ -34,3 +35,9 @@ packages:
   src/optics
   src/tx-mod
   src/wallet
+
+source-repository-package
+  type: git
+  location: https://github.com/maestro-org/maestro-cardano-haskell-sdk
+  --sha256: sha256-O9WSVdqZfKYHt5IBCF3+nknswNl/VH8/FTmTW/iAgb8=
+  tag: v1.7.6
