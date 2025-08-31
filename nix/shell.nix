@@ -58,7 +58,7 @@ let
       fourmolu = {
         enable = true;
         package = tools.fourmolu;
-        args = [ "--mode" "inplace" ];
+        # args = [ "--mode" "inplace" ];
       };
       hlint = {
         enable = false;
