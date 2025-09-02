@@ -61,23 +61,6 @@ import Servant.Client qualified as Servant
 import Streaming.Prelude (Of, Stream)
 import Streaming.Prelude qualified as S
 
--- maestroSubmitTx :: Bool -> Env.MaestroEnv 'Env.V1 -> C.Tx C.ConwayEra -> IO C.TxId
--- maestroSubmitTx useTurboSubmit env tx = do
---   txId <- handleMaestroSubmitError <=< try $ let txCbor = Api.serialiseToCBOR $ txToApi tx in if useTurboSubmit then Maestro.turboSubmitAndMonitorTx env txCbor else Maestro.submitAndMonitorTx env txCbor
---   either
---     (throwIO . MspvDeserializeFailure "SubmitTx" . DeserializeErrorHex . Text.pack)
---     pure
---     $ txIdFromHexE
---     $ Text.unpack txId
---  where
---   handleMaestroSubmitError :: Either Maestro.MaestroError a -> IO a
---   handleMaestroSubmitError = either (throwIO . SubmitTxException . Text.pack . show . silenceHeadersMaestroClientError) pure
-
--- -- | Send a transaction to the network using blockfrost's API
--- sendTxBlockfrost :: (MonadBlockfrost m) => Tx ConwayEra -> m (Either (ValidationError ConwayEra) TxId)
--- sendTxBlockfrost =
---   fmap (Right . Types.toTxHash) . submitTx . CBORString . BSL.fromStrict . serialiseToCBOR
-
 -- | Submit a transaction (not yet supported by Maestro SDK)
 sendTxMaestro :: Bool -> Env.MaestroEnv 'Env.V1 -> C.Tx C.ConwayEra -> IO (Either (ValidationError CMTypes.CurrentEra) C.TxId)
 sendTxMaestro turboFlag env tx = do
@@ -85,11 +68,9 @@ sendTxMaestro turboFlag env tx = do
   CMTypes.maestroSubmitResult
     <$> if turboFlag
       then
-        pure $ Maestro.turboSubmitAndMonitorTx env txCbor
+        Maestro.turboSubmitAndMonitorTx env txCbor
       else
-        pure $ Maestro.submitAndMonitorTx env txCbor
-
--- pure (Left (error "Maestro: sendTx not implemented"))
+        Maestro.submitAndMonitorTx env txCbor
 
 -- | Resolve a set of TxIns to UTxO (Maestro lacks direct TxIn lookup)
 getUtxoByTxIn :: Env.MaestroEnv 'Env.V1 -> Set C.TxIn -> IO (C.UTxO C.ConwayEra)

@@ -24,6 +24,7 @@ module Convex.Maestro.Types (
   toCardanoApiSlotNo,
   toMaestroStakeAddress,
   toCardanoApiTxId,
+  maestroSubmitResult,
 ) where
 
 import Cardano.Api.Shelley qualified as C

@@ -47,7 +47,6 @@ library
   build-depends:
     , base                         >=4.14 && <5
     , base16-bytestring
-    , bech32
     , bytestring
     , cardano-api
     , cardano-binary
@@ -59,14 +58,11 @@ library
     , cardano-slotting
     , containers
     , convex-base
-    , convex-optics
     , lens
     , maestro-sdk
     , mtl
     , ouroboros-consensus
     , ouroboros-consensus-cardano
-    , ouroboros-network-api
-    , safe-money
     , servant-client
     , sop-extras
     , streaming
@@ -86,6 +82,3 @@ test-suite convex-maestro-test
     , containers
     , convex-maestro
     , maestro-sdk
-    , safe-money
-    , tasty
-    , tasty-hunit
