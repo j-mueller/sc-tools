@@ -152,6 +152,11 @@ resolveTx txId = do
   utxo <- State.evalStateT (MonadBlockchain.getUtxoByTxIn reqTxIns) MonadBlockchain.emptyBlockfrostCache
   pure ResolvedTx{rtxTransaction, rtxInputs = C.unUTxO utxo}
 
+{- | Stream all UTxOs with a given AssetId
+It executes two queries to Blockfrost:
+1. Get all addresses that currently hold this asset
+2. For each such address, stream only UTxOs that contain *this* asset at that address
+-}
 streamUTxOsWithAssetId
   :: (Types.MonadBlockfrost m)
   => C.AssetId
