@@ -75,7 +75,7 @@ test-suite convex-maestro-test
   type:           exitcode-stdio-1.0
   hs-source-dirs: test
   main-is:        Spec.hs
-  other-modules:  Unit
+  other-modules:
   build-depends:
     , base            >=4.14.0
     , cardano-api
