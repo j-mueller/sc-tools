@@ -67,13 +67,14 @@ library
     , ouroboros-consensus-cardano
     , ouroboros-network-api
     , safe-money
+    , servant-client
     , sop-extras
     , streaming
     , text
     , time
     , transformers
 
-test-suite convex-blockfrost-test
+test-suite convex-maestro-test
   import:         lang
   type:           exitcode-stdio-1.0
   hs-source-dirs: test
@@ -82,6 +83,7 @@ test-suite convex-blockfrost-test
   build-depends:
     , base            >=4.14.0
     , cardano-api
+    , containers
     , convex-maestro
     , maestro-sdk
     , safe-money

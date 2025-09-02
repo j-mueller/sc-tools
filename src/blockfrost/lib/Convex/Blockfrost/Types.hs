@@ -474,68 +474,73 @@ See note [Protocol Parameter Conversion]
 protocolParametersConway :: ProtocolParams -> PParams ConwayEra
 protocolParametersConway pp =
   let votingThresholdFromRational = C.unsafeBoundedRational @BaseTypes.UnitInterval . fromMaybe 0.51
-   in L.PParams $
-        L.emptyPParamsIdentity @ConwayEra
-          & L.hkdMinFeeAL .~ L.Coin (_protocolParamsMinFeeA pp)
-          & L.hkdMinFeeBL .~ L.Coin (_protocolParamsMinFeeB pp)
-          & L.hkdMaxBBSizeL .~ fromInteger (_protocolParamsMaxBlockSize pp)
-          & L.hkdMaxTxSizeL .~ fromInteger (_protocolParamsMaxTxSize pp)
-          & L.hkdMaxBHSizeL .~ fromInteger (_protocolParamsMaxBlockHeaderSize pp)
-          & L.hkdKeyDepositL .~ toLovelace (_protocolParamsKeyDeposit pp)
-          & L.hkdPoolDepositL .~ toLovelace (_protocolParamsKeyDeposit pp)
-          & L.hkdEMaxL .~ L.EpochInterval (fromInteger (_protocolParamsEMax pp))
-          & L.hkdNOptL .~ fromInteger (_protocolParamsNOpt pp)
-          & L.hkdA0L .~ C.unsafeBoundedRational (_protocolParamsA0 pp) -- TODO: Is unsafeBoundedRational ok to use here?
-          & L.hkdRhoL .~ C.unsafeBoundedRational (_protocolParamsRho pp)
-          & L.hkdTauL .~ C.unsafeBoundedRational (_protocolParamsTau pp)
-          & L.hkdMinPoolCostL .~ toLovelace (_protocolParamsMinPoolCost pp)
-          & L.hkdCostModelsL .~ costModels (_protocolParamsCostModelsRaw pp)
-          & L.hkdPricesL
-            .~ L.Prices
-              { L.prMem = C.unsafeBoundedRational (_protocolParamsPriceMem pp)
-              , L.prSteps = C.unsafeBoundedRational (_protocolParamsPriceStep pp)
-              }
-          & L.hkdMaxTxExUnitsL
-            .~ L.ExUnits
-              { L.exUnitsSteps = quantity (_protocolParamsMaxTxExSteps pp)
-              , L.exUnitsMem = quantity (_protocolParamsMaxTxExMem pp)
-              }
-          & L.hkdMaxBlockExUnitsL
-            .~ L.ExUnits
-              { L.exUnitsSteps = quantity (_protocolParamsMaxBlockExSteps pp)
-              , L.exUnitsMem = quantity (_protocolParamsMaxBlockExMem pp)
-              }
-          & L.hkdMaxValSizeL .~ quantity (_protocolParamsMaxValSize pp)
-          & L.hkdCollateralPercentageL .~ fromInteger (_protocolParamsCollateralPercent pp)
-          & L.hkdMaxCollateralInputsL .~ fromInteger (_protocolParamsMaxCollateralInputs pp)
-          & L.hkdCoinsPerUTxOByteL .~ L.CoinPerByte (toLovelace (_protocolParamsCoinsPerUtxoSize pp))
-          -- Conway-specific values
-          -- see note [Protocol Parameter Conversion]
-          & L.hkdPoolVotingThresholdsL
-            .~ L.PoolVotingThresholds
-              { L.pvtMotionNoConfidence = votingThresholdFromRational (_protocolParamsPvtMotionNoConfidence pp)
-              , L.pvtCommitteeNormal = votingThresholdFromRational (_protocolParamsPvtCommitteeNormal pp)
-              , L.pvtCommitteeNoConfidence = votingThresholdFromRational (_protocolParamsPvtCommitteeNoConfidence pp)
-              , L.pvtHardForkInitiation = votingThresholdFromRational (_protocolParamsPvtHardForkInitiation pp)
-              , L.pvtPPSecurityGroup = votingThresholdFromRational (_protocolParamsPvtppSecurityGroup pp)
-              }
-          & L.hkdDRepVotingThresholdsL
-            .~ L.DRepVotingThresholds
-              { L.dvtMotionNoConfidence = votingThresholdFromRational (_protocolParamsDvtMotionNoConfidence pp)
-              , L.dvtCommitteeNormal = votingThresholdFromRational (_protocolParamsDvtCommitteeNormal pp)
-              , L.dvtCommitteeNoConfidence = votingThresholdFromRational (_protocolParamsDvtCommitteeNoConfidence pp)
-              , L.dvtUpdateToConstitution = votingThresholdFromRational (_protocolParamsDvtUpdateToConstitution pp)
-              , L.dvtHardForkInitiation = votingThresholdFromRational (_protocolParamsDvtHardForkInitiation pp)
-              , L.dvtPPNetworkGroup = votingThresholdFromRational (_protocolParamsDvtPPNetworkGroup pp)
-              , L.dvtPPEconomicGroup = votingThresholdFromRational (_protocolParamsDvtPPEconomicGroup pp)
-              , L.dvtPPTechnicalGroup = votingThresholdFromRational (_protocolParamsDvtPPTechnicalGroup pp)
-              , L.dvtPPGovGroup = votingThresholdFromRational (_protocolParamsDvtPPGovGroup pp)
-              , L.dvtTreasuryWithdrawal = votingThresholdFromRational (_protocolParamsDvtTreasuryWithdrawal pp)
-              }
-          & L.hkdCommitteeMinSizeL .~ maybe 7 quantity (_protocolParamsCommitteeMinSize pp)
-          & L.hkdCommitteeMaxTermLengthL .~ BaseTypes.EpochInterval (maybe 146 (fromIntegral . quantity) (_protocolParamsCommitteeMaxTermLength pp))
-          & L.hkdGovActionLifetimeL .~ BaseTypes.EpochInterval (maybe 6 (fromIntegral . quantity) (_protocolParamsGovActionLifetime pp))
-          & L.hkdGovActionDepositL .~ maybe 100_000_000_000 toLovelace (_protocolParamsGovActionDeposit pp)
-          & L.hkdDRepDepositL .~ maybe 500_000_000 toLovelace (_protocolParamsDrepDeposit pp)
-          & L.hkdDRepActivityL .~ BaseTypes.EpochInterval (maybe 20 (fromIntegral . quantity) (_protocolParamsDrepActivity pp))
-          & L.hkdMinFeeRefScriptCostPerByteL .~ C.unsafeBoundedRational (fromMaybe 15 (_protocolParamsMinFeeRefScriptCostPerByte pp))
+   in L.PParams
+        ( L.emptyPParamsIdentity @ConwayEra
+            & L.hkdMinFeeAL .~ L.Coin (_protocolParamsMinFeeA pp)
+            & L.hkdMinFeeBL .~ L.Coin (_protocolParamsMinFeeB pp)
+            & L.hkdMaxBBSizeL .~ fromInteger (_protocolParamsMaxBlockSize pp)
+            & L.hkdMaxTxSizeL .~ fromInteger (_protocolParamsMaxTxSize pp)
+            & L.hkdMaxBHSizeL .~ fromInteger (_protocolParamsMaxBlockHeaderSize pp)
+            & L.hkdKeyDepositL .~ toLovelace (_protocolParamsKeyDeposit pp)
+            & L.hkdPoolDepositL .~ toLovelace (_protocolParamsKeyDeposit pp)
+            & L.hkdEMaxL .~ L.EpochInterval (fromInteger (_protocolParamsEMax pp))
+            & L.hkdNOptL .~ fromInteger (_protocolParamsNOpt pp)
+            & L.hkdA0L .~ C.unsafeBoundedRational (_protocolParamsA0 pp) -- TODO: Is unsafeBoundedRational ok to use here?
+            & L.hkdRhoL .~ C.unsafeBoundedRational (_protocolParamsRho pp)
+            & L.hkdTauL .~ C.unsafeBoundedRational (_protocolParamsTau pp)
+            & L.hkdMinPoolCostL .~ toLovelace (_protocolParamsMinPoolCost pp)
+            & L.hkdCostModelsL .~ costModels (_protocolParamsCostModelsRaw pp)
+            & L.hkdPricesL
+              .~ L.Prices
+                { L.prMem = C.unsafeBoundedRational (_protocolParamsPriceMem pp)
+                , L.prSteps = C.unsafeBoundedRational (_protocolParamsPriceStep pp)
+                }
+            & L.hkdMaxTxExUnitsL
+              .~ L.ExUnits
+                { L.exUnitsSteps = quantity (_protocolParamsMaxTxExSteps pp)
+                , L.exUnitsMem = quantity (_protocolParamsMaxTxExMem pp)
+                }
+            & L.hkdMaxBlockExUnitsL
+              .~ L.ExUnits
+                { L.exUnitsSteps = quantity (_protocolParamsMaxBlockExSteps pp)
+                , L.exUnitsMem = quantity (_protocolParamsMaxBlockExMem pp)
+                }
+            & L.hkdMaxValSizeL .~ quantity (_protocolParamsMaxValSize pp)
+            & L.hkdCollateralPercentageL .~ fromInteger (_protocolParamsCollateralPercent pp)
+            & L.hkdMaxCollateralInputsL .~ fromInteger (_protocolParamsMaxCollateralInputs pp)
+            & L.hkdCoinsPerUTxOByteL .~ L.CoinPerByte (toLovelace (_protocolParamsCoinsPerUtxoSize pp))
+            -- Conway-specific values
+            -- see note [Protocol Parameter Conversion]
+            & L.hkdPoolVotingThresholdsL
+              .~ L.PoolVotingThresholds
+                { L.pvtMotionNoConfidence = votingThresholdFromRational (_protocolParamsPvtMotionNoConfidence pp)
+                , L.pvtCommitteeNormal = votingThresholdFromRational (_protocolParamsPvtCommitteeNormal pp)
+                , L.pvtCommitteeNoConfidence = votingThresholdFromRational (_protocolParamsPvtCommitteeNoConfidence pp)
+                , L.pvtHardForkInitiation = votingThresholdFromRational (_protocolParamsPvtHardForkInitiation pp)
+                , L.pvtPPSecurityGroup = votingThresholdFromRational (_protocolParamsPvtppSecurityGroup pp)
+                }
+            & L.hkdDRepVotingThresholdsL
+              .~ L.DRepVotingThresholds
+                { L.dvtMotionNoConfidence = votingThresholdFromRational (_protocolParamsDvtMotionNoConfidence pp)
+                , L.dvtCommitteeNormal = votingThresholdFromRational (_protocolParamsDvtCommitteeNormal pp)
+                , L.dvtCommitteeNoConfidence = votingThresholdFromRational (_protocolParamsDvtCommitteeNoConfidence pp)
+                , L.dvtUpdateToConstitution = votingThresholdFromRational (_protocolParamsDvtUpdateToConstitution pp)
+                , L.dvtHardForkInitiation = votingThresholdFromRational (_protocolParamsDvtHardForkInitiation pp)
+                , L.dvtPPNetworkGroup = votingThresholdFromRational (_protocolParamsDvtPPNetworkGroup pp)
+                , L.dvtPPEconomicGroup = votingThresholdFromRational (_protocolParamsDvtPPEconomicGroup pp)
+                , L.dvtPPTechnicalGroup = votingThresholdFromRational (_protocolParamsDvtPPTechnicalGroup pp)
+                , L.dvtPPGovGroup = votingThresholdFromRational (_protocolParamsDvtPPGovGroup pp)
+                , L.dvtTreasuryWithdrawal = votingThresholdFromRational (_protocolParamsDvtTreasuryWithdrawal pp)
+                }
+            & L.hkdCommitteeMinSizeL .~ maybe 7 quantity (_protocolParamsCommitteeMinSize pp)
+            & L.hkdCommitteeMaxTermLengthL .~ BaseTypes.EpochInterval (maybe 146 (fromIntegral . quantity) (_protocolParamsCommitteeMaxTermLength pp))
+            & L.hkdGovActionLifetimeL .~ BaseTypes.EpochInterval (maybe 6 (fromIntegral . quantity) (_protocolParamsGovActionLifetime pp))
+            & L.hkdGovActionDepositL .~ maybe 100_000_000_000 toLovelace (_protocolParamsGovActionDeposit pp)
+            & L.hkdDRepDepositL .~ maybe 500_000_000 toLovelace (_protocolParamsDrepDeposit pp)
+            & L.hkdDRepActivityL .~ BaseTypes.EpochInterval (maybe 20 (fromIntegral . quantity) (_protocolParamsDrepActivity pp))
+            & L.hkdMinFeeRefScriptCostPerByteL .~ C.unsafeBoundedRational (fromMaybe 15 (_protocolParamsMinFeeRefScriptCostPerByte pp))
+        )
+        & L.ppProtocolVersionL .~ latestProtVer
+
+latestProtVer :: L.ProtVer
+latestProtVer = L.ProtVer (toEnum 10) 0
