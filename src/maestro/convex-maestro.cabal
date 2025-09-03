@@ -80,5 +80,6 @@ test-suite convex-maestro-test
     , base            >=4.14.0
     , cardano-api
     , containers
+    , convex-base
     , convex-maestro
     , maestro-sdk

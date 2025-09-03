@@ -22,7 +22,6 @@ module Convex.Maestro.MonadBlockchain (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley qualified as C
 import Cardano.Slotting.Time (SlotLength, SystemStart)
 import Control.Monad.Trans.Class (lift)
 import Convex.Class (ValidationError)

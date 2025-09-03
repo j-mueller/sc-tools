@@ -7,6 +7,7 @@ module Main (main) where
 
 import Cardano.Api qualified as C
 import Control.Exception (try)
+import Convex.Utils.String (unsafeTxId)
 
 -- @Maestro.Client.V1@ defines all the client utilities to query Maestro API endpoints.
 -- @Maestro.Types.V1@ defines all the types used.
@@ -31,5 +32,5 @@ main = do
           ["addr_test1vry38htgy3ycp43ve3tp9ft0q24kh00zurk3dck59jvvumqs9zkzc"] -- Mention your list of addresses to query for.
   print addressesUTxOs
 
-  result <- getUtxoByTxIn env (Set.fromList [C.TxIn "80ef5e073e9d703182cf7368a9b65caedee0b2477798430246234d297fba4a6c" (C.TxIx 0)])
+  result <- getUtxoByTxIn env (Set.fromList [C.TxIn (unsafeTxId "80ef5e073e9d703182cf7368a9b65caedee0b2477798430246234d297fba4a6c") (C.TxIx 0)])
   print result
