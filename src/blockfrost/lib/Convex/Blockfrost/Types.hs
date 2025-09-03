@@ -294,6 +294,7 @@ makeClassyPrisms ''DecodingError
 data ScriptResolutionFailure
   = ScriptNotFound ScriptHash
   | ScriptDecodingError ScriptType ScriptHash DecodingError
+  | FromHexError String
   deriving stock (Eq, Show)
 
 makeClassyPrisms ''ScriptResolutionFailure
