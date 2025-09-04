@@ -128,6 +128,7 @@ import Control.Monad.Trans.Class (lift)
 import Convex.Blockfrost.Orphans ()
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Utils (inBabbage)
+import Convex.Utils.String (unsafeDatumHash, unsafeScriptHash)
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as BSL
 import Data.Coerce (
@@ -256,10 +257,10 @@ toStakeAddress :: Address -> Maybe C.StakeAddress
 toStakeAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
 
 toDatumHash :: DatumHash -> C.Hash C.ScriptData
-toDatumHash = either (error . (<>) "Failed to parse datum hash: ") id . Parser.runParser C.parseScriptDataHash . coerce
+toDatumHash = unsafeDatumHash . coerce
 
 toScriptHash :: ScriptHash -> C.ScriptHash
-toScriptHash = either (error . (<>) "Failed to parse script hash: ") id . Parser.runParser C.parseScriptHash . coerce
+toScriptHash = unsafeScriptHash . coerce
 
 toDatum :: InlineDatum -> Either DecoderError C.HashableScriptData
 toDatum (InlineDatum (ScriptDatumCBOR text)) =

@@ -101,10 +101,10 @@ toMaestroStakeAddress = Maestro.Bech32StringOf . C.serialiseToBech32
 TxIn "80ef5e073e9d703182cf7368a9b65caedee0b2477798430246234d297fba4a6c" (TxIx 0)
 -}
 toCardanoApiTxIn :: OutputReference -> C.TxIn
-toCardanoApiTxIn (OutputReference (TxHash (unsafeTxId . Text.unpack -> txId)) (fromIntegral -> txIx)) = C.TxIn txId (C.TxIx txIx)
+toCardanoApiTxIn (OutputReference (TxHash (unsafeTxId -> txId)) (fromIntegral -> txIx)) = C.TxIn txId (C.TxIx txIx)
 
 toCardanoApiTxId :: TxHash -> C.TxId
-toCardanoApiTxId (TxHash (unsafeTxId . Text.unpack -> txId)) = txId
+toCardanoApiTxId (TxHash (unsafeTxId -> txId)) = txId
 
 toCardanoApiAddress :: (C.IsCardanoEra era) => Bech32StringOf Address -> Maybe (C.AddressInEra era)
 toCardanoApiAddress (Bech32StringOf text) =
