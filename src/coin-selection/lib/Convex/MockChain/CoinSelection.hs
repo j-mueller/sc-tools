@@ -14,8 +14,8 @@ module Convex.MockChain.CoinSelection (
   payToOperator',
 ) where
 
-import Cardano.Api.Shelley (Value)
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api (Value)
+import Cardano.Api qualified as C
 import Control.Monad.Except (MonadError)
 import Control.Tracer (Tracer)
 import Convex.BuildTx (

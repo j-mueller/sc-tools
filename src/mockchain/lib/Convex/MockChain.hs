@@ -70,8 +70,7 @@ module Convex.MockChain (
   evalMockchain0T,
 ) where
 
-import Cardano.Api.Experimental qualified as C
-import Cardano.Api.Shelley (
+import Cardano.Api (
   AddressInEra,
   Hash (StakePoolKeyHash),
   ShelleyLedgerEra,
@@ -79,7 +78,8 @@ import Cardano.Api.Shelley (
   Tx,
   TxBody (ShelleyTxBody),
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
+import Cardano.Api.Experimental qualified as C
 import Cardano.Ledger.Alonzo.Core qualified as L
 import Cardano.Ledger.Alonzo.Plutus.Evaluate (
   CollectError,

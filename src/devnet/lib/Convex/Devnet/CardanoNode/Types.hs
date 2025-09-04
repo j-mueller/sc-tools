@@ -20,12 +20,10 @@ module Convex.Devnet.CardanoNode.Types (
 
 import Cardano.Api (
   Env,
-  LocalNodeConnectInfo,
-  NetworkId,
- )
-import Cardano.Api.Shelley (
   KesKey,
   Key (..),
+  LocalNodeConnectInfo,
+  NetworkId,
   OperationalCertificateIssueCounter,
   ShelleyGenesis,
   StakeKey,
@@ -41,7 +39,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.Ratio ((%))
 import GHC.Generics (Generic)
-import Ouroboros.Consensus.Shelley.Eras (ShelleyEra, StandardCrypto)
+import Ouroboros.Consensus.Shelley.Eras (ShelleyEra)
 
 type Port = Int
 

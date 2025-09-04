@@ -15,6 +15,7 @@ import Convex.Blockfrost.Types (
   toStakeAddress,
   toTxHash,
  )
+import Convex.Utils.String (unsafeAssetName, unsafePolicyId, unsafeTxId)
 import Data.Maybe (isJust)
 import Money qualified
 import Test.Tasty (TestTree, testGroup)
@@ -33,21 +34,18 @@ tests =
         [ testCase "policyId" $
             assertEqual
               "policy ID should match"
-              "476039a0949cf0b22f6a800f56780184c44533887ca6e821007840c3"
+              (Right $ unsafePolicyId "476039a0949cf0b22f6a800f56780184c44533887ca6e821007840c3")
               (toPolicyId "476039a0949cf0b22f6a800f56780184c44533887ca6e821007840c3")
         , testCase "txId" $
             assertEqual
               "tx ID should match"
-              "8788591983aa73981fc92d6cddbbe643959f5a784e84b8bee0db15823f575a5b"
+              (Right $ unsafeTxId "8788591983aa73981fc92d6cddbbe643959f5a784e84b8bee0db15823f575a5b")
               (toTxHash "8788591983aa73981fc92d6cddbbe643959f5a784e84b8bee0db15823f575a5b")
         , testCase "amount" $
             assertEqual
               "asset ID should match"
               (toAssetId $ AssetAmount $ Money.toSomeDiscrete (12 :: Money.Discrete' "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a76e7574636f696e" '(1, 1)))
-              -- Note the difference in the asset names ('nutcoin' vs '6e7574636f696e')
-              -- This is because the 'IsString' instance of AssetName uses the UTF8 encoding of the string (which doesn't make sense for script hash token names)
-              -- whereas blockfrost gives us the hex encoded bytestring
-              (C.AssetId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7" "nutcoin", 12)
+              (Right (C.AssetId (unsafePolicyId "b0d07d45fe9514f80213f4020e5a61241458be626841cde717cb38a7") (unsafeAssetName "6e7574636f696e"), 12))
         , testCase "address" $
             deserialiseAddress "addr1qxqs59lphg8g6qndelq8xwqn60ag3aeyfcp33c2kdp46a09re5df3pzwwmyq946axfcejy5n4x0y99wqpgtp2gd0k09qsgy6pz"
         , testCase "stake address" $
