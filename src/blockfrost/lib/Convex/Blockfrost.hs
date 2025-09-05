@@ -92,7 +92,7 @@ instance (MonadError e m) => MonadError e (BlockfrostT m) where
 -- TODO: More instances (need to be defined on BlockfrostClientT')
 
 instance (MonadIO m) => MonadUtxoQuery (BlockfrostT m) where
-  utxosByPaymentCredentials credentials = BlockfrostT $ do
+  utxosByPaymentCredentials credentials = do
     let addresses = Set.toList credentials
     results' <- S.toList_ $ S.for (S.each addresses) $ \paymentCredential ->
       -- TODO: by using 'mapMaybe' we simply drop the outputs that have script resolution failures
@@ -120,10 +120,20 @@ lookupUtxo addr = runExceptT $ do
   pure (Types.addressUtxoTxIn addr, k)
 
 -- | Load all UTxOs for a payment credential in a stream. This includes resolution of reference scripts with 'Types.resolveScript'
-streamUtxos :: (Types.MonadBlockfrost m) => C.PaymentCredential -> Stream (Of (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))) m ()
+streamUtxos :: (MonadIO m) => C.PaymentCredential -> Stream (Of (Either Types.ScriptResolutionFailure (C.TxIn, C.TxOut C.CtxUTxO C.ConwayEra))) (BlockfrostT m) ()
 streamUtxos a =
   S.mapM lookupUtxo $
-    Types.pagedStream (\p -> Client.getAddressUtxos' (Types.fromPaymentCredential a) p Client.Ascending)
+    Types.pagedStream (\p -> getAddressUtxos' (Types.fromPaymentCredential a) p Client.Ascending)
+
+-- | Variant of 'Client.getAddressUtxos' that doesn't error when there are no results (no UTxOs)
+getAddressUtxos' :: (MonadIO m) => Client.Address -> Types.Paged -> Types.SortOrder -> BlockfrostT m [Client.AddressUtxo]
+getAddressUtxos' addr paged order = BlockfrostT $ lift $ do
+  (_, proj) <- BlockfrostClientT ask
+  Types.runBlockfrostClientT proj (Client.getAddressUtxos' addr paged order)
+    >>= \case
+      Left Types.BlockfrostNotFound -> pure []
+      Left err -> BlockfrostClientT (throwError err)
+      Right k -> pure k
 
 -- | Run the 'BlockfrostT' transformer using the given blockfrost 'Project'
 evalBlockfrostT :: (MonadIO m) => Project -> BlockfrostT m a -> m (Either BlockfrostError a)
