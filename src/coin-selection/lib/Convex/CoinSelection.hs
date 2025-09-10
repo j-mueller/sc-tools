@@ -247,8 +247,8 @@ makeClassyPrisms ''BalancingError
 
 {- | This prism will match on script execution errors using a predicate over the script
 witness index, an error string and internal logs. The prism matches when the predicate
-returns True for at least one entry in the script execution error list OR if any script
-execution error does not have any log message (the latter is useful when in non-debug mode).
+returns True for at least one entry in the script execution error list OR if _all_ script
+execution errors have no log messages (the latter is useful when in non-debug mode).
 -}
 exactScriptExecutionError :: forall e era. (AsBalancingError e era) => ((C.ScriptWitnessIndex, Text, [Text]) -> Bool) -> L.Prism' e [(C.ScriptWitnessIndex, Text, [Text])]
 exactScriptExecutionError p = prism' tobe frombe
@@ -259,7 +259,7 @@ exactScriptExecutionError p = prism' tobe frombe
   frombe x = case preview _ScriptExecutionErr x of
     Nothing -> Nothing
     Just xs ->
-      if any (\err@(_, _, logs) -> p err || null logs) xs
+      if any p xs || all (null . L.view L._3) xs
         then Just xs
         else Nothing
 
