@@ -59,11 +59,7 @@ module Convex.CoinSelection (
   exactScriptExecutionError,
 ) where
 
-import Cardano.Api qualified
-import Cardano.Api.Extras (substituteExecutionUnits)
-import Cardano.Api.Ledger qualified as CLedger
-import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley (
+import Cardano.Api (
   BuildTx,
   ConwayEra,
   EraHistory,
@@ -72,7 +68,11 @@ import Cardano.Api.Shelley (
   TxOut,
   UTxO (..),
  )
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified
+import Cardano.Api qualified as C
+import Cardano.Api.Extras (substituteExecutionUnits)
+import Cardano.Api.Ledger qualified as CLedger
+import Cardano.Api.Ledger qualified as L
 import Cardano.Ledger.Core (PParams (..), hkdKeyDepositL)
 import Cardano.Ledger.Keys qualified as Keys
 import Cardano.Ledger.Shelley.API (
@@ -244,29 +244,26 @@ data BalancingError era
 
 makeClassyPrisms ''BalancingError
 
-{- | This prism will match on the exact error using the script witness index and an error
-string if this information is available. It will behave as a script execution error if no debug logs
-are available. The latter is necessary, since in non-debug mode, there is no error to match on and
-the prism should not fail in its purpose in non-debug mode.
+{- | This prism will match on script execution errors using a predicate over the script
+witness index, an error string, and internal logs. The prism matches when the predicate
+returns True for at least one entry in the script execution error list OR if _all_ script
+execution errors have no log messages. This is useful because no logs are generated in
+production mode, so we can still detect that a script failed (for example, an attack was
+prevented) from the error occurrence even without any log entries. In debug mode, we have
+logs associated with these errors, allowing us to match on specific failures.
 -}
-exactScriptExecutionError :: forall e era. (AsBalancingError e era) => (Int, Text) -> Prism' e [(C.ScriptWitnessIndex, Text, [Text])]
-exactScriptExecutionError (i, s) = prism' tobe frombe
+exactScriptExecutionError :: forall e era. (AsBalancingError e era) => ((C.ScriptWitnessIndex, Text, [Text]) -> Bool) -> L.Prism' e [(C.ScriptWitnessIndex, Text, [Text])]
+exactScriptExecutionError p = prism' tobe frombe
  where
   tobe :: [(C.ScriptWitnessIndex, Text, [Text])] -> e
   tobe = review _ScriptExecutionErr
   frombe :: e -> Maybe [(C.ScriptWitnessIndex, Text, [Text])]
   frombe x = case preview _ScriptExecutionErr x of
     Nothing -> Nothing
-    Just xs
-      -- index exists, and either we have no logs, of the last entry is the error string to match
-      -- on.
-      | Just (_, _, logs) <- xs L.^? L.ix i
-      , null logs || last logs == s ->
-          Just xs
-      -- We don't have any internal logs, but still a script error
-      | null xs -> Just xs
-      -- Not the correct error
-      | otherwise -> Nothing
+    Just xs ->
+      if any p xs || all (null . L.view L._3) xs
+        then Just xs
+        else Nothing
 
 {- | This convenience function takes @Left@s of type 'C.TxBodyErrorAutoBalance' and throws
 'C.TxBodyScriptErecutionError's as 'ScriptExecutionErr', with extraaction of the error log, if

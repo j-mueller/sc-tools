@@ -12,7 +12,7 @@ module Convex.Scripts (
   fromHashableScriptData,
 ) where
 
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Cardano.Ledger.Plutus.Data (Data (..))
 import Ouroboros.Consensus.Shelley.Eras (BabbageEra)
 import PlutusLedgerApi.V1 qualified as PV1

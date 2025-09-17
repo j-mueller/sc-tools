@@ -71,7 +71,6 @@ module Convex.Class (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Plutus.Evaluate (PlutusWithContext (..))

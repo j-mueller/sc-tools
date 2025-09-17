@@ -14,7 +14,6 @@ module Convex.Maestro.Types (
   toCardanoApiUTxO,
   decodeTxOutCbor,
   toCardanoApiTxIn,
-  textToIsString,
   toCardanoApiProtocolParams,
   toCardanoApiAddress,
   toCardanoApiSystemStart,
@@ -27,9 +26,10 @@ module Convex.Maestro.Types (
   maestroSubmitResult,
 ) where
 
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Cardano.Binary (DecoderError (..))
 import Control.Monad.Except (MonadError (..), throwError)
+import Convex.Utils.String (unsafeTxId)
 import Data.ByteString.Base16 qualified as Base16
 import Data.Text.Encoding qualified as Text.Encoding
 import Maestro.Types.Common (Address, Bech32StringOf (Bech32StringOf), HexStringOf (..))
@@ -55,12 +55,11 @@ import Convex.Class (ValidationError)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BSL
-import Data.Coerce (Coercible, coerce)
+import Data.Coerce (coerce)
 import Data.Int (Int64)
 import Data.Map qualified as M
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Proxy (Proxy (..))
-import Data.String (IsString (..))
 import Data.Text qualified as Text
 import Data.Time (LocalTime)
 import Data.Time qualified as Time
@@ -102,13 +101,10 @@ toMaestroStakeAddress = Maestro.Bech32StringOf . C.serialiseToBech32
 TxIn "80ef5e073e9d703182cf7368a9b65caedee0b2477798430246234d297fba4a6c" (TxIx 0)
 -}
 toCardanoApiTxIn :: OutputReference -> C.TxIn
-toCardanoApiTxIn (OutputReference (TxHash (textToIsString -> txId)) (fromIntegral -> txIx)) = C.TxIn txId (C.TxIx txIx)
+toCardanoApiTxIn (OutputReference (TxHash (unsafeTxId -> txId)) (fromIntegral -> txIx)) = C.TxIn txId (C.TxIx txIx)
 
 toCardanoApiTxId :: TxHash -> C.TxId
-toCardanoApiTxId (TxHash (textToIsString -> txId)) = C.TxId txId
-
-textToIsString :: (Coercible a Text.Text, IsString b) => a -> b
-textToIsString = fromString . Text.unpack . coerce
+toCardanoApiTxId (TxHash (unsafeTxId -> txId)) = txId
 
 toCardanoApiAddress :: (C.IsCardanoEra era) => Bech32StringOf Address -> Maybe (C.AddressInEra era)
 toCardanoApiAddress (Bech32StringOf text) =
@@ -133,9 +129,10 @@ decodeTxOutCbor hexText = do
   first CBORError $ decodeFullDecoder "TxOut" L.fromCBOR (BSL.fromStrict raw)
 
 toCardanoApiUTxO :: UtxoWithBytes -> Either DecodingError (C.TxIn, C.TxOut C.CtxUTxO CurrentEra)
-toCardanoApiUTxO UtxoWithBytes{utxoWithBytesAddress = _, utxoWithBytesAssets = _, utxoWithBytesDatum = _, utxoWithBytesIndex, utxoWithBytesReferenceScript = _, utxoWithBytesTxHash, utxoWithBytesTxoutCbor} =
-  maybe (throwError (Base16DecodeError "Could not decode base16")) pure utxoWithBytesTxoutCbor >>= \(HexStringOf txoutCbor) ->
-    (,) (toCardanoApiTxIn (OutputReference (TxHash (textToIsString utxoWithBytesTxHash)) utxoWithBytesIndex)) <$> decodeTxOutCbor (Text.Encoding.encodeUtf8 txoutCbor)
+toCardanoApiUTxO UtxoWithBytes{utxoWithBytesIndex, utxoWithBytesTxHash, utxoWithBytesTxoutCbor} = do
+  txOut <- maybe (throwError (Base16DecodeError "Could not decode base16")) pure utxoWithBytesTxoutCbor >>= \(HexStringOf txoutCbor) -> decodeTxOutCbor $ Text.Encoding.encodeUtf8 txoutCbor
+  let txId = toCardanoApiTxId utxoWithBytesTxHash
+  pure (C.TxIn txId (C.TxIx $ fromIntegral utxoWithBytesIndex), txOut)
 
 toExUnits :: MemoryCpuWith Natural -> L.ExUnits
 toExUnits (MemoryCpuWith{memoryCpuWithMemory = memory, memoryCpuWithCpu = cpu}) = L.ExUnits{L.exUnitsMem = memory, L.exUnitsSteps = cpu}
