@@ -58,9 +58,9 @@ module Convex.BuildTx (
   spendPublicKeyOutput,
   spendPlutus,
   spendPlutusRef,
+  spendPlutusRefBase,
+  spendPlutusRefBaseWithInRef,
   spendPlutusRefWithInlineDatum,
-  spendPlutusRefWithoutInRef,
-  spendPlutusRefWithoutInRefInlineDatum,
   spendPlutusInlineDatum,
   spendSimpleScript,
 
@@ -450,66 +450,50 @@ buildRefScriptWitness refTxIn scrVer datum redeemer =
 spendPlutus
   :: forall datum redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> PlutusScript lang -> datum -> redeemer -> m ()
-spendPlutus txIn s (toHashableScriptData -> dat) red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildScriptWitness s (C.ScriptDatumForTxIn $ Just dat) red
-   in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
+  => C.TxIn -> PlutusScript lang -> datum -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+spendPlutus txIn s (toHashableScriptData -> dat) redFn =
+  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildScriptWitness s (C.ScriptDatumForTxIn $ Just dat) (redFn txBody)
+   in setScriptsValid >> addBtx (\body -> over L.txIns ((txIn, wit body) :) body)
 
 -- | Spend an output locked by a Plutus V2 validator with an inline datum
 spendPlutusInlineDatum
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> PlutusScript lang -> redeemer -> m ()
-spendPlutusInlineDatum txIn s red =
-  let wit = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildScriptWitness s C.InlineScriptDatum red
-   in setScriptsValid >> addBtx (over L.txIns ((txIn, wit) :))
+  => C.TxIn -> PlutusScript lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+spendPlutusInlineDatum txIn s redFn =
+  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildScriptWitness s C.InlineScriptDatum (redFn txBody)
+   in setScriptsValid >> addBtx (\body -> over L.txIns ((txIn, wit body) :) body)
 
 {- | Spend an output locked by a Plutus V2 validator using the redeemer provided. The redeemer
-can depend on the index of the @TxIn@ in the inputs of the final transaction.
+can depend on the @TxBody@ in the inputs of the final transaction.
 -}
 spendPlutusRefBase
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (Int -> redeemer) -> m ()
-spendPlutusRefBase txIn refTxIn scrVer dat red =
-  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildRefScriptWitness refTxIn scrVer dat (red $ findIndexSpending txIn txBody)
+  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+spendPlutusRefBase txIn refTxIn scrVer dat redFn =
+  let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildRefScriptWitness refTxIn scrVer dat (redFn txBody)
    in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit body) :))
 
 -- | Spend an output locked by a Plutus V2 validator using the redeemer
 spendPlutusRefBaseWithInRef
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> redeemer -> m ()
-spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat red = inBabbage @era $ spendPlutusRefBase txIn refTxIn scrVer dat (const red) >> addReference refTxIn
+  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat redFn = inBabbage @era $ spendPlutusRefBase txIn refTxIn scrVer dat redFn >> addReference refTxIn
 
 spendPlutusRef
   :: forall datum redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
+  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
 spendPlutusRef txIn refTxIn scrVer (toHashableScriptData -> dat) = spendPlutusRefBaseWithInRef txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat)
 
 -- | same as spendPlutusV2Ref but considers inline datum at the spent utxo
 spendPlutusRefWithInlineDatum
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> redeemer -> m ()
+  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
 spendPlutusRefWithInlineDatum txIn refTxIn scrVer = spendPlutusRefBaseWithInRef txIn refTxIn scrVer C.InlineScriptDatum
-
-{- | same as spendPlutusV2Ref but does not add the reference script in the reference input list
-This is to cover the case whereby the reference script utxo is expected to be consumed in the same tx.
--}
-spendPlutusRefWithoutInRef
-  :: forall datum redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
-spendPlutusRefWithoutInRef txIn refTxIn scrVer (toHashableScriptData -> dat) red = spendPlutusRefBase txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat) (const red)
-
--- | same as spendPlutusV2RefWithoutInRef but considers inline datum at the spent utxo
-spendPlutusRefWithoutInRefInlineDatum
-  :: forall redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> redeemer -> m ()
-spendPlutusRefWithoutInRefInlineDatum txIn refTxIn scrVer red = spendPlutusRefBase txIn refTxIn scrVer C.InlineScriptDatum (const red)
 
 mintPlutus
   :: forall redeemer lang era m
