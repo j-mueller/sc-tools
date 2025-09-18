@@ -24,6 +24,7 @@ import Convex.BuildTx (
   execBuildTx,
   execBuildTxT,
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToAddress,
   payToAddressTxOut,
   payToScriptDatumHash,
@@ -153,6 +154,8 @@ tests =
         , testCase "query stake addresses" (mockchainSucceeds $ failOnError queryStakeAddressesTest)
         , testCase "query stake vote delegatees" (mockchainSucceeds $ failOnError queryStakeVoteDelegateesTest)
         , testCase "stake key withdrawal" (mockchainSucceeds $ failOnError stakeKeyWithdrawalTest)
+        , testCase "script withdrawal" (mockchainSucceeds $ failOnError addScriptWithdrawalTest)
+        , testCase "script withdrawl with custom redeemer" (mockchainSucceeds $ failOnError addScriptWithdrawalWithCustomRedeemerTest)
         ]
     ]
 
@@ -242,7 +245,7 @@ spendTokens2 txi = do
       tx = execBuildTx $ do
         payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
         BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
-        mintPlutus mintingScript () (unsafeAssetName "deadbeef") (-2)
+        mintPlutusWithRedeemerFn mintingScript (toInteger . length . C.txIns) (unsafeAssetName "deadbeef") (-2)
         setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
@@ -614,3 +617,45 @@ stakeKeyWithdrawalTest = do
 
   -- withdraw rewards
   void $ tryBalanceAndSubmit mempty Wallet.w2 withdrawalTx TrailingChange [C.WitnessStakeKey stakeKey]
+
+addScriptWithdrawalTest
+  :: forall era m
+   . ( MonadIO m
+     , MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+     )
+  => m ()
+addScriptWithdrawalTest = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
+  void registerScriptStakingCredential
+
+  let sh = C.hashScript $ C.PlutusScript C.PlutusScriptV2 Scripts.v2StakingScript
+      withdrawalAmount = 100
+      wit = BuildTx.buildScriptWitness Scripts.v2StakingScript C.NoScriptDatumForStake ()
+
+  setReward scriptStakingCredential $ C.quantityToLovelace withdrawalAmount
+
+  stakeTxBody <- execBuildTxT $ BuildTx.addScriptWithdrawal sh withdrawalAmount wit
+  void $ tryBalanceAndSubmit mempty Wallet.w1 stakeTxBody TrailingChange []
+
+addScriptWithdrawalWithCustomRedeemerTest
+  :: forall era m
+   . ( MonadIO m
+     , MonadMockchain era m
+     , MonadError (BalanceTxError era) m
+     , MonadFail m
+     , C.IsConwayBasedEra era
+     , C.HasScriptLanguageInEra C.PlutusScriptV2 era
+     )
+  => m ()
+addScriptWithdrawalWithCustomRedeemerTest = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
+  void registerScriptStakingCredential
+
+  let withdrawalAmount = 100
+
+  setReward scriptStakingCredential $ C.quantityToLovelace withdrawalAmount
+
+  stakeTxBody <- execBuildTxT $ BuildTx.addScriptWithdrawalWithRedeemerFn Scripts.v2StakingScript withdrawalAmount (toInteger . length . C.txIns)
+  void $ tryBalanceAndSubmit mempty Wallet.w1 stakeTxBody TrailingChange []
