@@ -504,19 +504,19 @@ mintPlutus
      , C.IsPlutusScriptLanguage lang
      )
   => PlutusScript lang
-  -> redeemer
+  -> (C.TxBodyContent C.BuildTx era -> redeemer)
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutus script red assetName quantity =
+mintPlutus script redFn assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.plutusScriptVersion script)
       policyId = C.PolicyId sh
-      wit = C.BuildTxWith $ buildScriptWitness @era script C.NoScriptDatumForMint red
+      wit txBody = C.BuildTxWith $ buildScriptWitness @era script C.NoScriptDatumForMint (redFn txBody)
    in inAlonzo @era $
         setScriptsValid
           >> addBtx
             ( over
-                (mintTxBodyL policyId assetName wit)
+                (\qFn body -> mintTxBodyL policyId assetName (wit body) qFn body)
                 (+ quantity)
             )
 
@@ -536,18 +536,18 @@ mintPlutusRef
   => C.TxIn
   -> C.PlutusScriptVersion lang
   -> C.ScriptHash
-  -> redeemer
+  -> (C.TxBodyContent C.BuildTx era -> redeemer)
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutusRef refTxIn scrVer sh red assetName quantity =
+mintPlutusRef refTxIn scrVer sh redFn assetName quantity =
   inBabbage @era $
-    let wit = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint red
+    let wit txBody = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint (redFn txBody)
         policyId = C.PolicyId sh
      in setScriptsValid
           >> addBtx
             ( over
-                (mintTxBodyL policyId assetName wit)
+                (\qFn body -> mintTxBodyL policyId assetName (wit body) qFn body)
                 (+ quantity)
             )
           >> addReference refTxIn
