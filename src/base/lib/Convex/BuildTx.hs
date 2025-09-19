@@ -371,13 +371,12 @@ addStakeScriptWitness
   => C.Certificate era
   -> C.StakeCredential
   -> C.PlutusScript lang
-  -> redeemer
+  -> (C.TxBodyContent C.BuildTx era -> redeemer)
   -> m ()
-addStakeScriptWitness certificate credential script redeemer = do
-  let scriptWitness = buildScriptWitness script C.NoScriptDatumForStake redeemer
-      witness = C.ScriptWitness C.ScriptWitnessForStakeAddr scriptWitness
-
-  addBtx (over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness)))))
+addStakeScriptWitness certificate credential script redFn = do
+  let scriptWitness txBody = buildScriptWitness script C.NoScriptDatumForStake (redFn txBody)
+      witness txBody = C.ScriptWitness C.ScriptWitnessForStakeAddr $ scriptWitness txBody
+  addBtx (\body -> over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness body)))) body)
 
 -- | Add a stake script reference witness to the transaction.
 addStakeScriptWitnessRef
@@ -392,12 +391,12 @@ addStakeScriptWitnessRef
   -> C.StakeCredential
   -> C.TxIn
   -> C.PlutusScriptVersion lang
-  -> redeemer
+  -> (C.TxBodyContent C.BuildTx era -> redeemer)
   -> m ()
-addStakeScriptWitnessRef certificate credential txIn plutusScriptVersion redeemer = do
-  let scriptWitness = buildRefScriptWitness @era txIn plutusScriptVersion C.NoScriptDatumForStake redeemer
-  let witness = C.ScriptWitness C.ScriptWitnessForStakeAddr scriptWitness
-  addBtx (over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness)))))
+addStakeScriptWitnessRef certificate credential txIn plutusScriptVersion redFn = do
+  let scriptWitness txBody = buildRefScriptWitness @era txIn plutusScriptVersion C.NoScriptDatumForStake (redFn txBody)
+      witness txBody = C.ScriptWitness C.ScriptWitnessForStakeAddr $ scriptWitness txBody
+  addBtx (\body -> over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness body)))) body)
 
 {- | Like @addStakeWitness@ but uses a function that takes a @TxBody@ to build the witness.
 TODO Give an example of why this is useful. We should just remove it.
