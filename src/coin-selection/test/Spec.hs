@@ -24,6 +24,7 @@ import Convex.BuildTx (
   execBuildTx,
   execBuildTxT,
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToAddress,
   payToAddressTxOut,
   payToScriptDatumHash,
@@ -189,12 +190,12 @@ payToPlutusV2Script = inBabbage @era $ do
 
 spendPlutusScript :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV1 era) => C.TxIn -> m C.TxId
 spendPlutusScript ref = inBabbage @era $ do
-  let tx = execBuildTx (spendPlutus ref txInscript () (const ()))
+  let tx = execBuildTx (spendPlutus ref txInscript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
 spendPlutusV2Script :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV2 era) => C.TxIn -> m C.TxId
 spendPlutusV2Script ref = inBabbage @era $ do
-  let tx = execBuildTx (spendPlutus ref Scripts.v2SpendingScript () (const ()))
+  let tx = execBuildTx (spendPlutus ref Scripts.v2SpendingScript () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
 putReferenceScript :: forall m. (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => Wallet -> m C.TxIn
@@ -217,13 +218,13 @@ putReferenceScript wallet = do
 spendPlutusScriptReference :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
-  let tx = execBuildTx (spendPlutusRef txIn refTxIn C.PlutusScriptV2 () (const ()))
+  let tx = execBuildTx (spendPlutusRef txIn refTxIn C.PlutusScriptV2 () ()) -- showing txIns hangs
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
 mintingPlutus :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV1 era) => m C.TxId
 mintingPlutus = inBabbage @era $ do
   void $ Wallet.w2 `paymentTo` Wallet.w1
-  let tx = execBuildTx (mintPlutus mintingScript (const ()) (unsafeAssetName "deadbeef") 100)
+  let tx = execBuildTx (mintPlutus mintingScript () (unsafeAssetName "deadbeef") 100)
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
 spendTokens :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxId -> m C.TxId
@@ -242,7 +243,7 @@ spendTokens2 txi = do
       tx = execBuildTx $ do
         payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
         BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
-        mintPlutus mintingScript (const ()) (unsafeAssetName "deadbeef") (-2)
+        mintPlutusWithRedeemerFn mintingScript (toInteger . length . C.txIns) (unsafeAssetName "deadbeef") (-2)
         setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
@@ -307,7 +308,7 @@ checkResolveDatumHash = do
           (C.TxOutDatumHash (C.convert C.babbageBasedEra) (C.hashScriptDataBytes datum3))
           C.ReferenceScriptNone
   txId <- tryExecBuildTxWallet Wallet.w1 (prependTxOut txo)
-  _ <- tryExecBuildTxWallet Wallet.w1 (spendPlutus (C.TxIn txId (C.TxIx 0)) txInscript d3 (const ()))
+  _ <- tryExecBuildTxWallet Wallet.w1 (spendPlutus (C.TxIn txId (C.TxIx 0)) txInscript d3 ())
   assertDatumPresent datum3
 
 checkTxById :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => m ()
@@ -442,7 +443,7 @@ registerScriptStakingCredential = C.conwayEraOnwardsConstraints @era C.conwayBas
   txBody <- BuildTx.execBuildTxT $ do
     -- Need this for Conway certificates or we'll be getting 'MissingScriptWitnessesUTXOW'.
     let cert = C.makeStakeAddressRegistrationCertificate $ C.StakeAddrRegistrationConway C.conwayBasedEra (pp ^. Ledger.ppKeyDepositL) scriptStakingCredential
-    BuildTx.addStakeScriptWitness cert scriptStakingCredential Scripts.v2StakingScript (const ())
+    BuildTx.addStakeScriptWitness cert scriptStakingCredential Scripts.v2StakingScript ()
   C.TxIn . C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 txBody TrailingChange [] <*> pure (C.TxIx 0)
 
 registerStakeCredentialNoWitness
@@ -485,7 +486,7 @@ withdrawZeroTrick = C.conwayEraOnwardsConstraints @era C.conwayBasedEra $ do
   pp <- fmap C.unLedgerProtocolParameters queryProtocolParameters
   unregisterTx <- BuildTx.execBuildTxT $ do
     let cert = BuildTx.mkConwayStakeCredentialUnRegistrationCertificate scriptStakingCredential (pp ^. Ledger.ppKeyDepositL)
-    BuildTx.addStakeScriptWitness cert scriptStakingCredential Scripts.v2StakingScript (const ())
+    BuildTx.addStakeScriptWitness cert scriptStakingCredential Scripts.v2StakingScript ()
   void $ tryBalanceAndSubmit mempty Wallet.w1 unregisterTx TrailingChange []
 
 matchingIndexMP :: forall m. (MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m, MonadFail m) => m ()

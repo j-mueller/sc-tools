@@ -57,11 +57,17 @@ module Convex.BuildTx (
   -- ** Variations of @addInput@
   spendPublicKeyOutput,
   spendPlutus,
+  spendPlutusWithRedeemerFn,
   spendPlutusRef,
+  spendPlutusRefWithRedeemerFn,
   spendPlutusRefBase,
+  spendPlutusRefBaseWithRedeemerFn,
   spendPlutusRefBaseWithInRef,
+  spendPlutusRefBaseWithInRefWithRedeemerFn,
   spendPlutusRefWithInlineDatum,
+  spendPlutusRefWithInlineDatumWithRedeemerFn,
   spendPlutusInlineDatum,
+  spendPlutusInlineDatumWithRedeemerFn,
   spendSimpleScript,
 
   -- ** Adding outputs
@@ -87,12 +93,16 @@ module Convex.BuildTx (
   mkConwayStakeCredentialRegistrationAndDelegationCertificate,
   mkConwayStakeCredentialUnRegistrationCertificate,
   addStakeScriptWitness,
+  addStakeScriptWitnessWithRedeemerFn,
   addStakeScriptWitnessRef,
+  addStakeScriptWitnessRefWithRedeemerFn,
   addStakeWitnessWithTxBody,
 
   -- ** Minting and burning tokens
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   mintPlutusRef,
+  mintPlutusRefWithRedeemerFn,
   mintSimpleScriptAssets,
 
   -- ** Constructing script witness
@@ -360,7 +370,7 @@ addWithdrawalWithTxBody address amount f =
   addTxBuilder (TxBuilder $ \body -> over (L.txWithdrawals . L._TxWithdrawals) ((address, C.quantityToLovelace amount, C.BuildTxWith $ f body) :))
 
 -- | Add a stake script witness to the transaction.
-addStakeScriptWitness
+addStakeScriptWitnessWithRedeemerFn
   :: forall era lang m redeemer
    . ( MonadBuildTx era m
      , Plutus.ToData redeemer
@@ -373,12 +383,12 @@ addStakeScriptWitness
   -> C.PlutusScript lang
   -> (C.TxBodyContent C.BuildTx era -> redeemer)
   -> m ()
-addStakeScriptWitness certificate credential script redFn = do
+addStakeScriptWitnessWithRedeemerFn certificate credential script redFn = do
   let scriptWitness txBody = buildScriptWitness script C.NoScriptDatumForStake (redFn txBody)
       witness txBody = C.ScriptWitness C.ScriptWitnessForStakeAddr $ scriptWitness txBody
   addBtx (\body -> over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness body)))) body)
 
-addStakeScriptWitnessWithRedeemer
+addStakeScriptWitness
   :: forall era lang m redeemer
    . ( MonadBuildTx era m
      , Plutus.ToData redeemer
@@ -391,9 +401,28 @@ addStakeScriptWitnessWithRedeemer
   -> C.PlutusScript lang
   -> redeemer
   -> m ()
-addStakeScriptWitnessWithRedeemer certificate credential script red = addStakeScriptWitness certificate credential script (const red)
+addStakeScriptWitness certificate credential script red = addStakeScriptWitnessWithRedeemerFn certificate credential script (const red)
 
 -- | Add a stake script reference witness to the transaction.
+addStakeScriptWitnessRefWithRedeemerFn
+  :: forall era lang redeemer m
+   . ( MonadBuildTx era m
+     , Plutus.ToData redeemer
+     , C.IsShelleyBasedEra era
+     , C.HasScriptLanguageInEra lang era
+     , C.IsPlutusScriptLanguage lang
+     )
+  => C.Certificate era
+  -> C.StakeCredential
+  -> C.TxIn
+  -> C.PlutusScriptVersion lang
+  -> (C.TxBodyContent C.BuildTx era -> redeemer)
+  -> m ()
+addStakeScriptWitnessRefWithRedeemerFn certificate credential txIn plutusScriptVersion redFn = do
+  let scriptWitness txBody = buildRefScriptWitness @era txIn plutusScriptVersion C.NoScriptDatumForStake (redFn txBody)
+      witness txBody = C.ScriptWitness C.ScriptWitnessForStakeAddr $ scriptWitness txBody
+  addBtx (\body -> over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness body)))) body)
+
 addStakeScriptWitnessRef
   :: forall era lang redeemer m
    . ( MonadBuildTx era m
@@ -406,28 +435,9 @@ addStakeScriptWitnessRef
   -> C.StakeCredential
   -> C.TxIn
   -> C.PlutusScriptVersion lang
-  -> (C.TxBodyContent C.BuildTx era -> redeemer)
-  -> m ()
-addStakeScriptWitnessRef certificate credential txIn plutusScriptVersion redFn = do
-  let scriptWitness txBody = buildRefScriptWitness @era txIn plutusScriptVersion C.NoScriptDatumForStake (redFn txBody)
-      witness txBody = C.ScriptWitness C.ScriptWitnessForStakeAddr $ scriptWitness txBody
-  addBtx (\body -> over (L.txCertificates . L._TxCertificates) (OMap.>| (certificate, C.BuildTxWith (Just (credential, witness body)))) body)
-
-addStakeScriptWitnessRefWithRedeemer
-  :: forall era lang redeemer m
-   . ( MonadBuildTx era m
-     , Plutus.ToData redeemer
-     , C.IsShelleyBasedEra era
-     , C.HasScriptLanguageInEra lang era
-     , C.IsPlutusScriptLanguage lang
-     )
-  => C.Certificate era
-  -> C.StakeCredential
-  -> C.TxIn
-  -> C.PlutusScriptVersion lang
   -> redeemer
   -> m ()
-addStakeScriptWitnessRefWithRedeemer certificate credential txIn plutusScriptVersion red = addStakeScriptWitnessRef certificate credential txIn plutusScriptVersion (const red)
+addStakeScriptWitnessRef certificate credential txIn plutusScriptVersion red = addStakeScriptWitnessRefWithRedeemerFn certificate credential txIn plutusScriptVersion (const red)
 
 {- | Like @addStakeWitness@ but uses a function that takes a @TxBody@ to build the witness.
 TODO Give an example of why this is useful. We should just remove it.
@@ -477,91 +487,91 @@ buildRefScriptWitness refTxIn scrVer datum redeemer =
     (toHashableScriptData redeemer)
     (C.ExecutionUnits 0 0)
 
-spendPlutus
+spendPlutusWithRedeemerFn
   :: forall datum redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> PlutusScript lang -> datum -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-spendPlutus txIn s (toHashableScriptData -> dat) redFn =
+spendPlutusWithRedeemerFn txIn s (toHashableScriptData -> dat) redFn =
   let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildScriptWitness s (C.ScriptDatumForTxIn $ Just dat) (redFn txBody)
    in setScriptsValid >> addBtx (\body -> over L.txIns ((txIn, wit body) :) body)
 
-spendPlutusWithRedeemer
+spendPlutus
   :: forall datum redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> PlutusScript lang -> datum -> redeemer -> m ()
-spendPlutusWithRedeemer txIn s dat red = spendPlutus txIn s dat (const red)
+spendPlutus txIn s dat red = spendPlutusWithRedeemerFn txIn s dat (const red)
 
 -- | Spend an output locked by a Plutus V2 validator with an inline datum
-spendPlutusInlineDatum
+spendPlutusInlineDatumWithRedeemerFn
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> PlutusScript lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-spendPlutusInlineDatum txIn s redFn =
+spendPlutusInlineDatumWithRedeemerFn txIn s redFn =
   let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildScriptWitness s C.InlineScriptDatum (redFn txBody)
    in setScriptsValid >> addBtx (\body -> over L.txIns ((txIn, wit body) :) body)
 
-spendPlutusInlineDatumWithRedeemer
+spendPlutusInlineDatum
   :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> PlutusScript lang -> redeemer -> m ()
-spendPlutusInlineDatumWithRedeemer txIn s red = spendPlutusInlineDatum txIn s (const red)
+spendPlutusInlineDatum txIn s red = spendPlutusInlineDatumWithRedeemerFn txIn s (const red)
 
 {- | Spend an output locked by a Plutus V2 validator using the redeemer provided. The redeemer
 can depend on the @TxBody@ in the inputs of the final transaction.
 -}
-spendPlutusRefBase
+spendPlutusRefBaseWithRedeemerFn
   :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-spendPlutusRefBase txIn refTxIn scrVer dat redFn =
+spendPlutusRefBaseWithRedeemerFn txIn refTxIn scrVer dat redFn =
   let wit txBody = C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending $ buildRefScriptWitness refTxIn scrVer dat (redFn txBody)
    in setScriptsValid >> addTxBuilder (TxBuilder $ \body -> over L.txIns ((txIn, wit body) :))
 
-spendPlutusRefBaseWithRedeemer
+spendPlutusRefBase
   :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum WitCtxTxIn -> redeemer -> m ()
-spendPlutusRefBaseWithRedeemer txIn refTxIn scrVer dat red = spendPlutusRefBase txIn refTxIn scrVer dat (const red)
+spendPlutusRefBase txIn refTxIn scrVer dat red = spendPlutusRefBaseWithRedeemerFn txIn refTxIn scrVer dat (const red)
 
 -- | Spend an output locked by a Plutus V2 validator using the redeemer
-spendPlutusRefBaseWithInRef
+spendPlutusRefBaseWithInRefWithRedeemerFn
   :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum C.WitCtxTxIn -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat redFn = inBabbage @era $ spendPlutusRefBase txIn refTxIn scrVer dat redFn >> addReference refTxIn
+spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer dat redFn = inBabbage @era $ spendPlutusRefBaseWithRedeemerFn txIn refTxIn scrVer dat redFn >> addReference refTxIn
 
-spendPlutusRefBaseWithInRefWithRedeemer
+spendPlutusRefBaseWithInRef
   :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> C.ScriptDatum WitCtxTxIn -> redeemer -> m ()
-spendPlutusRefBaseWithInRefWithRedeemer txIn refTxIn scrVer dat red = spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat (const red)
+spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat red = spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer dat (const red)
+
+spendPlutusRefWithRedeemerFn
+  :: forall datum redeemer lang era m
+   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
+  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+spendPlutusRefWithRedeemerFn txIn refTxIn scrVer (toHashableScriptData -> dat) = spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat)
 
 spendPlutusRef
   :: forall datum redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
-  => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-spendPlutusRef txIn refTxIn scrVer (toHashableScriptData -> dat) = spendPlutusRefBaseWithInRef txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat)
-
-spendPlutusRefWithRedeemer
-  :: forall datum redeemer lang era m
-   . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
-spendPlutusRefWithRedeemer txIn refTxIn scrVer dat red = spendPlutusRef txIn refTxIn scrVer dat (const red)
+spendPlutusRef txIn refTxIn scrVer dat red = spendPlutusRefWithRedeemerFn txIn refTxIn scrVer dat (const red)
 
 -- | same as spendPlutusV2Ref but considers inline datum at the spent utxo
-spendPlutusRefWithInlineDatum
+spendPlutusRefWithInlineDatumWithRedeemerFn
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-spendPlutusRefWithInlineDatum txIn refTxIn scrVer = spendPlutusRefBaseWithInRef txIn refTxIn scrVer C.InlineScriptDatum
+spendPlutusRefWithInlineDatumWithRedeemerFn txIn refTxIn scrVer = spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer C.InlineScriptDatum
 
-spendPlutusRefWithInlineDatumWithRedeemer
+spendPlutusRefWithInlineDatum
   :: forall redeemer lang era m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> redeemer -> m ()
-spendPlutusRefWithInlineDatumWithRedeemer txIn refTxIn scrVer red = spendPlutusRefWithInlineDatum txIn refTxIn scrVer (const red)
+spendPlutusRefWithInlineDatum txIn refTxIn scrVer red = spendPlutusRefWithInlineDatumWithRedeemerFn txIn refTxIn scrVer (const red)
 
-mintPlutus
+mintPlutusWithRedeemerFn
   :: forall redeemer lang era m
    . ( Plutus.ToData redeemer
      , MonadBuildTx era m
@@ -574,7 +584,7 @@ mintPlutus
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutus script redFn assetName quantity =
+mintPlutusWithRedeemerFn script redFn assetName quantity =
   let sh = C.hashScript (C.PlutusScript C.plutusScriptVersion script)
       policyId = C.PolicyId sh
       wit txBody = C.BuildTxWith $ buildScriptWitness @era script C.NoScriptDatumForMint (redFn txBody)
@@ -586,7 +596,7 @@ mintPlutus script redFn assetName quantity =
                 (+ quantity)
             )
 
-mintPlutusWithRedeemer
+mintPlutus
   :: forall redeemer lang era m
    . ( Plutus.ToData redeemer
      , MonadBuildTx era m
@@ -599,12 +609,39 @@ mintPlutusWithRedeemer
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutusWithRedeemer script red = mintPlutus script (const red)
+mintPlutus script red = mintPlutusWithRedeemerFn script (const red)
 
 -- \| A value containing the given amount of the native asset
 assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
 assetValue hsh assetName quantity =
   fromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
+
+mintPlutusRefWithRedeemerFn
+  :: forall redeemer lang era m
+   . ( Plutus.ToData redeemer
+     , MonadBuildTx era m
+     , C.HasScriptLanguageInEra lang era
+     , C.IsBabbageBasedEra era
+     , C.IsPlutusScriptLanguage lang
+     )
+  => C.TxIn
+  -> C.PlutusScriptVersion lang
+  -> C.ScriptHash
+  -> (C.TxBodyContent C.BuildTx era -> redeemer)
+  -> C.AssetName
+  -> C.Quantity
+  -> m ()
+mintPlutusRefWithRedeemerFn refTxIn scrVer sh redFn assetName quantity =
+  inBabbage @era $
+    let wit txBody = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint (redFn txBody)
+        policyId = C.PolicyId sh
+     in setScriptsValid
+          >> addBtx
+            ( over
+                (\qFn body -> mintTxBodyL policyId assetName (wit body) qFn body)
+                (+ quantity)
+            )
+          >> addReference refTxIn
 
 mintPlutusRef
   :: forall redeemer lang era m
@@ -617,38 +654,11 @@ mintPlutusRef
   => C.TxIn
   -> C.PlutusScriptVersion lang
   -> C.ScriptHash
-  -> (C.TxBodyContent C.BuildTx era -> redeemer)
-  -> C.AssetName
-  -> C.Quantity
-  -> m ()
-mintPlutusRef refTxIn scrVer sh redFn assetName quantity =
-  inBabbage @era $
-    let wit txBody = C.BuildTxWith $ buildRefScriptWitness refTxIn scrVer C.NoScriptDatumForMint (redFn txBody)
-        policyId = C.PolicyId sh
-     in setScriptsValid
-          >> addBtx
-            ( over
-                (\qFn body -> mintTxBodyL policyId assetName (wit body) qFn body)
-                (+ quantity)
-            )
-          >> addReference refTxIn
-
-mintPlutusRefWithRedeemer
-  :: forall redeemer lang era m
-   . ( Plutus.ToData redeemer
-     , MonadBuildTx era m
-     , C.HasScriptLanguageInEra lang era
-     , C.IsBabbageBasedEra era
-     , C.IsPlutusScriptLanguage lang
-     )
-  => C.TxIn
-  -> C.PlutusScriptVersion lang
-  -> C.ScriptHash
   -> redeemer
   -> C.AssetName
   -> C.Quantity
   -> m ()
-mintPlutusRefWithRedeemer refTxIn scrVer sh red = mintPlutusRef refTxIn scrVer sh (const red)
+mintPlutusRef refTxIn scrVer sh red = mintPlutusRefWithRedeemerFn refTxIn scrVer sh (const red)
 
 mintSimpleScriptAssets :: forall era m. (MonadBuildTx era m, C.IsMaryBasedEra era) => C.SimpleScript -> [(C.AssetName, C.Quantity)] -> m ()
 mintSimpleScriptAssets sscript assets =
