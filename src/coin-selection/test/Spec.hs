@@ -218,7 +218,7 @@ putReferenceScript wallet = do
 spendPlutusScriptReference :: (MonadFail m, MonadMockchain C.ConwayEra m, MonadError (BalanceTxError C.ConwayEra) m) => C.TxIn -> m C.TxId
 spendPlutusScriptReference txIn = do
   refTxIn <- putReferenceScript Wallet.w1
-  let tx = execBuildTx (spendPlutusRef txIn refTxIn C.PlutusScriptV2 () ()) -- showing txIns hangs
+  let tx = execBuildTx (spendPlutusRef txIn refTxIn C.PlutusScriptV2 () ())
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty Wallet.w1 tx TrailingChange []
 
 mintingPlutus :: forall era m. (MonadFail m, MonadMockchain era m, MonadError (BalanceTxError era) m, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV1 era) => m C.TxId

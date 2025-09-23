@@ -503,7 +503,7 @@ spendPlutus txIn s dat red = spendPlutusWithRedeemerFn txIn s dat (const red)
 
 -- | Spend an output locked by a Plutus V2 validator with an inline datum
 spendPlutusInlineDatumWithRedeemerFn
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsAlonzoBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> PlutusScript lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
 spendPlutusInlineDatumWithRedeemerFn txIn s redFn =
@@ -547,32 +547,32 @@ spendPlutusRefBaseWithInRef
 spendPlutusRefBaseWithInRef txIn refTxIn scrVer dat red = spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer dat (const red)
 
 spendPlutusRefWithRedeemerFn
-  :: forall datum redeemer lang era m
+  :: forall datum redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
 spendPlutusRefWithRedeemerFn txIn refTxIn scrVer (toHashableScriptData -> dat) = spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer (C.ScriptDatumForTxIn $ Just dat)
 
 spendPlutusRef
-  :: forall datum redeemer lang era m
+  :: forall datum redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData datum, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> datum -> redeemer -> m ()
 spendPlutusRef txIn refTxIn scrVer dat red = spendPlutusRefWithRedeemerFn txIn refTxIn scrVer dat (const red)
 
 -- | same as spendPlutusV2Ref but considers inline datum at the spent utxo
 spendPlutusRefWithInlineDatumWithRedeemerFn
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
 spendPlutusRefWithInlineDatumWithRedeemerFn txIn refTxIn scrVer = spendPlutusRefBaseWithInRefWithRedeemerFn txIn refTxIn scrVer C.InlineScriptDatum
 
 spendPlutusRefWithInlineDatum
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . (MonadBuildTx era m, Plutus.ToData redeemer, C.IsBabbageBasedEra era, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang)
   => C.TxIn -> C.TxIn -> C.PlutusScriptVersion lang -> redeemer -> m ()
 spendPlutusRefWithInlineDatum txIn refTxIn scrVer red = spendPlutusRefWithInlineDatumWithRedeemerFn txIn refTxIn scrVer (const red)
 
 mintPlutusWithRedeemerFn
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . ( Plutus.ToData redeemer
      , MonadBuildTx era m
      , C.HasScriptLanguageInEra lang era
@@ -597,7 +597,7 @@ mintPlutusWithRedeemerFn script redFn assetName quantity =
             )
 
 mintPlutus
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . ( Plutus.ToData redeemer
      , MonadBuildTx era m
      , C.HasScriptLanguageInEra lang era
@@ -617,7 +617,7 @@ assetValue hsh assetName quantity =
   fromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
 
 mintPlutusRefWithRedeemerFn
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . ( Plutus.ToData redeemer
      , MonadBuildTx era m
      , C.HasScriptLanguageInEra lang era
@@ -644,7 +644,7 @@ mintPlutusRefWithRedeemerFn refTxIn scrVer sh redFn assetName quantity =
           >> addReference refTxIn
 
 mintPlutusRef
-  :: forall redeemer lang era m
+  :: forall redeemer era lang m
    . ( Plutus.ToData redeemer
      , MonadBuildTx era m
      , C.HasScriptLanguageInEra lang era
