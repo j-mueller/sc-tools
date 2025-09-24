@@ -102,5 +102,5 @@ mintTokenScriptTest
 mintTokenScriptTest script = do
   let txb =
         execBuildTx $
-          mintPlutus script (const ()) (unsafeAssetName "C0FFEE") 1
+          mintPlutus script () (unsafeAssetName "C0FFEE") 1
   failOnError $ tryBalanceAndSubmit mempty Wallet.w1 txb TrailingChange []
