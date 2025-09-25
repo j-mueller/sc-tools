@@ -85,6 +85,7 @@ module Convex.BuildTx (
   -- ** Staking
   addWithdrawal,
   addScriptWithdrawal,
+  addScriptWithdrawalWithRedeemerFn,
   addWithdrawZeroPlutusV2InTransaction,
   addWithdrawZeroPlutusV2Reference,
   addCertificate,
@@ -885,7 +886,7 @@ addWithdrawal address amount witness =
   let withdrawal = (address, C.quantityToLovelace amount, C.BuildTxWith witness)
    in addBtx (over (L.txWithdrawals . L._TxWithdrawals) ((:) withdrawal))
 
-{- Like `addWithdrawal` but the stake address is built from the supplied script hash. This is an utility to make withdrawals guarded by
+{- | Like `addWithdrawal` but the stake address is built from the supplied script hash. This is an utility to make withdrawals guarded by
 scripts easier to trigger
 -}
 addScriptWithdrawal :: (MonadBlockchain era m, MonadBuildTx era m, C.IsShelleyBasedEra era) => ScriptHash -> C.Quantity -> C.ScriptWitness C.WitCtxStake era -> m ()
@@ -894,6 +895,30 @@ addScriptWithdrawal sh quantity witness = do
   let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript sh
       wit = C.ScriptWitness C.ScriptWitnessForStakeAddr witness
   addWithdrawal addr quantity wit
+
+{- | Like 'addScriptWithdrawal', but allows specifying a redeemer
+based on the 'C.TxBodyContent'.
+
+Warning: The redeemer function receives the current transaction body
+to compute the redeemer. This can create infinite loops if the
+redeemer depends on parts of the transaction that are modified by
+this withdrawal itself.
+-}
+addScriptWithdrawalWithRedeemerFn
+  :: ( MonadBlockchain era m
+     , MonadBuildTx era m
+     , Plutus.ToData redeemer
+     , C.IsShelleyBasedEra era
+     , C.IsPlutusScriptLanguage lang
+     , C.HasScriptLanguageInEra lang era
+     )
+  => C.Quantity -> C.PlutusScript lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+addScriptWithdrawalWithRedeemerFn quantity script redFn = do
+  n <- queryNetworkId
+  let sh = C.hashScript $ C.PlutusScript C.plutusScriptVersion script
+  let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript sh
+      wit txBody = C.ScriptWitness C.ScriptWitnessForStakeAddr $ buildScriptWitness script C.NoScriptDatumForStake (redFn txBody)
+  addWithdrawalWithTxBody addr quantity wit
 
 {- | Add a withdrawal of 0 Lovelace from the rewards account locked by the given Plutus V2 script.
 Includes the script in the transaction.
