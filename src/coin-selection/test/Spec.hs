@@ -24,6 +24,7 @@ import Convex.BuildTx (
   execBuildTx,
   execBuildTxT,
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToAddress,
   payToAddressTxOut,
   payToScriptDatumHash,
@@ -242,7 +243,7 @@ spendTokens2 txi = do
       tx = execBuildTx $ do
         payToAddress (Wallet.addressInEra Defaults.networkId wTo) vl
         BuildTx.spendPublicKeyOutput (C.TxIn txi (C.TxIx 0))
-        mintPlutus mintingScript () (unsafeAssetName "deadbeef") (-2)
+        mintPlutusWithRedeemerFn mintingScript (toInteger . length . C.txIns) (unsafeAssetName "deadbeef") (-2)
         setMinAdaDepositAll Defaults.bundledProtocolParameters
   void $ wTo `paymentTo` wFrom
   C.getTxId . C.getTxBody <$> tryBalanceAndSubmit mempty wFrom tx TrailingChange []
