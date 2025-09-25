@@ -683,7 +683,7 @@ mintPlutus
   -> m ()
 mintPlutus script red = mintPlutusWithRedeemerFn script (const red)
 
--- \| A value containing the given amount of the native asset
+-- | A value containing the given amount of the native asset
 assetValue :: ScriptHash -> C.AssetName -> C.Quantity -> C.Value
 assetValue hsh assetName quantity =
   fromList [(C.AssetId (C.PolicyId hsh) assetName, quantity)]
@@ -896,8 +896,8 @@ addScriptWithdrawal sh quantity witness = do
       wit = C.ScriptWitness C.ScriptWitnessForStakeAddr witness
   addWithdrawal addr quantity wit
 
-{- | Like 'addScriptWithdrawal', but allows specifying a redeemer
-based on the 'C.TxBodyContent'.
+{- | Like 'addScriptWithdrawal', but takes a script rather than a script
+hash and allows specifying a redeemer based on the 'C.TxBodyContent'.
 
 Warning: The redeemer function receives the current transaction body
 to compute the redeemer. This can create infinite loops if the
@@ -912,8 +912,8 @@ addScriptWithdrawalWithRedeemerFn
      , C.IsPlutusScriptLanguage lang
      , C.HasScriptLanguageInEra lang era
      )
-  => C.Quantity -> C.PlutusScript lang -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
-addScriptWithdrawalWithRedeemerFn quantity script redFn = do
+  => C.PlutusScript lang -> C.Quantity -> (C.TxBodyContent C.BuildTx era -> redeemer) -> m ()
+addScriptWithdrawalWithRedeemerFn script quantity redFn = do
   n <- queryNetworkId
   let sh = C.hashScript $ C.PlutusScript C.plutusScriptVersion script
   let addr = C.StakeAddress (C.toShelleyNetwork n) $ C.toShelleyStakeCredential $ C.StakeCredentialByScript sh
