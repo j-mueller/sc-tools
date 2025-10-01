@@ -83,7 +83,6 @@ import Cardano.Ledger.Shelley.API (
 import Cardano.Ledger.Shelley.TxCert qualified as TxCert
 import Cardano.Slotting.Time (SystemStart)
 import Control.Lens (
-  Prism',
   at,
   makeLensesFor,
   over,
@@ -231,10 +230,11 @@ pattern-matching on the on-chain error.
 -}
 data BalancingError era
   = BalancingError Text
-  | -- | A single type of balancing error is treated specially: the type with
-    -- 'C.ScriptExecutionError's.
-    -- TODO: I would like to retain the actual error structure, but this collides (quite massively)
-    -- with the required JSON encoding / decoding.
+  | {- | A single type of balancing error is treated specially: the type with
+    'C.ScriptExecutionError's.
+    TODO: I would like to retain the actual error structure, but this collides (quite massively)
+    with the required JSON encoding / decoding.
+    -}
     ScriptExecutionErr [(C.ScriptWitnessIndex, Text, [Text])]
   | CheckMinUtxoValueError (C.TxOut C.CtxTx era) C.Quantity
   | BalanceCheckError (BalancingError era)
@@ -511,9 +511,10 @@ balanceTx
   => Tracer m TxBalancingMessage
   -- ^ Label
   -> C.TxOut C.CtxTx era
-  -- ^ Return output used for leftover funds. This output will be used for
-  --   balancing, and it will be added to the transaction
-  --   IF the funds locked in it (after balancing) are non zero.
+  {- ^ Return output used for leftover funds. This output will be used for
+  balancing, and it will be added to the transaction
+  IF the funds locked in it (after balancing) are non zero.
+  -}
   -> UtxoSet C.CtxUTxO a
   -- ^ Set of UTxOs that can be used to supply missing funds
   -> TxBuilder era
@@ -680,8 +681,9 @@ balancePositive
   -> C.TxOut C.CtxTx era
   -> UtxoSet ctx a
   -> UtxoSet ctx a
-  -- ^ Collateral UTxOs, these are the UTxOs that were used as collateral inputs
-  --  they will only be used for balancing in the case that the other UTxOs are insufficient.
+  {- ^ Collateral UTxOs, these are the UTxOs that were used as collateral inputs
+  they will only be used for balancing in the case that the other UTxOs are insufficient.
+  -}
   -> TxBuilder era
   -> m (TxBuilder era, C.TxOut C.CtxTx era)
 balancePositive dbg poolIds ledgerPPs utxo_ returnUTxO0 walletUtxo collateralUTxOs txBuilder0 = inMary @era $ do
@@ -829,18 +831,19 @@ requiredSignatureCount txBuilder = inAlonzo @era $ do
       getCertKeyWits (C.ShelleyRelatedCertificate _era b) =
         maybe Set.empty Set.singleton (TxCert.getVKeyWitnessShelleyTxCert b)
       getCertKeyWits (C.ConwayCertificate C.ConwayEraOnwardsConway b) =
-        maybe Set.empty Set.singleton (getTxCertWitness (C.convert C.ConwayEraOnwardsConway) b)
+        maybe Set.empty Set.singleton (L.getVKeyWitnessTxCert b)
 
   pure $ TransactionSignatureCount (fromIntegral $ Set.size allSigs + Set.size certKeyWits)
 
-getTxCertWitness
-  :: C.ShelleyBasedEra era
-  -> L.TxCert (C.ShelleyLedgerEra era)
-  -> Maybe (KeyHash Witness)
-getTxCertWitness sbe ledgerCert = C.shelleyBasedEraConstraints sbe $
-  case L.getVKeyWitnessTxCert ledgerCert of
-    Just keyHash -> Just keyHash
-    _ -> Nothing
+-- getTxCertWitness
+--   -- :: C.ConwayBasedEra era
+--   :: forall era
+--   . L.TxCert (C.ShelleyLedgerEra era)
+--   -> Maybe (KeyHash Witness)
+-- getTxCertWitness ledgerCert = C.conwayBasedEra @era $
+--   case L.getVKeyWitnessTxCert ledgerCert of
+--     Just keyHash -> Just keyHash
+--     _ -> Nothing
 
 -- | Certificate key witness
 data CertificateKeyWitness era
