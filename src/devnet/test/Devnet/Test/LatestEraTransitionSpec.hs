@@ -31,6 +31,7 @@ import Convex.MockChain.Utils (
  )
 import Convex.NodeParams qualified as Params
 import Convex.Utils (failOnError)
+import Convex.Utils.String (unsafeAssetName)
 import Convex.Wallet.MockWallet qualified as Wallet
 import Devnet.Test.LatestEraTransitionSpec.PV2 qualified as LatestEraTransitionSpec.PV2
 import Devnet.Test.LatestEraTransitionSpec.PV3 qualified as LatestEraTransitionSpec.PV3
@@ -101,5 +102,5 @@ mintTokenScriptTest
 mintTokenScriptTest script = do
   let txb =
         execBuildTx $
-          mintPlutus script () (C.AssetName "ProtVer10Test") 1
+          mintPlutus script () (unsafeAssetName "C0FFEE") 1
   failOnError $ tryBalanceAndSubmit mempty Wallet.w1 txb TrailingChange []

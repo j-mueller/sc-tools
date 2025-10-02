@@ -95,11 +95,11 @@ import Blockfrost.Types.Shared.PolicyId (PolicyId (..))
 import Blockfrost.Types.Shared.Quantity (Quantity (..))
 import Blockfrost.Types.Shared.ScriptHash (ScriptHash (..))
 import Blockfrost.Types.Shared.TxHash (TxHash (..))
-import Cardano.Api (HasTypeProxy (..), UsingRawBytesHex (..))
+import Cardano.Api (HasTypeProxy (..), Lovelace)
+import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as C.Ledger
 import Cardano.Api.Ledger qualified as L
-import Cardano.Api.Shelley (Lovelace)
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api.Parser.Text qualified as Parser
 import Cardano.Binary (DecoderError (DecoderErrorCustom))
 import Cardano.Ledger.Alonzo.PParams qualified as L
 import Cardano.Ledger.Babbage.PParams qualified as L
@@ -128,10 +128,10 @@ import Control.Monad.Trans.Class (lift)
 import Convex.Blockfrost.Orphans ()
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Utils (inBabbage)
+import Convex.Utils.String (unsafeDatumHash, unsafeScriptHash)
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as BSL
 import Data.Coerce (
-  Coercible,
   coerce,
  )
 import Data.Int (Int64)
@@ -141,7 +141,6 @@ import Data.Maybe (
   mapMaybe,
  )
 import Data.Proxy (Proxy (..))
-import Data.String (IsString (..))
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text.Encoding
 import Data.Time.Clock.POSIX qualified as Clock
@@ -175,22 +174,14 @@ toLovelace = C.Ledger.Coin . toInteger
 toQuantity :: Quantity -> C.Quantity
 toQuantity = coerce
 
-toPolicyId :: PolicyId -> C.PolicyId
-toPolicyId = textToIsString
+toPolicyId :: PolicyId -> Either String C.PolicyId
+toPolicyId = Parser.runParser C.parsePolicyId . coerce
 
-toTxHash :: TxHash -> C.TxId
-toTxHash = textToIsString
+toTxHash :: TxHash -> Either String C.TxId
+toTxHash = Parser.runParser C.parseTxId . coerce
 
 fromTxHash :: C.TxId -> TxHash
 fromTxHash = TxHash . C.serialiseToRawBytesHexText
-
-textToIsString :: (Coercible a Text.Text, IsString b) => a -> b
-textToIsString = fromString . Text.unpack . coerce
-
-hexTextToByteString :: (C.SerialiseAsRawBytes a) => Text.Text -> a
-hexTextToByteString t =
-  let UsingRawBytesHex x = fromString (Text.unpack t)
-   in x
 
 quantity :: Quantity -> Natural
 quantity (Quantity n) = fromInteger n
@@ -200,17 +191,19 @@ poolId :: PoolId -> C.PoolId
 poolId (PoolId text) =
   either (error . show) id $ C.deserialiseFromBech32 text
 
-toAssetId :: Amount -> (C.AssetId, C.Quantity)
+toAssetId :: Amount -> Either String (C.AssetId, C.Quantity)
 toAssetId = \case
-  AdaAmount lvl -> (C.AdaAssetId, C.lovelaceToQuantity $ toLovelace lvl)
-  AssetAmount disc ->
+  AdaAmount lvl -> pure (C.AdaAssetId, C.lovelaceToQuantity $ toLovelace lvl)
+  AssetAmount disc -> do
     -- concatenation of asset policy ID and hex-encoded asset_name
     let txt = Money.someDiscreteCurrency disc
         (policyText, assetName) = Text.splitAt 56 txt
         amount = Money.someDiscreteAmount disc
-     in -- TODO: We could also consider Money.someDiscreteScale
-        --       but it looks like blockfrost just uses unitScale for native assets
-        (C.AssetId (textToIsString policyText) (hexTextToByteString assetName), C.Quantity amount)
+    policy <- Parser.runParser C.parsePolicyId . coerce $ policyText
+    assetName_ <- Parser.runParser C.parseAssetName . coerce $ assetName
+    -- TODO: We could also consider Money.someDiscreteScale
+    --       but it looks like blockfrost just uses unitScale for native assets
+    pure (C.AssetId policy assetName_, C.Quantity amount)
 
 toAddress :: (C.IsCardanoEra era) => Address -> Maybe (C.AddressInEra era)
 toAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
@@ -264,10 +257,10 @@ toStakeAddress :: Address -> Maybe C.StakeAddress
 toStakeAddress (Address text) = C.deserialiseAddress (C.proxyToAsType Proxy) text
 
 toDatumHash :: DatumHash -> C.Hash C.ScriptData
-toDatumHash = textToIsString
+toDatumHash = unsafeDatumHash . coerce
 
 toScriptHash :: ScriptHash -> C.ScriptHash
-toScriptHash = textToIsString
+toScriptHash = unsafeScriptHash . coerce
 
 toDatum :: InlineDatum -> Either DecoderError C.HashableScriptData
 toDatum (InlineDatum (ScriptDatumCBOR text)) =
@@ -302,6 +295,7 @@ makeClassyPrisms ''DecodingError
 data ScriptResolutionFailure
   = ScriptNotFound ScriptHash
   | ScriptDecodingError ScriptType ScriptHash DecodingError
+  | FromHexError String
   deriving stock (Eq, Show)
 
 makeClassyPrisms ''ScriptResolutionFailure
@@ -349,10 +343,11 @@ convertOutput :: forall era. (C.IsBabbageBasedEra era) => Address -> [Amount] ->
 convertOutput addr_ amount dataHash inlineDatum refScriptHash =
   inBabbage @era $
     let addr = fromMaybe (error "utxoOutput: Unable to deserialise address") $ toAddress @era addr_
+        -- TODO: The error from 'toAssetId' should be reflected in the type signature (no partial functions)
         val =
           C.TxOutValueShelleyBased
             C.shelleyBasedEra
-            (C.toLedgerValue @era C.maryBasedEra $ foldMap (L.fromList . return . toAssetId) amount)
+            (C.toLedgerValue @era C.maryBasedEra $ foldMap (L.fromList . return . either (error . (<>) "Failed to parse asset ID: ") id . toAssetId) amount)
         inlinedat = fmap (C.TxOutDatumInline C.babbageBasedEra) (inlineDatum >>= either (const Nothing) Just . toDatum)
         datumhash = fmap (C.TxOutDatumHash C.alonzoBasedEra . toDatumHash) dataHash
         dat = inlinedat <|> datumhash
@@ -363,9 +358,9 @@ convertOutput addr_ amount dataHash inlineDatum refScriptHash =
             Left TxOutUnresolvedScript{txuOutput, txuScriptHash}
 
 -- | The utxo reference 'C.TxIn' of the 'AddressUtxo'
-addressUtxoTxIn :: AddressUtxo -> C.TxIn
+addressUtxoTxIn :: AddressUtxo -> Either String C.TxIn
 addressUtxoTxIn AddressUtxo{_addressUtxoTxHash, _addressUtxoOutputIndex} =
-  C.TxIn (toTxHash _addressUtxoTxHash) (C.TxIx $ fromIntegral _addressUtxoOutputIndex)
+  C.TxIn <$> toTxHash _addressUtxoTxHash <*> pure (C.TxIx $ fromIntegral _addressUtxoOutputIndex)
 
 {- | Convert a blockfrost 'AddressUtxo' to a @cardano-api@ 'C.TxOut C.CtxUTxO era',
 returning 'TxOutUnresolvedScript' if the output has a reference script.

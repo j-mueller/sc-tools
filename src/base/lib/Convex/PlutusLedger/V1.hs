@@ -58,8 +58,8 @@ module Convex.PlutusLedger.V1 (
   unTransPlutusScript,
 ) where
 
+import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
-import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes (CertIx (..), TxIx (..))
 import Cardano.Ledger.Credential (Ptr (..), SlotNo32 (..))
 import Cardano.Ledger.Mary.Value qualified as Mary (AssetName (..))
@@ -91,7 +91,7 @@ transAssetName :: Mary.AssetName -> PV1.TokenName
 transAssetName (Mary.AssetName bs) = PV1.TokenName (PV1.toBuiltin (fromShort bs))
 
 unTransAssetName :: PV1.TokenName -> C.AssetName
-unTransAssetName (PV1.TokenName bs) = C.AssetName $ PV1.fromBuiltin bs
+unTransAssetName (PV1.TokenName bs) = C.UnsafeAssetName $ PV1.fromBuiltin bs
 
 -- | Translate a policy ID from @cardano-api@ to @plutus@
 transPolicyId :: C.PolicyId -> PV1.CurrencySymbol
@@ -110,7 +110,7 @@ transAssetId (C.AssetId policyId assetName) =
     (transAssetName $ toMaryAssetName assetName)
 
 toMaryAssetName :: C.AssetName -> Mary.AssetName
-toMaryAssetName (C.AssetName n) = Mary.AssetName $ Short.toShort n
+toMaryAssetName (C.UnsafeAssetName n) = Mary.AssetName $ Short.toShort n
 
 unTransAssetId :: Value.AssetClass -> Either C.SerialiseAsRawBytesError C.AssetId
 unTransAssetId (Value.AssetClass (currencySymbol, tokenName))

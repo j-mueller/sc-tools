@@ -6,6 +6,7 @@
 module Main (main) where
 
 import Cardano.Api qualified as C
+import Convex.Utils.String (unsafeTxId)
 
 -- import Convex.Class (MonadBlockchain (..))
 -- import Convex.Maestro (evalMaestroT)
@@ -37,6 +38,7 @@ tests =
 
 testUtxoByTxIn :: Assertion
 testUtxoByTxIn = do
+  let txIn = unsafeTxId "80ef5e073e9d703182cf7368a9b65caedee0b2477798430246234d297fba4a6c"
   menv <- mkMaestroEnv @'V1 "ASsgZfnJ8V67O8NwEfUYxFth4O94Gjsa" Preprod defaultBackoff -- This is how we create an environment against which we'll query endpoints.
   _chainTip :: ChainTip <- getTimestampedData <$> getChainTip menv -- Maestro endpoint to get for chain-tip has data & timestamp against which data was calculated. All endpoints which are timestamped, has functions `getTimestampedData` to get for underlying data & `getTimestamp` to get the timestamp.
   addressesUTxOs :: Either MaestroError [UtxoWithSlot] <-
@@ -53,7 +55,7 @@ testUtxoByTxIn = do
   result <-
     evalMaestroT
       menv
-      (listToMaybe . M.toList . C.unUTxO <$> utxoByTxIn (Set.fromList [C.TxIn "80ef5e073e9d703182cf7368a9b65caedee0b2477798430246234d297fba4a6c" (C.TxIx 0)]))
+      (listToMaybe . M.toList . C.unUTxO <$> utxoByTxIn (Set.fromList [C.TxIn txIn (C.TxIx 0)]))
   isJust result @? "UTxO should be found"
 
 -- Submit a tx using MaestroT from a CBOR hex (expected to fail for "deadbeef")
@@ -72,3 +74,5 @@ testUtxoByTxIn = do
 --         putStrLn "Submitting tx via MaestroT..."
 --         res <- evalMaestroT env (sendTx @C.ConwayEra tx)
 --         putStrLn ("sendTx result: " <> show res)
+-- result <- getUtxoByTxIn menv (Set.fromList [C.TxIn (unsafeTxId txIn) (C.TxIx 0)])
+-- print result

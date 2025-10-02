@@ -17,7 +17,7 @@ module Convex.UTxOCompatibility (
 ) where
 
 import Cardano.Api (UTxO (..))
-import Cardano.Api.Shelley qualified as C
+import Cardano.Api qualified as C
 import Control.Lens qualified as L
 import Convex.CardanoApi.Lenses qualified as L
 import Data.Aeson (FromJSON, ToJSON)
