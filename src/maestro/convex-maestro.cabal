@@ -83,3 +83,12 @@ test-suite convex-maestro-test
     , convex-base
     , convex-maestro
     , maestro-sdk
+    , tasty
+    , tasty-hunit
+
+-- uncomment for submit tx test
+-- need to create a valid signed preprod tx 
+-- and replace the cborhex with it in the test
+-- , base16-bytestring
+-- , bytestring
+-- , text

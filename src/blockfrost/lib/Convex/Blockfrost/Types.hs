@@ -535,7 +535,8 @@ protocolParametersConway pp =
             & L.hkdDRepActivityL .~ BaseTypes.EpochInterval (maybe 20 (fromIntegral . quantity) (_protocolParamsDrepActivity pp))
             & L.hkdMinFeeRefScriptCostPerByteL .~ C.unsafeBoundedRational (fromMaybe 15 (_protocolParamsMinFeeRefScriptCostPerByte pp))
         )
-        & L.ppProtocolVersionL .~ latestProtVer
-
-latestProtVer :: L.ProtVer
-latestProtVer = L.ProtVer (toEnum 10) 0
+        & L.ppProtocolVersionL
+          .~ L.ProtVer
+            { L.pvMajor = fromMaybe (error "major version received from blockfrost is out of bounds") $ L.mkVersion (_protocolParamsProtocolMajorVer pp)
+            , L.pvMinor = fromIntegral (_protocolParamsProtocolMinorVer pp)
+            }
